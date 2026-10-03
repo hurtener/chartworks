@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"syscall"
+
+	"github.com/hurtener/chartworks/internal/rendering/containment"
 )
 
 func sandboxSupported(mode string) error {
@@ -54,4 +56,21 @@ func sandboxCommand(ctx context.Context, path, mode string) (*exec.Cmd, func(), 
 	cmd.Dir = "/"
 	cmd.SysProcAttr = &syscall.SysProcAttr{Chroot: root, Cloneflags: syscall.CLONE_NEWUSER | syscall.CLONE_NEWNS | syscall.CLONE_NEWNET | syscall.CLONE_NEWIPC | syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID, Unshareflags: syscall.CLONE_NEWNS, UidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getuid(), Size: 1}}, GidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getgid(), Size: 1}}, GidMappingsEnableSetgroups: false}
 	return cmd, cleanup, nil
+}
+
+func admitMemoryRoot(options Options) error {
+	f, err := containment.OpenRoot(options.CgroupRoot)
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
+func bindMemoryGroup(cmd *exec.Cmd, group memoryGroup) error {
+	if cmd.SysProcAttr == nil || len(cmd.ExtraFiles) != 0 {
+		return containment.ErrUnavailable
+	}
+	cmd.SysProcAttr.Cloneflags |= syscall.CLONE_NEWCGROUP
+	cmd.SysProcAttr.UseCgroupFD = true
+	cmd.SysProcAttr.CgroupFD = group.FD()
+	return nil
 }

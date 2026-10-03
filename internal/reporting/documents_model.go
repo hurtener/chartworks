@@ -58,12 +58,13 @@ type BlockWidget struct {
 // Replayable questions have exact semantic pins and explicit routing choices.
 // Session-bound references use the original query's choices and actor/session.
 type QueryWidget struct {
-	Durability string           `json:"durability" jsonschema:"enum=replayable,enum=session_bound"`
-	Context    string           `json:"context"`
-	Topics     []TopicPin       `json:"topics"`
-	Question   string           `json:"question,omitempty"`
-	Query      string           `json:"query,omitempty"`
-	Selections *QuerySelections `json:"selections,omitempty"`
+	Variant    *QueryVariantReference `json:"variant,omitempty"`
+	Durability string                 `json:"durability" jsonschema:"enum=replayable,enum=session_bound,enum=captured_variant"`
+	Context    string                 `json:"context"`
+	Topics     []TopicPin             `json:"topics"`
+	Question   string                 `json:"question,omitempty"`
+	Query      string                 `json:"query,omitempty"`
+	Selections *QuerySelections       `json:"selections,omitempty"`
 }
 
 // FilterBinding names one declared filter and one block parameter.
@@ -225,18 +226,20 @@ type QueryOrigin struct {
 
 // DocumentSnapshot is an internal authorized repository result.
 type DocumentSnapshot struct {
-	State       DocumentState
-	Revision    DocumentRevision
-	PublishedAt *time.Time
+	UnavailableQueries []string
+	State              DocumentState
+	Revision           DocumentRevision
+	PublishedAt        *time.Time
 }
 
 // DocumentView projects legacy content without mutating stored revisions.
 type DocumentView struct {
-	State      DocumentState      `json:"state"`
-	Revision   int64              `json:"revision"`
-	Digest     string             `json:"digest"`
-	Private    bool               `json:"private"`
-	Definition DocumentDefinition `json:"definition"`
+	UnavailableQueries []string           `json:"unavailable_query_widgets,omitempty"`
+	State              DocumentState      `json:"state"`
+	Revision           int64              `json:"revision"`
+	Digest             string             `json:"digest"`
+	Private            bool               `json:"private"`
+	Definition         DocumentDefinition `json:"definition"`
 }
 
 // DocumentSummary never contains widget payloads, page names or raw results.
@@ -292,15 +295,19 @@ type DocumentDeleteImpact struct {
 // DocumentDeletion is the retained bounded tombstone. Backup/WAL erasure is
 // intentionally outside this live-data result.
 type DocumentDeletion struct {
-	Kind             string    `json:"kind"`
-	ID               string    `json:"id"`
-	DeletedVersion   int64     `json:"deleted_version"`
-	ErasedRevisions  int       `json:"erased_revisions"`
-	ErasedRuns       int       `json:"erased_runs"`
-	ErasedChildRuns  int       `json:"erased_child_runs"`
-	ErasedQueries    int       `json:"erased_queries"`
-	RetiredSchedules []string  `json:"retired_schedules"`
-	DeletedAt        time.Time `json:"deleted_at"`
+	QueryRetention      string    `json:"query_retention"`
+	ErasedExamples      int       `json:"erased_examples"`
+	QuarantinedExamples int       `json:"quarantined_examples"`
+	LearningRetention   string    `json:"learning_retention"`
+	Kind                string    `json:"kind"`
+	ID                  string    `json:"id"`
+	DeletedVersion      int64     `json:"deleted_version"`
+	ErasedRevisions     int       `json:"erased_revisions"`
+	ErasedRuns          int       `json:"erased_runs"`
+	ErasedChildRuns     int       `json:"erased_child_runs"`
+	ErasedQueries       int       `json:"erased_queries"`
+	RetiredSchedules    []string  `json:"retired_schedules"`
+	DeletedAt           time.Time `json:"deleted_at"`
 }
 
 // DocumentDeletionRepository owns the destructive transaction and its exact

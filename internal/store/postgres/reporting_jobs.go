@@ -62,6 +62,18 @@ func reportingDispatchTx(ctx context.Context, tx pgx.Tx, tenant string, target j
 		if target.Type == "saved_question" && widget.Kind != "query" {
 			return blocked()
 		}
+		var variant *reporting.QueryVariantReference
+		if reporting.IsCapturedQueryVariant(widget) {
+			if target.Type == "saved_question" {
+				return blocked()
+			}
+			variant = widget.Query.Variant
+			var lowerErr error
+			widget, lowerErr = reporting.CapturedVariantBlock(widget)
+			if lowerErr != nil {
+				return blocked()
+			}
+		}
 		if widget.Kind == "query" && (!target.Dynamic || widget.Query == nil || widget.Query.Durability != "replayable") {
 			return blocked()
 		}
@@ -79,6 +91,9 @@ func reportingDispatchTx(ctx context.Context, tx pgx.Tx, tenant string, target j
 		}
 		if err != nil {
 			return out, err
+		}
+		if variant != nil && pin.Digest != variant.Digest {
+			return blocked()
 		}
 		out.Pins = append(out.Pins, pin)
 	}

@@ -62,29 +62,7 @@ type conceptCard struct {
 }
 
 func groundedQuestion(in RouteRequest, admitted []admittedTopic) string {
-	var redactions []semantics.ClarificationResolution
-	answers := semantics.CloneClarificationAnswers(in.Answers)
-	for _, item := range admitted {
-		for _, pattern := range item.rules.Definition.Patterns {
-			for _, slot := range pattern.Slots {
-				if slot.Sensitivity != semantics.LiteralSensitive {
-					continue
-				}
-				redactions = append(redactions, semantics.ClarificationResolution{Topic: item.id, Pattern: pattern.ID, Slot: slot.ID, Sensitivity: slot.Sensitivity})
-				if slot.Default != nil {
-					answers = append(answers, semantics.ClarificationAnswer{Topic: item.id, Pattern: pattern.ID, Slot: slot.ID, Value: slot.Default})
-				}
-				if slot.Effect != nil {
-					for _, value := range slot.Effect.Values {
-						redactions = append(redactions, semantics.ClarificationResolution{Value: value.Canonical, Sensitivity: semantics.LiteralSensitive})
-						for _, alias := range value.Aliases {
-							redactions = append(redactions, semantics.ClarificationResolution{Value: alias, Sensitivity: semantics.LiteralSensitive})
-						}
-					}
-				}
-			}
-		}
-	}
+	answers, redactions := inferenceRedactions(in, admitted)
 	return semantics.RedactClarificationText(in.Question, answers, redactions)
 }
 
@@ -190,6 +168,9 @@ func (s *Service) selectGroundedConcepts(ctx context.Context, e identity.Envelop
 			return readexec.ErrBinding
 		}
 		return nil
+	}
+	if err := protectedCatalogMeaning(*in, admitted); err != nil {
+		return err
 	}
 	cards, err := conceptCards(ctx, *in, admitted)
 	if err != nil {
@@ -336,17 +317,23 @@ type conceptOrigin struct {
 // retaining its model choice for a typed answer submission. This is request-local
 // custody, not a public resumption token; changed input still fails exact matching.
 func (s *Service) GroundedOrigin(ctx context.Context, e identity.Envelope, previous RouteResult) (context.Context, error) {
-	if previous.Concepts == nil {
+	if previous.Concepts == nil && previous.GroupingIntent == nil {
 		return ctx, nil
 	}
-	if previous.Concepts.Choice.Decision != "select" {
+	if previous.Concepts != nil && previous.Concepts.Choice.Decision != "select" || previous.GroupingIntent != nil && previous.GroupingIntent.Choice.Decision != "select" {
 		return nil, nlq.ErrInsufficient
 	}
 	if _, _, err := s.ReplayClarifications(ctx, e, previous); err != nil {
 		return nil, err
 	}
-	copied := previous.Concepts.clone()
-	return context.WithValue(ctx, conceptOriginKey{}, conceptOrigin{actor: readexec.Hash([]string{e.Tenant(), e.User(), e.Session()}), evidence: copied}), nil
+	actor := readexec.Hash([]string{e.Tenant(), e.User(), e.Session()})
+	if previous.Concepts != nil {
+		ctx = context.WithValue(ctx, conceptOriginKey{}, conceptOrigin{actor: actor, evidence: previous.Concepts.clone()})
+	}
+	if previous.GroupingIntent != nil {
+		ctx = context.WithValue(ctx, groupingIntentOriginKey{}, groupingIntentOrigin{actor: actor, evidence: previous.GroupingIntent.clone()})
+	}
+	return ctx, nil
 }
 
 // Reject an unsafe caller-supplied policy before any metadata or provider work.

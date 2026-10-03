@@ -1,6 +1,10 @@
 # Topic authoring and learning recovery milestone
 
-Status: implementation plan, 2026-09-30. This is the next bounded NLQ milestone;
+Status: software consumers implemented with recorded-provider evidence at
+`9ada852c`, retained by the passing Go 1.26.4/1.27.1 suites at stacked `3a3e509`;
+live/comparative qualification remains open, updated 2026-10-01.
+[Current recorded recovery evidence](https://github.com/hurtener/chartworks/actions/runs/36917357859).
+This is a bounded NLQ milestone;
 additional SQL-shape breadth is deferred. Already discovered correctness defects
 remain mandatory fixes. This plan does not declare live SQL or release completion.
 
@@ -13,8 +17,8 @@ review → explicit publication approval → current learned context → correct
 
 Existing reviewed SQL examples, exact topic publication and semantic dependencies
 are real consumers. They do not alone demonstrate topic-meaning learning. The
-current live Commerce fixture uses manually authored topics and `SkipLLM:true`;
-its six failed SQL plans do not measure enrichment. A subsequent one-case trace
+earlier live Commerce diagnostic used manually authored topics and `SkipLLM:true`;
+its six failed SQL plans did not measure enrichment. Its subsequent one-case trace
 shows the reviewed temporal dimension in context but no corresponding calendar
 proof guidance for “by month”; model generation and repair therefore disagree
 with the compiled intent. Fix and measure this linkage rather than weakening
@@ -130,13 +134,28 @@ obligations remain enforced throughout.
   actual profile/onboarding/enhancement/advisory/review/publication/query tests.
   Paid gross is 640 and monthly values are 320, 240 and 80, checked against an
   independent source-row oracle. These use recorded model responses
-- A separate adversarial generated-topic corpus currently exposes release
-  blockers: eight known-answer cases fail temporal/intent admission, five required
-  clarification contracts fail, and three of those accept an unrelated gross
-  candidate for net, uncertain-total or ambiguous-time questions. Six authority
-  and unsafe-shape rejection cases pass. Preserve those questions and exact
-  expected contracts; generic refusal is not a correct clarification
-- This checkpoint is partial. Live generated-topic quality and those adversarial
-  intent/uncertainty consumers remain open. Live requalification is additionally
-  blocked by an explicit provider-network policy denial; no alternative route is
-  authorized. Recorded lifecycle results do not establish live model quality
+- The unchanged adversarial generated-topic corpus now passes eight known-answer,
+  five exact clarification and six authority/unsafe-shape rejection contracts at
+  `9ada852c`. Independently frozen exact-rational source-row oracles check results;
+  no question or expected contract was relaxed to achieve this checkpoint
+- The four software stages above have concrete consumers, including current
+  profile-head freshness, cross-page composite relationship authoring and later
+  prompt/result use after reviewed topic feedback publication. The same-snapshot
+  A/B/C/D comparison and live generated-topic quality remain open. A live
+  configuration test is not a gateway E2E pass; paid execution additionally needs
+  reconciled shared budget and permitted provider access. Recorded lifecycle
+  results do not establish live model quality
+
+## Offline paired-cohort implementation candidate (2026-10-03)
+
+A newly frozen [offline paired-cohort candidate](paired-cohort-offline-v1.md)
+compares manual/generated definitions and reviewed SQL-example learning on the
+existing synthetic adversarial snapshot. It retains all 19 original contracts
+(16 paired question contracts and 3 shared lifecycle controls) and adds 12 fixed
+EN/ES paraphrases plus a separate 12-question training partition. Its pinned
+metric IDs make it a controlled SQL-consumer comparison, not automatic routing
+or live semantic improvement. Synthetic topic-owner approvals preserve private
+draft custody; the evaluator uses its separate authenticated reviewer contract.
+Calibration remains unknown. Initial harness failures and subsequent exact-head
+qualification are recorded separately; this candidate does not close the live
+or external independent-review gates above.

@@ -36,6 +36,7 @@ func assertGroundedProviderRequests(t *testing.T, f *gatewayFixture, start int, 
 						AdditionalProperties bool                       `json:"additionalProperties"`
 						Required             []string                   `json:"required"`
 						Properties           map[string]json.RawMessage `json:"properties"`
+						Definitions          map[string]any             `json:"$defs"`
 					} `json:"schema"`
 				} `json:"json_schema"`
 			} `json:"response_format"`
@@ -87,7 +88,18 @@ func assertGroundedProviderRequests(t *testing.T, f *gatewayFixture, start int, 
 					} `json:"properties"`
 				} `json:"items"`
 			}
-			if json.Unmarshal(schema.Definition.Properties["selected"], &selected) != nil {
+			var selectedSchema map[string]any
+			if json.Unmarshal(schema.Definition.Properties["selected"], &selectedSchema) != nil {
+				t.Fatal("missing bounded candidate schema")
+			}
+			// Exact generated references are a wire encoding, not a different
+			// candidate set. Keep the complete enum assertion after resolving them.
+			resolved := recordedStrictReferences(t, selectedSchema, map[string]any{"$defs": schema.Definition.Definitions})
+			selectedWire, err := json.Marshal(resolved)
+			if err != nil {
+				t.Fatal("invalid bounded candidate schema", err)
+			}
+			if json.Unmarshal(selectedWire, &selected) != nil {
 				t.Fatal("missing bounded candidate schema")
 			}
 			if record.Route.Concepts == nil || len(record.Route.Concepts.Choice.Selected) != 1 {

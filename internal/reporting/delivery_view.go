@@ -15,6 +15,7 @@ import (
 // ViewerTable is an exact window of a retained table. Totals retain their declared
 // whole-result scope; they are never recalculated over just the visible page.
 type ViewerTable struct {
+	RowIndices   []int               `json:"row_indices,omitempty"`
 	Columns      []charts.Column     `json:"columns"`
 	Rows         [][]charts.Cell     `json:"rows"`
 	Totals       []charts.Total      `json:"totals"`
@@ -26,17 +27,18 @@ type ViewerTable struct {
 // RetainedDigest identifies the full retained output, NOT this paged response.
 // Non-table charts stay complete: the viewer must not silently sample points.
 type ViewerOutput struct {
-	ResultPolicy   []EffectiveFieldPolicy `json:"result_policy,omitempty"`
-	Intent         *OutputIntent          `json:"intent,omitempty"`
-	EvidencePolicy []EffectiveFieldPolicy `json:"evidence_policy,omitempty"`
-	ID             string                 `json:"id"`
-	Kind           string                 `json:"kind"`
-	State          string                 `json:"state"`
-	Code           string                 `json:"code"`
-	RetainedDigest string                 `json:"retained_digest"`
-	Chart          *charts.Output         `json:"chart,omitempty"`
-	Table          *ViewerTable           `json:"table,omitempty"`
-	Narrative      *NarrativeResult       `json:"narrative,omitempty"`
+	AmountCompleteness []AmountDisclosure     `json:"amount_completeness,omitempty"`
+	ResultPolicy       []EffectiveFieldPolicy `json:"result_policy,omitempty"`
+	Intent             *OutputIntent          `json:"intent,omitempty"`
+	EvidencePolicy     []EffectiveFieldPolicy `json:"evidence_policy,omitempty"`
+	ID                 string                 `json:"id"`
+	Kind               string                 `json:"kind"`
+	State              string                 `json:"state"`
+	Code               string                 `json:"code"`
+	RetainedDigest     string                 `json:"retained_digest"`
+	Chart              *charts.Output         `json:"chart,omitempty"`
+	Table              *ViewerTable           `json:"table,omitempty"`
+	Narrative          *NarrativeResult       `json:"narrative,omitempty"`
 }
 
 func (s *Delivery) viewRequest(in DeliveryViewRequest) (DeliveryViewRequest, error) {
@@ -65,7 +67,7 @@ func tableBounds(total, offset, limit int) (ViewerPage, int, error) {
 }
 
 func (s *Delivery) projectOutput(v RetainedOutput, in DeliveryViewRequest) (*ViewerOutput, ViewerPage, error) {
-	out := &ViewerOutput{ID: v.ID, Kind: v.Kind, State: v.State, Code: v.Code, RetainedDigest: v.Digest, Intent: clone(v.Intent), EvidencePolicy: clone(v.EvidencePolicy), ResultPolicy: clone(v.ResultPolicy)}
+	out := &ViewerOutput{AmountCompleteness: clone(v.AmountCompleteness), ID: v.ID, Kind: v.Kind, State: v.State, Code: v.Code, RetainedDigest: v.Digest, Intent: clone(v.Intent), EvidencePolicy: clone(v.EvidencePolicy), ResultPolicy: clone(v.ResultPolicy)}
 	bounds := ViewerPage{Offset: 0, Limit: in.Limit, Total: 0}
 	if v.State != "succeeded" {
 		if in.Offset != 0 {
@@ -84,7 +86,15 @@ func (s *Delivery) projectOutput(v RetainedOutput, in DeliveryViewRequest) (*Vie
 			if err != nil {
 				return nil, bounds, err
 			}
-			out.Table = &ViewerTable{Columns: clone(c.Columns), Rows: clone(c.Rows[in.Offset:end]), Totals: clone(c.Totals), Completeness: c.Completeness, Warnings: clone(c.Warnings)}
+			var sourceRows []int
+			if len(v.AmountCompleteness) > 0 {
+				if len(c.RowIndices) != len(c.Rows) {
+					return nil, bounds, ErrInvalid
+				}
+				sourceRows = clone(c.RowIndices[in.Offset:end])
+			}
+			out.AmountCompleteness = projectAmountRows(v.AmountCompleteness, c.RowIndices, in.Offset, end)
+			out.Table = &ViewerTable{RowIndices: sourceRows, Columns: clone(c.Columns), Rows: clone(c.Rows[in.Offset:end]), Totals: clone(c.Totals), Completeness: c.Completeness, Warnings: clone(c.Warnings)}
 			return out, b, nil
 		}
 		if in.Offset != 0 {
@@ -275,7 +285,18 @@ func (s *Delivery) viewComposition(ctx context.Context, e identity.Envelope, out
 		if result == nil {
 			return ErrIncomplete
 		}
-		return s.queryTable(ctx, out, *result)
+		if err := s.queryTable(ctx, out, *result); err != nil {
+			return err
+		}
+		if out.Output != nil && out.Output.Table != nil {
+			out.Output.AmountCompleteness = projectAmountRows(analyticalAmountDisclosures(payload.Query.AmountCompleteness, *result), nil, out.PageBounds.Offset, out.PageBounds.Offset+len(out.Output.Table.Rows))
+			if len(out.Output.AmountCompleteness) > 0 {
+				for i := range out.Output.Table.Rows {
+					out.Output.Table.RowIndices = append(out.Output.Table.RowIndices, out.PageBounds.Offset+i)
+				}
+			}
+		}
+		return nil
 	}
 	if selected.Selection == nil {
 		out.Outputs = legacyViewerChoices(payload.Outputs, out.Locale)

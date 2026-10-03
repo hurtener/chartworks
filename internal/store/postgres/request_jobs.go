@@ -184,7 +184,7 @@ func (d *DB) ReadRequest(ctx context.Context, e identity.Envelope, id string) (o
 		return out, err
 	}
 	defer stop()
-	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = d.requestControlTransaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var e2 error
 		out, e2 = readRequestTx(ctx, tx, e, id, false)
 		return e2
@@ -271,7 +271,7 @@ func (d *DB) CancelRequest(ctx context.Context, e identity.Envelope, id string) 
 		return out, err
 	}
 	defer stop()
-	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = d.requestControlTransaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
 		out, err = readRequestTx(ctx, tx, e, id, true)
 		if err != nil {
@@ -296,7 +296,7 @@ func (d *DB) ClaimRequest(ctx context.Context, e identity.Envelope, id, owner st
 		return out, err
 	}
 	defer stop()
-	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = d.requestControlTransaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := queueLock(ctx, tx, l); err != nil {
 			return err
 		}
@@ -361,7 +361,7 @@ func (d *DB) PulseRequest(ctx context.Context, i jobs.Invocation, renew bool, tt
 		return "", err
 	}
 	defer stop()
-	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = d.requestControlTransaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := requireRequestParentTx(ctx, tx, i); err != nil {
 			return err
 		}
@@ -394,7 +394,7 @@ func (d *DB) FailRequest(ctx context.Context, i jobs.Invocation, code string, pe
 	default:
 		return jobs.ErrInvalid
 	}
-	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	return d.requestControlTransaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		return failOperationLease(ctx, tx, requestCoordinates(i), code, permanent, delay)
 	})
 }

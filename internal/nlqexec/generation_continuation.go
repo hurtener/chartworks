@@ -152,8 +152,11 @@ func (s *Service) resumeGenerationRefinement(ctx context.Context, e identity.Env
 		return PlanResult{}, ErrForeignSession
 	}
 	p := q.GenerationPending
-	if p == nil || p.Refinement == nil || p.Round >= maxGenerationRounds || p.Problem.AnswerContext != in.GenerationContext || exec.Hash(fixedGenerationRefinement(*p.Refinement)) != exec.Hash(fixedGenerationRefinement(in)) || !generationRefinementChoices(p, in) {
+	if p == nil || p.Refinement == nil || p.Round >= maxGenerationRounds || p.Problem.AnswerContext != in.GenerationContext || !generationFixedRefinementEqual(e, q, in) || !generationRefinementChoices(p, in) {
 		return PlanResult{}, exec.ErrBinding
+	}
+	if err = s.authenticateGenerationQuestion(ctx, e, q, refinementQuestion(q, in.QuestionRequest), "query.execute"); err != nil {
+		return PlanResult{}, err
 	}
 	if err = s.checkGenerationPending(ctx, e, q); err != nil {
 		return PlanResult{}, err

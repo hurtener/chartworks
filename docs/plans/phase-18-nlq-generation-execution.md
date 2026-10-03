@@ -8,13 +8,15 @@ Existing shipped phase labels and historical defect-review results do not
 close this subsequent extension. No required behavior is discarded by this
 tracker correction; prior named acceptance criteria and historical evidence stay.
 
-Current hosted-qualified checkpoint: `c755ad3`. The subsequent runtime tree
-`0ce69bd875deb82df3d3276cbd1c060f815ebfbd` passed integrated local qualification,
-including finite S10/S11 domain/signature completion. Its final published head
-still needs hosted checks. S4/S5/S6 and the explicitly documented legacy predicate
-approval/resume path remain implementation work; Q1/Q2/Q3 are separate gates.
-The canonical tracker controls current scope; historical evidence below does not
-qualify later source.
+Current hosted-qualified SQL checkpoint: PR #68
+`a2567f816dce7c52981e2ef9e17af544f7bb6b50`. Both supported Go toolchains passed
+3,450 unit/subtest and 461 acceptance events; the exact bounded live baseline
+and explicitly selected held-out lanes are recorded in
+[generated-topic qualification](../reviews/generated-topic-live-qualification.md).
+Automatic grouping for the three rich held-out grouping questions was still an
+open gap at that head. The separately opt-in grouping-intent continuation below
+requires its own exact-source local, hosted and live qualification. Full S4/S5/S6,
+engine, renderer and Q1/Q2/Q3 release obligations remain open.
 
 
 Status: shipped. Owner: internal/nlq. Hard dependencies: 09, 10, 17. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
@@ -462,3 +464,80 @@ numeric result. `TestTopicFeedbackDocumentRetentionBoundary` covers report
 origin erasure before/after apply and concurrent create/apply versus deletion.
 These recorded tests do not claim live model-generation quality. Prior learning
 examples retain their original semantic version; requalification is separate.
+
+## Grounded grouping-intent consumer
+
+[Grounded grouping intent v1](../contracts/grounded-grouping-intent-v1.md) is wired
+through normal Preflight/Plan, saved questions, refinement and protected retained
+execution. Existing native/analytical SQL proof is unchanged. New grouping intent
+is never supplied by a retained public proof token; current-source replay is
+mandatory even without private predicates. Scalar selections carry an explicit
+origin digest so deleting optional policy fields cannot downgrade replay.
+`TestGeneratedTopicGroundedGroupingIntentRecorded` exercises generated topic
+publication through actual HTTP/SDK Plan/Run with independent PostgreSQL results;
+`TestSQLRecoveryGroundedGroupingRunAndSavedPolicy` covers retained policy edges.
+Full engine, renderer and final release qualification remain open.
+
+## Authenticated complete-group selection
+
+[Final-group selection v1](../contracts/analytical-group-selection-v1.md) composes
+independently reviewed grouped populations with service-owned predicates on direct
+final-spine keys, optionally retaining v10 fact periods. V11/schema4 SQL, parameter,
+source and complete receipt replay are required for execution, saved reuse and
+refinement; scoped reusable learning stays ineligible. Migration 078 retains every
+older receipt meaning. The focused compiler/native cases and six real-PostgreSQL
+`TestSQLRecoveryGroupedSelectionAcceptance` configurations are the qualification
+boundary; their observed results are separate from this implementation inventory.
+Generic fact-filter ownership, derived-bucket predicates and extra dialects remain
+outside this increment.
+
+## Bounded primary-fact predicate continuation
+
+[Grouped fact predicates v1](../contracts/analytical-grouped-fact-predicates-v1.md)
+adds v12/schema5 for exact primary fact roots absent from other lanes' join paths,
+with explicitly reviewed domains and INNER-only affected lanes. It preserves
+v11 final-grain-only routing and keeps mixed final-spine selection separate from
+pre-aggregate fact restrictions. Migration 080 appends the new immutable receipt.
+The original LEFT regression remains unsupported; shared/join-only predicates,
+outer-join placement and broader grouped-filter recovery are still open.
+
+`TestSQLRecoveryGroupedFactCompilerPlacementRegression`, `TestGroupedFacts*` and
+`TestSQLRecoveryGroupedFactAcceptance` own the new compiler/native/service checks.
+The acceptance fixture computes its numeric/NULL oracle independently and checks
+current replacement, exact receipt tampering and zero-model terminal replay.
+The later grouped primary-fact learning continuation below adds a distinct schema5
+owned-base policy; schemas2-4 retain their existing policies. Execution evidence
+is recorded separately from this inventory.
+
+## Fresh bounded scalar equality entailment
+
+[Scalar entailment v1](../contracts/analytical-scalar-entailment-v1.md) addresses a
+newly characterized missing case: an explicit paid-parent selection that every
+selected scalar SUM/COUNT population already requires. V13/schema6 records a
+separate occurrence-complete semantic/physical proof and explicit zero-parameter
+effects. Existing v9 SQL, periods, NULL/empty outcomes and retained version
+semantics remain unchanged. Migration 081 adds the closed storage family.
+
+`TestScalarPredicateEntailment*`, `TestScalarEntailment*` and
+`TestScalarEntailmentPopulatedMigration` own compiler, native, HTTP/SDK,
+receipt/replay/refinement and populated-upgrade qualification. Automatic learning
+and owned-example consumption for schema6 remain ineligible. This is a fresh
+bounded extension under local qualification, not recovered historical code or a
+claim that generic scalar predicate propagation or wider SQL recovery is complete.
+
+
+## Grouped primary-fact owned-base learning continuation
+
+Binding schema 5 uses the distinct value-free
+`current-owned-grouped-fact-predicates-v1` example policy through the existing
+producer, review, current-origin retrieval, protected portability and explicit
+requalification services. Current v12 compilation establishes applicability;
+retained JSON and older owned policies cannot supply that authority. Schema 6
+scalar-entailment learning remains closed. No token limit, grouped LEFT/shared
+fact capability, origin rewrite or new migration is introduced.
+
+The owned-example contract describes custody. Scoped native lifecycle cases
+extend the existing independent SUM/COUNT/NULL oracles with exact fact predicates,
+optional periods/final selection, current values, actual-use receipts and hostile
+origin/SQL controls. Test names alone do not establish execution or live quality;
+exact-source RED/GREEN and independent review evidence are required separately.

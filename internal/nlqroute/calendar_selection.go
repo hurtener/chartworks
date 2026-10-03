@@ -11,21 +11,12 @@ import (
 // current reviewed metric dependencies before context assembly and rule closure.
 // It does not use vector similarity as field or time-basis authority.
 func selectImplicitCalendar(ctx context.Context, in RouteRequest, admitted []admittedTopic) error {
-	if in.Grouping != nil || len(admitted) != 1 || strings.ContainsAny(in.Question, "\"'“”‘’") {
+	surface := questionInferenceSurface(in, admitted)
+	text := groundedQuestion(in, admitted)
+	if in.Grouping != nil || len(admitted) != 1 || strings.ContainsAny(text, "\"'“”‘’") {
 		return nil
 	}
-	var redactions []semantics.ClarificationResolution
-	for _, item := range admitted {
-		for _, pattern := range item.rules.Definition.Patterns {
-			for _, slot := range pattern.Slots {
-				if slot.Sensitivity == semantics.LiteralSensitive {
-					redactions = append(redactions, semantics.ClarificationResolution{Topic: item.id, Pattern: pattern.ID, Slot: slot.ID, Sensitivity: slot.Sensitivity})
-				}
-			}
-		}
-	}
-	text := semantics.RedactClarificationText(in.Question, in.Answers, redactions)
-	words := strings.Fields(normalizedPhrase(text))
+	words := surface.words
 	if len(words) < 3 {
 		return nil
 	}
@@ -45,6 +36,9 @@ func selectImplicitCalendar(ctx context.Context, in RouteRequest, admitted []adm
 		grain = "year"
 	default:
 		return nil
+	}
+	if !surface.stableTemporalPolarity() {
+		return protectedMeaningFailure(in.Locale)
 	}
 	for _, word := range words[:len(words)-2] {
 		if temporalNegator(word) || word == "filtered" || word == "filtrado" || word == "filtrados" {
@@ -88,7 +82,7 @@ func selectImplicitCalendar(ctx context.Context, in RouteRequest, admitted []adm
 		for _, m := range item.publication.Definition.Measures {
 			if root.Kind == semantics.KindMeasure && m.ID == root.ID {
 				for _, label := range append([]string{m.Name}, m.Aliases...) {
-					if strings.HasSuffix(normalizedPhrase(label), marker+" "+unit) && containsPhrase(normalizedPhrase(text), normalizedPhrase(label)) {
+					if strings.HasSuffix(normalizedPhrase(label), marker+" "+unit) && containsPhrase(surface.text, normalizedPhrase(label)) {
 						return nil
 					}
 				}
@@ -97,7 +91,7 @@ func selectImplicitCalendar(ctx context.Context, in RouteRequest, admitted []adm
 		for _, k := range item.publication.Definition.KPIs {
 			if root.Kind == semantics.KindKPI && k.ID == root.ID {
 				for _, label := range append([]string{k.Name}, k.Aliases...) {
-					if strings.HasSuffix(normalizedPhrase(label), marker+" "+unit) && containsPhrase(normalizedPhrase(text), normalizedPhrase(label)) {
+					if strings.HasSuffix(normalizedPhrase(label), marker+" "+unit) && containsPhrase(surface.text, normalizedPhrase(label)) {
 						return nil
 					}
 				}

@@ -4,8 +4,8 @@
 
 > Hygiene: this brief contains **no copied code** — prose, tables, and pseudocode only.
 > The two predecessors are referred to only as **the client predecessor**
-> (`_ref/original_wayfinder/`) and **the generalistic predecessor** / **the fork**
-> (`_ref/forked_wayfinder_explorer/`). No product name, client name, employee name,
+> (private review mapping) and **the generalistic predecessor** / **the fork**
+> (private comparison mapping). No product name, client name, employee name,
 > confidential schema/table/column name, prompt vocabulary, or data sample appears —
 > everything domain-specific is generalized. Paths cite each predecessor's own root.
 

@@ -211,6 +211,13 @@ func (a *analyticalChecker) populationNode(node any, parameters []Parameter, dep
 	switch v := node.(type) {
 	case map[string]any:
 		if len(v) == 1 && v["ColumnRef"] != nil {
+			if a.groupSelectionKeys != nil {
+				column, ok := a.selectionColumn(v)
+				if !ok {
+					return nil, analyticalFailure("analytical_group_selection_mismatch", false)
+				}
+				return map[string]any{"resolved_group_key": column}, nil
+			}
 			column, ok := a.field(v)
 			if !ok {
 				return nil, analyticalFailure("analytical_query_population_unsupported", true)

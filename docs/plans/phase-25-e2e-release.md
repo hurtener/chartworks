@@ -1,6 +1,6 @@
 # Phase 25 — e2e-release
 
-Status: planned. Owner: test/integration, cmd/chartworks. Hard dependencies: 24, 26, 34.
+Status: in_progress. Owner: test/integration, cmd/chartworks. Hard dependencies: 24, 26, 34.
 
 ## Authority and design
 
@@ -47,34 +47,102 @@ Record measured limits and accepted support boundaries. D-050 makes this the fin
 
 The [performance evidence contract](../contracts/performance-evidence-v1.md)
 defines the required final-stress scenario counts, authority/revision identity,
-correctness-first gate and raw measurement schema. The release candidate must
+per-step correctness gate and raw measurement schema. The release candidate must
 materialize the actual Phase 24 suite/report hashes and post-Phase-34 source,
 rule, topic, context and runtime-pack revisions. The checked-in synthetic smoke
 does not satisfy AC03.
 
+## Release evidence implementation boundary
+
+The [release evidence v1 contract](../contracts/release-evidence-v1.md) pins an
+external content-free bundle to the exact source head, binary, image, active
+documentation/schema files, named live test logs, Phase 34 cohort inventory and
+cumulative review. `TestPhase25/AC01`, `AC02`, `AC04`, `AC05` and `AC06` now run
+local substantive checks and require the bundle in strict release mode. The
+runner passes validated earlier-phase Go results directly to AC06; coverage
+rows cannot be closed with a registry label alone.
+
+No release bundle exists for this implementation head. The Phase 34 cutover
+implementation has merged but its phase status remains in progress; an accepted
+live cohort inventory and source evidence are still required. AC03 awaits the
+selected final stress run, and five AC tests are not full Phase 25 acceptance.
+Phase 25 remains in progress until integration supplies all six criteria and the
+strict preflight passes. Live Pengui/engine/cohort and container qualification
+cannot be inferred from synthetic fixtures.
+
+## Final-stress integration boundary
+
 The bounded release orchestration now verifies caller authority independently,
 loads the exact accepted Phase 24 suite/report/runtime pack, and requires current
-revision evidence before running `final_stress`. Its concrete governed adapter
-composes the existing query service's Plan→Run path and requires the PostgreSQL
-cross-process operation lock. The operation ledger does not exercise the
-frozen-run product reuse key, so the factory rejects the required invalidation
-steps; a fresh operation per changed binding cannot satisfy AC03. The read
-attempt exposes physical-call evidence and a nullable source-only duration;
-the performance adapter still needs to consume that exact attempt receipt, so
-the timing gate remains closed. The signed-action negative uses a separately
-verified bearer with one query action removed and sends it through Plan→Run;
-it cannot be satisfied by testing an unrelated action. Each invalidation step pins a consumer case and exact
+revision evidence before running `final_stress`. The original Plan→Run query
+adapter remains a ledger-only prerequisite. A protected Phase 24 frozen
+consumer and bounded performance adapter now enter `reporting.Runs` with
+distinct IDs, read canonical `RunManifest.ReuseKey` and `ReusedFrom`, and
+consume nullable persisted source-only duration plus physical narrative
+receipts. A real-PG17 recorded-model prerequisite test covers cold, warm,
+repeat and concurrent reuse, two distinct passing accepted Phase 24 reports
+for selected reviewed runtime packs, and rejects incomplete evidence. The
+product-sealed reviewed-pack pin is checked against the accepted Phase 24
+runtime record before source or model execution; a stale pin fails before
+timing. The signed-action negative can remove `reporting.execute` for the
+frozen consumer; it sends the altered verified bearer through that same service. Each
+invalidation step pins a consumer case and exact
 accepted report hash; the resolver must provide the matching current revision
 binding and report-selected runtime pack. Bifrost attests live mode; a recorded
-gateway engine must explicitly attest recorded mode for integration runs. Phase
-34 still has to supply selected source/rule/topic/context revisions from its
-current stores,
-and the composition root must provide the recorded engine for integration mode.
-An AC03 adapter must instead exercise distinct frozen run IDs over the same
-approved block via the real `ReuseFrozenRun` path, observe its reuse key and
-`ReusedFrom`, then assert physical source calls across one-field changes. It
-must consume the persisted native PostgreSQL read duration, which excludes journal
-and finalization time. The runtime-pack dimension needs an actual reviewed
-pack pin in that frozen-run identity before it can be claimed.
-Phase 25 remains planned until the real release profile executes and is reviewed;
+gateway engine explicitly attests recorded mode for integration runs. The
+internal `releaseprofile` composition selects one operator-reviewed Phase 34
+cohort for each accepted Phase 24 consumer case. It reloads the active cutover
+and source adapter, current topic/rule/source/context evidence, and all rows of
+one bounded native PostgreSQL dataset's validator-safe projection under signed
+reach. It refuses
+multi-dataset snapshots that cannot be read in one transaction. The recorded
+engine matches exact authorized call and reviewed runtime configuration inputs
+and returns a recorded receipt with no provider fallback. These tests prove the
+integration seam, not a live model or final stress run.
+Final AC03 must still run the exact stress profile against accepted Phase 24
+case/report evidence for every changed source/rule/context/topic cohort, then
+prove current-owner dependency closure and a stale-key negative before timing.
+The runtime-pack dimension has a product-selected accepted-pack pin in the
+frozen narrative consumer and reuse identity, with bounded recorded invalidation
+evidence. The strict adapter now requires the changed pack's own accepted
+Phase 24 report and an operator-configured approved proposal whose stored pack
+digest matches that report before any selection mutation. It selects the
+report-bound pack with verified Pengui authority and a CAS pointer before each
+correctness probe and measured step, then restores the baseline selection on
+success or failure. A foreign pointer revision blocks rollback rather than
+overwriting another operator's choice. The sealed raw samples retain product
+run IDs, reuse keys and origins alongside source-only timing and physical
+gateway usage; unknown provider costs remain unknown. The bounded PG17
+test and transition tests are prerequisites, not a completed `final_stress`.
+The recorded composition also refuses the default two-request tenant queue;
+the fixed 128-peer final profile requires an explicitly provisioned bounded
+request queue and tenant bytes sufficient for 128 simultaneous frozen artifact
+reservations. Current topic publication pins source/context and current rule
+publication pins topic version/digest. The final profile now requires the
+declared primary axis and its exact current-owner dependency closure: rule;
+topic plus rule; a different source ID plus its derived context, topic and
+rule; or a rotated context on the same source ID plus source, topic and rule.
+The resolver checks the selected block's current pins and the gate
+requires matching raw changes as well as the product's actual reuse-key
+change. A cohort-only hash or missing collateral pin fails before timing.
+The recorded production composition now requires an operator-owned revision
+transition. The ordered profile measures a step only while its accepted Phase
+24 case is current, records that owner snapshot in the sealed report, and
+re-resolves it after measurement. A later failed step invalidates the entire
+report. No accepted owner transition plan or live cohort is checked in; AC03
+therefore remains open.
+The release runtime also refuses both Pengui bearers unless their verified
+deadlines cover the one-hour profile and a two-minute cleanup/skew reserve. It
+rechecks that bound before selecting the changed reviewed pack, so the default
+15-minute bearer returns `ErrPerformanceAuthorityWindow` before a profile can
+strand the CAS selection. No Chartworks token renewal or issuer was added;
+AC03 needs a real Pengui fresh-authority seam for the full run and cleanup.
+Changing Chartworks' token-lifetime configuration does not establish that
+authority contract.
+No measurements are labeled a passing AC03 run until the exact profile and
+owner cohort are exercised.
+The required full profile still needs accepted current reports for each
+source/rule/context/topic cohort, provisioned concurrency, raw recorded and
+live measurements, owner cohort evidence, and the final release bundle.
+Phase 25 remains in progress until the real release profile executes and is reviewed;
 this change does not claim a final stress run or release acceptance.

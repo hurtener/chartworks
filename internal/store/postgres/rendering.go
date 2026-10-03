@@ -27,6 +27,9 @@ func (d *DB) PutRendition(ctx context.Context, r rendering.Record) (out renderin
 		return out, store.ErrInvalid
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := queryRetentionFence(ctx, tx, r.Tenant); err != nil {
+			return err
+		}
 		// Retention expiry takes FOR UPDATE on the owning run. This shared lock
 		// fences a new rendition against an approved expiry transaction.
 		var state string

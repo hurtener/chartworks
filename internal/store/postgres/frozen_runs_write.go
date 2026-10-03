@@ -263,7 +263,7 @@ func frozenOutputTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h froze
 		if len(raw) == 0 || hash == nil || json.Unmarshal(raw, &result) != nil || readexec.Hash(result) != *hash {
 			return store.ErrInvalid
 		}
-		if err = reporting.CheckFrozenNarrativeEvidence(w.Manifest, o, result); err != nil {
+		if err = reporting.CheckFrozenNarrativeEvidenceContext(ctx, w.Manifest, o, result); err != nil {
 			return err
 		}
 	}
@@ -367,6 +367,9 @@ func (d *DB) CheckpointFrozenRun(ctx context.Context, inv jobs.Invocation, proof
 			return store.ErrInvalid
 		}
 		if readErr != nil {
+			return readErr
+		}
+		if readErr = frozenReuseCheckpointTx(ctx, tx, inv, w); readErr != nil {
 			return readErr
 		}
 		if readErr = frozenAudit(ctx, tx, e, action, w.Manifest.ID); readErr != nil {

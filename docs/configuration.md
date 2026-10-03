@@ -19,7 +19,7 @@ Use `chartworks config-check --defaults` for a machine-readable defaults snapsho
 | `server.max_body_bytes` | integer bytes | 10 MiB | 1 byte–100 MiB. Health endpoints accept no body; oversized known bodies receive 413. |
 | `server.max_header_bytes` | integer bytes | 32 KiB | 1 KiB–1 MiB; enforced by Go HTTP server. |
 | `store.dsn` | secret reference | `env:CHARTWORKS_STORE_URL` | Required nonblank environment value, never a literal credential in configuration. No implicit ambient database connection. |
-| `store.max_conns` | integer | 10 | 1–100; minimum idle connections is zero. |
+| `store.max_conns` | integer | 10 | 1–100 ordinary metadata connections, plus one reserved request-control connection per DB instance; total at most `max_conns + 1` (default 11). Both pools have zero minimum/idle connections. |
 | `store.connect_timeout` | duration string | `5s` | Positive, at most 1 minute; initial connection/ping is bounded. |
 | `store.transaction_timeout` | duration string | `5s` | At least 1 millisecond, at most 1 minute; context deadline plus PostgreSQL statement/lock limits. |
 | `store.migration_policy` | enum | `apply` | `apply` atomically adds pending forward migrations; `check` rejects missing/mismatched history without migrating. |
@@ -56,16 +56,16 @@ The real verifier and readiness share one bounded public-key cache. It rejects d
 | `telemetry.otel` | boolean | false | True is explicitly rejected: the optional export adapter is not implemented, not silently ignored. |
 | `features.gateway` | boolean | false | Enables the real Bifrost SDK adapter; false leaves it unconstructed. |
 | `features.mcp` | boolean | false | Mounts the real stateless MCP adapter at `/v1/mcp`; no extra listener or credential channel. |
-| `features.reporting` | boolean | false | True rejected until reporting phases are implemented. |
-| `features.renderer` | boolean | false | True rejected until rendering is implemented. |
+| `features.reporting` | boolean | false | Reserved legacy flag; true is rejected. Reporting services are mounted by the work runtime and bounded by `reporting.*` settings. |
+| `features.renderer` | boolean | false | Must match `rendering.enabled`; enabling requires an operator-supplied isolated worker and the bounded settings below. |
 
-`/capabilities` reports verified authentication, signed-scope enforcement, the composed HTTP route registry and generated OpenAPI as implemented. It never returns tokens, source IDs or DSNs; MCP availability follows its configured installed-service mount; reporting and rendering remain unavailable until their owning phases. Health and `/openapi.json` are public; the composed domain and operational routes require Pengui-issued authority. No login/bootstrap/token/grants/principals routes exist. The optional metrics switch cannot disable authentication.
+`/capabilities` reports verified authentication, signed-scope enforcement, the composed HTTP route registry and generated OpenAPI as implemented. It never returns tokens, source IDs or DSNs; MCP availability follows its configured installed-service mount. Reporting availability follows its mounted runtime services, and static rendering additionally requires the configured isolated worker. Health and `/openapi.json` are public; the composed domain and operational routes require Pengui-issued authority. No login/bootstrap/token/grants/principals routes exist. The optional metrics switch cannot disable authentication.
 
 ## Bifrost configuration and inactive excerpts
 
 `gateway.driver` must be `bifrost`; `gateway.max_attempts_per_call` defaults to 2 and accepts 1–4. `gateway.bifrost.providers[]` contains a unique remote `name`, an `api_key` in `env:NAME` form, and an optional HTTPS `base_url` without userinfo/query/fragment. No local/ollama/mock production provider is accepted. Provider credentials are resolved only when the adapter is enabled. Native provider types supported are openai/openrouter for chat/embedding and cohere for rerank. The accepted `openrouter_rerank` type uses Bifrost's rerank-only custom provider; it cannot serve embedding or structured roles. A route alias uses the optional `type` field.
 
-`gateway.roles` is a closed map: `embedding`, `enhance`, `sqlgen`, `sqlfix`, `clarify`, `pipeline_draft`, `profile_summary`, `rerank`, `narrative`, `visual_rank`. Each configured role supplies its remote provider/model and a positive timeout of at most 5 minutes. `max_tokens` is 0–65536; phase 05 applies the role-specific execution budget. Optional roles require `enabled=true` to call inference. Only rerank accepts `on_failure` (`fail` or `preserve_candidates`). Structured roles require a positive `max_tokens` cap.
+`gateway.roles` is a closed map: `embedding`, `enhance`, `topic_review`, `sqlgen`, `sqlfix`, `clarify`, `pipeline_draft`, `profile_summary`, `rerank`, `narrative`, `visual_rank`. Each configured role supplies its remote provider/model and a positive timeout of at most 5 minutes. `max_tokens` is 0–65536; phase 05 applies the role-specific execution budget. Optional roles require `enabled=true` to call inference. Only rerank accepts `on_failure` (`fail` or `preserve_candidates`). Structured roles require a positive `max_tokens` cap.
 
 The embedding role also requires `dimensions` 1–16384, `max_batch_items` 1–1024 and `max_batch_bytes` 1–4 MiB. Rerank requires `max_candidates` 1–1024. The `openrouter_rerank` route accepts only model `cohere/rerank-4-fast`; its optional `base_url` must be an HTTPS origin with no path or trailing slash, and defaults to `https://openrouter.ai`. Native Cohere rerank remains available separately. These are configuration-shape bounds, not live provider capability proofs. The separate [gateway contract](contracts/model-gateway.md) owns execution/response validation in phase 05. The existing example remains the remote embedding/rerank starting point; no local model support is added.
 
@@ -307,3 +307,32 @@ are durable pre-call ceilings, not invented usage/cost observations.
 calendar/config tests and phase30/31 acceptance cover positive and negative
 settings, non-secret examples, actual payload caps and runtime attempts. Existing
 jobs/reader/gateway deadlines, tenant quotas and signed authority are not enlarged.
+
+
+## Isolated static rendering
+
+`features.renderer` and `rendering.enabled` must agree. Enabling rendering requires
+an absolute `rendering.worker_path`, explicit worker/theme version identities,
+and `rendering.isolation=linux_namespaces`. Production has no in-process fallback.
+The executable must be the matching static renderer build; the deployment must
+permit its existing user, mount, network, IPC, UTS and PID namespaces and chroot.
+A denied launch returns a closed `launch_denied` worker failure.
+
+Defaults are a 10-second deadline, 1 GiB memory bound, 16 MiB input and output
+bounds, two concurrent workers, 100 widgets and 24-hour artifact retention.
+Configuration bounds are enforced independently of retained-view, source and
+identity limits. The memory setting currently includes a hard address-space
+ceiling; Go virtual mappings can exceed that ceiling before rendering starts.
+This compatibility issue remains a deployment qualification blocker. Do not
+increase security limits or disable isolation to treat a failed gate as passing.
+
+JSON and CSV preserve the selected retained output. HTML and SVG also support
+bounded report composition. [PNG](contracts/png-renditions-v1.md) exports a single
+retained output with canonical base64 transport and validated decoded-byte
+identity. A table page, exact labels, and required amount disclosure must fit the
+viewport; unsupported geometry or text fails explicitly. Artifact reads recheck
+current report authority and retention, and exports do not execute SQL.
+
+Topic enhancement additionally requires an explicitly enabled `topic_review`
+gateway role before any generation call. Its complete-candidate advisory is
+bound to the reviewed authoring context; it never grants publication authority.

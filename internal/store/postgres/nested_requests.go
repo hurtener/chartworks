@@ -118,7 +118,7 @@ func (d *DB) ClaimNestedRequest(ctx context.Context, parent jobs.Invocation, id,
 		return out, err
 	}
 	defer stop()
-	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = d.requestControlTransaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := queueLock(ctx, tx, l); err != nil {
 			return err
 		}

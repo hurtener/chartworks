@@ -17,6 +17,7 @@ import (
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
@@ -27,9 +28,9 @@ import (
 	"github.com/hurtener/chartworks/test/support"
 )
 
-func publicationFixture(t *testing.T) (*engineeringFixture, *drafts.Service, *topics.Service, *gatewayFixture, semantics.TopicPack) {
+func publicationFixture(t *testing.T, queueLimits ...jobs.Limits) (*engineeringFixture, *drafts.Service, *topics.Service, *gatewayFixture, semantics.TopicPack) {
 	t.Helper()
-	f, draftsService, _, pack := topicFixture(t)
+	f, draftsService, _, pack := topicFixture(t, queueLimits...)
 	gatewayFixture := newGatewayFixture(t, func(cfg *config.Gateway) {
 		embedding := cfg.Roles["embedding"]
 		embedding.MaxBatchItems = 32

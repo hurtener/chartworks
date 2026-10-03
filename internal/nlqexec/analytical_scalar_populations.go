@@ -38,6 +38,7 @@ func selectedMetricPeriods(a admission) bool {
 
 // compileAnalyticalScalarPopulations consumes current sealed applications and
 // independently matches every one to the selected immutable semantic policy.
+// V9 produces scalar lanes; v10 adds reviewed grouped domains and grain.
 // Period and filter dependencies never define the set of aggregated facts.
 func compileAnalyticalScalarPopulations(ctx context.Context, a admission, c *exec.AnalyticalContract) (bool, error) {
 	if !selectedMetricPeriods(a) {
@@ -49,10 +50,10 @@ func compileAnalyticalScalarPopulations(ctx context.Context, a admission, c *exe
 	if len(a.metricPeriods) == 0 {
 		return true, analyticalUnsupported(AnalyticalMetricPeriodReviewCode)
 	}
-	if len(a.metricPeriods) > 4 || c.Version != exec.AnalyticalScopedPopulationsVersion {
+	if len(a.metricPeriods) > 4 || (c.Version != exec.AnalyticalScopedPopulationsVersion && c.Version != exec.AnalyticalGroupedOwnedPopulationsVersion) {
 		return true, exec.ErrBinding
 	}
-	if a.binding.Dialect != "postgres" || c.Grain != nil && len(c.Grain.Columns)+len(c.Grain.Buckets) > 0 || c.QueryPopulation != nil && len(c.QueryPopulation.Constraints) > 0 {
+	if a.binding.Dialect != "postgres" || c.Version == exec.AnalyticalScopedPopulationsVersion && c.Grain != nil && len(c.Grain.Columns)+len(c.Grain.Buckets) > 0 || c.QueryPopulation != nil && len(c.QueryPopulation.Constraints) > 0 {
 		return true, analyticalUnsupported("analytical_shape_unsupported")
 	}
 	applications := map[string]nlqroute.MetricPeriodApplication{}
@@ -228,6 +229,19 @@ func compileAnalyticalScalarPopulations(ctx context.Context, a admission, c *exe
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
+	var grouped *exec.AnalyticalGroupedPopulations
+	if c.Version == exec.AnalyticalGroupedOwnedPopulationsVersion {
+		view := *c
+		view.Version = exec.AnalyticalGroupedProgramsVersion
+		handled, err := compileAnalyticalGroupedPopulations(ctx, a, &view)
+		if err != nil {
+			return true, err
+		}
+		if !handled || view.GroupedPopulations == nil {
+			return true, exec.ErrBinding
+		}
+		grouped = view.GroupedPopulations
+	}
 	program := &exec.AnalyticalScalarPopulations{Policy: exec.AnalyticalScalarPopulationPolicy}
 	for _, id := range ids {
 		period, ok := periods[id]
@@ -243,6 +257,16 @@ func compileAnalyticalScalarPopulations(ctx context.Context, a admission, c *exe
 			return true, err
 		}
 		lane := exec.AnalyticalContract{Version: exec.AnalyticalGroupedProgramsVersion, Dataset: id, QueryPopulation: population}
+		if grouped != nil {
+			lane.Grain = &exec.AnalyticalGrain{Policy: c.Grain.Policy, Dimensions: append([]string(nil), c.Grain.Dimensions...)}
+			for _, column := range c.Grain.Columns {
+				lane.Grain.Columns = append(lane.Grain.Columns, rebaseAnalyticalExpression(exec.AnalyticalExpression{Column: column}, c.Dataset, id).Column)
+			}
+			for _, bucket := range c.Grain.Buckets {
+				bucket.Column = rebaseAnalyticalExpression(exec.AnalyticalExpression{Column: bucket.Column}, c.Dataset, id).Column
+				lane.Grain.Buckets = append(lane.Grain.Buckets, bucket)
+			}
+		}
 		for i, leaf := range facts[id] {
 			lane.Metrics = append(lane.Metrics, exec.AnalyticalMetric{ID: string(rune('a' + i)), Expression: rebaseAnalyticalExpression(leaf, c.Dataset, id)})
 		}
@@ -254,7 +278,19 @@ func compileAnalyticalScalarPopulations(ctx context.Context, a admission, c *exe
 				return true, analyticalUnsupported("analytical_shape_unsupported")
 			}
 		}
+		if grouped != nil {
+			for i := range grouped.Lanes {
+				if grouped.Lanes[i].Dataset == id {
+					grouped.Lanes[i].Joins = lane.Joins
+					grouped.Lanes[i].QueryPopulation = population
+				}
+			}
+		}
 		program.Lanes = append(program.Lanes, exec.AnalyticalScalarLane{Dataset: id, Joins: lane.Joins, QueryPopulation: population})
+	}
+	if grouped != nil {
+		c.GroupedPopulations = grouped
+		return true, exec.ValidateAnalyticalGroupedPopulations(*c, a.binding)
 	}
 	c.ScalarPopulations = program
 	return true, exec.ValidateAnalyticalScalarPopulations(ctx, *c, a.binding)

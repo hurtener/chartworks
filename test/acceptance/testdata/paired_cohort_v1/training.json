@@ -1,0 +1,110 @@
+[
+  {
+    "id": "train-1-en",
+    "locale": "en",
+    "question": "For local calendar 2026, report the sum of known paid booked order USD and disclose unknown amounts.",
+    "expected_outcome": "answer",
+    "oracle_key": "known_gross_paid_local_2026",
+    "contract_id": "gross-en",
+    "partition": "training"
+  },
+  {
+    "id": "train-1-es",
+    "locale": "es",
+    "question": "Para el año calendario local 2026, informa la suma conocida de pedidos pagados en USD e indica los importes desconocidos.",
+    "expected_outcome": "answer",
+    "oracle_key": "known_gross_paid_local_2026",
+    "contract_id": "gross-en",
+    "partition": "training"
+  },
+  {
+    "id": "train-2-en",
+    "locale": "en",
+    "question": "Report paid booked known USD by month for local calendar 2026, preserving NULL months and disclosing unknown amounts.",
+    "expected_outcome": "answer",
+    "oracle_key": "monthly_qualifying_paid_local_2026",
+    "contract_id": "month-en",
+    "partition": "training"
+  },
+  {
+    "id": "train-2-es",
+    "locale": "es",
+    "question": "Para el año calendario local 2026, muestra por mes los importes conocidos de pedidos pagados; conserva NULL e indica importes desconocidos.",
+    "expected_outcome": "answer",
+    "oracle_key": "monthly_qualifying_paid_local_2026",
+    "contract_id": "month-en",
+    "partition": "training"
+  },
+  {
+    "id": "train-3-en",
+    "locale": "en",
+    "question": "Count every paid order in local calendar 2026, even if its amount is NULL.",
+    "expected_outcome": "answer",
+    "oracle_key": "paid_order_count_local_2026",
+    "contract_id": "count-orders",
+    "partition": "training"
+  },
+  {
+    "id": "train-3-es",
+    "locale": "es",
+    "question": "Cuenta todos los pedidos pagados del año calendario local 2026, incluidos los importes NULL.",
+    "expected_outcome": "answer",
+    "oracle_key": "paid_order_count_local_2026",
+    "contract_id": "count-orders",
+    "partition": "training"
+  },
+  {
+    "id": "train-4-en",
+    "locale": "en",
+    "question": "Count only paid order amounts that are known in local calendar 2026.",
+    "expected_outcome": "answer",
+    "oracle_key": "known_paid_amount_count_local_2026",
+    "contract_id": "count-known",
+    "partition": "training"
+  },
+  {
+    "id": "train-4-es",
+    "locale": "es",
+    "question": "Cuenta los importes conocidos de pedidos pagados del año calendario local 2026.",
+    "expected_outcome": "answer",
+    "oracle_key": "known_paid_amount_count_local_2026",
+    "contract_id": "count-known",
+    "partition": "training"
+  },
+  {
+    "id": "train-5-en",
+    "locale": "en",
+    "question": "Report known paid booked gross less known posted refunds for the local 2026 paid-order cohort at any refund date, with unknown refund event count.",
+    "expected_outcome": "answer",
+    "oracle_key": "known_cohort_net",
+    "contract_id": "cohort-known-net",
+    "partition": "training"
+  },
+  {
+    "id": "train-5-es",
+    "locale": "es",
+    "question": "Informa el bruto conocido de pedidos pagados menos reembolsos contabilizados conocidos para la cohorte local de 2026, cualquiera sea la fecha del reembolso, e indica reembolsos de importe desconocido.",
+    "expected_outcome": "answer",
+    "oracle_key": "known_cohort_net",
+    "contract_id": "cohort-known-net",
+    "partition": "training"
+  },
+  {
+    "id": "train-6-en",
+    "locale": "en",
+    "question": "Report paid known booked gross in local 2026 less known posted refund activity during local 2026 on paid parent orders, with unknown order and refund counts.",
+    "expected_outcome": "answer",
+    "oracle_key": "known_activity_net",
+    "contract_id": "activity-known-net",
+    "partition": "training"
+  },
+  {
+    "id": "train-6-es",
+    "locale": "es",
+    "question": "Informa el bruto conocido de pedidos pagados registrados en el año local 2026 menos los reembolsos contabilizados conocidos de ese año sobre pedidos pagados; indica importes desconocidos de pedidos y reembolsos.",
+    "expected_outcome": "answer",
+    "oracle_key": "known_activity_net",
+    "contract_id": "activity-known-net",
+    "partition": "training"
+  }
+]

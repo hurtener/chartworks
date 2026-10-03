@@ -184,6 +184,9 @@ func (m PerformanceManifest) Validate() error {
 		if s.AuthorityOverride != nil && !validPerformanceAuthorityFixture(*s.AuthorityOverride) {
 			return ErrInvalid
 		}
+		if s.Allowed && s.AuthorityOverride != nil {
+			return ErrInvalid
+		}
 		ids[s.ID] = true
 		if _, exists := kinds[s.Kind]; exists {
 			return ErrInvalid
@@ -197,6 +200,12 @@ func (m PerformanceManifest) Validate() error {
 	}
 	base := kinds["cold"].Binding
 	for kind, field := range map[string]string{"source_changed": "source", "rule_changed": "rule", "context_changed": "context", "topic_changed": "topic", "runtime_pack_changed": "runtime", "tenant_negative": "tenant", "context_negative": "context", "actions_negative": "actions"} {
+		if m.Kind == PerformanceFinalStress && strings.HasSuffix(kind, "_changed") && kind != "runtime_pack_changed" {
+			if !finalPerformanceDependencyClosure(base, kinds[kind].Binding, kind) {
+				return ErrInvalid
+			}
+			continue
+		}
 		if !onlyPerformanceBindingFieldChanged(base, kinds[kind].Binding, field) {
 			return ErrInvalid
 		}
@@ -256,7 +265,7 @@ func (m PerformanceManifest) Validate() error {
 	}
 	deniedAction := kinds["actions_negative"].DeniedAction
 	if m.Kind == PerformanceFinalStress {
-		if deniedAction != "query.plan" && deniedAction != "query.execute" {
+		if deniedAction != "query.plan" && deniedAction != "query.execute" && deniedAction != "reporting.execute" {
 			return ErrInvalid
 		}
 		if !onlyScopeRemoved(m.Authority.Scopes, actionsNegative.Scopes, deniedAction) {
@@ -352,6 +361,34 @@ func onlyPerformanceBindingFieldChanged(a, b PerformanceBinding, field string) b
 	return changed == 1
 }
 
+// Current source/context publications are pinned into topics, and current
+// rules pin the reviewed topic version/digest. A final profile must declare
+// the primary axis and include exactly its owner dependency closure. Values
+// are compared with freshly resolved owner evidence before any measurement.
+func finalPerformanceDependencyClosure(base, changed PerformanceBinding, kind string) bool {
+	if changed.TenantDigest != base.TenantDigest || changed.ActionsDigest != base.ActionsDigest || changed.RuntimePackDigest != base.RuntimePackDigest {
+		return false
+	}
+	source := changed.SourceRevision != base.SourceRevision
+	rule := changed.RuleRevision != base.RuleRevision
+	context := changed.ContextDigest != base.ContextDigest
+	topic := changed.TopicRevision != base.TopicRevision
+	switch kind {
+	case "source_changed":
+		// A PostgreSQL source ID is part of its context ID. A different
+		// source therefore changes both hashes, even at source revision 1.
+		return source && context && rule && topic
+	case "rule_changed":
+		return rule && !source && !context && !topic
+	case "context_changed":
+		return context && source && topic && rule
+	case "topic_changed":
+		return topic && rule && !source && !context
+	default:
+		return false
+	}
+}
+
 // PerformanceUsage preserves unknown model/token/cost observations as nil.
 type PerformanceUsage struct {
 	ServiceNS   int64    `json:"service_ns"`
@@ -368,7 +405,10 @@ type PerformanceUsage struct {
 // its source and gateway seams. The harness derives executed versus reused from
 // this receipt; an adapter cannot declare its own outcome.
 type PerformanceReceipt struct {
-	Usage PerformanceUsage `json:"usage"`
+	Usage      PerformanceUsage `json:"usage"`
+	RunID      string           `json:"run_id,omitempty"`
+	ReuseKey   string           `json:"reuse_key,omitempty"`
+	ReusedFrom string           `json:"reused_from,omitempty"`
 }
 
 // PerformanceAdapterResult is returned by a concrete synthetic/real adapter.
@@ -397,6 +437,13 @@ type PerformanceRunner interface {
 	Run(context.Context, PerformanceStep, int) (PerformanceAdapterResult, error)
 }
 
+// A concrete adapter may need to make an ordered, authorized revision
+// selection before each correctness probe and measured step. The harness calls
+// this serially, outside the timed worker pool.
+type performanceStepPreparer interface {
+	PreparePerformanceStep(context.Context, PerformanceStep) error
+}
+
 // PerformanceSample is one raw measured request.
 type PerformanceSample struct {
 	StepID         string           `json:"step_id"`
@@ -408,6 +455,9 @@ type PerformanceSample struct {
 	Executed       bool             `json:"executed"`
 	Reused         bool             `json:"reused"`
 	Usage          PerformanceUsage `json:"usage"`
+	RunID          string           `json:"run_id,omitempty"`
+	ReuseKey       string           `json:"reuse_key,omitempty"`
+	ReusedFrom     string           `json:"reused_from,omitempty"`
 }
 
 // PerformanceSummary derives aggregates from retained raw samples for one step.
@@ -424,19 +474,36 @@ type PerformanceSummary struct {
 
 // PerformanceReport is content-free raw release evidence.
 type PerformanceReport struct {
-	SchemaVersion     int                     `json:"schema_version"`
-	ManifestID        string                  `json:"manifest_id"`
-	ManifestDigest    string                  `json:"manifest_digest"`
-	CurrentBinding    PerformanceBinding      `json:"current_binding"`
-	Kind              PerformanceProfileKind  `json:"kind"`
-	EvidenceMode      PerformanceEvidenceMode `json:"evidence_mode"`
-	Environment       PerformanceEnvironment  `json:"environment"`
-	StartedAt         time.Time               `json:"started_at"`
-	CompletedAt       time.Time               `json:"completed_at"`
-	CorrectnessPassed bool                    `json:"correctness_passed"`
-	Samples           []PerformanceSample     `json:"samples"`
-	Summaries         []PerformanceSummary    `json:"summaries"`
-	EvidenceHash      string                  `json:"evidence_hash"`
+	SchemaVersion     int                             `json:"schema_version"`
+	ManifestID        string                          `json:"manifest_id"`
+	ManifestDigest    string                          `json:"manifest_digest"`
+	CurrentBinding    PerformanceBinding              `json:"current_binding"`
+	Kind              PerformanceProfileKind          `json:"kind"`
+	EvidenceMode      PerformanceEvidenceMode         `json:"evidence_mode"`
+	Environment       PerformanceEnvironment          `json:"environment"`
+	StartedAt         time.Time                       `json:"started_at"`
+	CompletedAt       time.Time                       `json:"completed_at"`
+	CorrectnessPassed bool                            `json:"correctness_passed"`
+	Ordered           bool                            `json:"ordered,omitempty"`
+	Transitions       []PerformanceTransitionEvidence `json:"transitions,omitempty"`
+	Samples           []PerformanceSample             `json:"samples"`
+	Summaries         []PerformanceSummary            `json:"summaries"`
+	EvidenceHash      string                          `json:"evidence_hash"`
+}
+
+// PerformanceTransitionEvidence records the current owner pins observed just
+// before one ordered release step. The report seal covers every transition.
+type PerformanceTransitionEvidence struct {
+	StepID          string `json:"step_id"`
+	BindingDigest   string `json:"binding_digest"`
+	SourceID        string `json:"source_id"`
+	ContextID       string `json:"context_id"`
+	SourceHead      int64  `json:"source_head"`
+	BlockID         string `json:"block_id"`
+	BlockRevision   int64  `json:"block_revision"`
+	BlockDigest     string `json:"block_digest"`
+	TopicPinsDigest string `json:"topic_pins_digest"`
+	RulePinsDigest  string `json:"rule_pins_digest"`
 }
 
 // Validate verifies a stored report against its immutable manifest, including
@@ -450,6 +517,27 @@ func (r PerformanceReport) Validate(manifest PerformanceManifest) error {
 	if r.ManifestDigest != hex.EncodeToString(sum[:]) || len(r.Summaries) != len(manifest.Steps) {
 		return ErrInvalid
 	}
+	if r.Ordered {
+		if manifest.Kind != PerformanceFinalStress {
+			return ErrInvalid
+		}
+		allowed := make([]PerformanceStep, 0, len(manifest.Steps))
+		for _, step := range manifest.Steps {
+			if step.Allowed {
+				allowed = append(allowed, step)
+			}
+		}
+		if len(r.Transitions) != len(allowed) {
+			return ErrInvalid
+		}
+		for i, transition := range r.Transitions {
+			if transition.StepID != allowed[i].ID || transition.BindingDigest != allowed[i].Binding.digest() || !identifier(transition.SourceID) || !identifier(transition.ContextID) || transition.SourceHead < 1 || !identifier(transition.BlockID) || transition.BlockRevision < 1 || !validDigest(transition.BlockDigest) || !validDigest(transition.TopicPinsDigest) || !validDigest(transition.RulePinsDigest) {
+				return ErrInvalid
+			}
+		}
+	} else if len(r.Transitions) > 0 {
+		return ErrInvalid
+	}
 	byStep := make(map[string][]PerformanceSample, len(manifest.Steps))
 	steps := make(map[string]PerformanceStep, len(manifest.Steps))
 	for _, step := range manifest.Steps {
@@ -458,7 +546,7 @@ func (r PerformanceReport) Validate(manifest PerformanceManifest) error {
 	for _, sample := range r.Samples {
 		step, ok := steps[sample.StepID]
 		o := PerformanceObservation{SemanticDigest: sample.SemanticDigest, BindingDigest: sample.BindingDigest, Blocked: sample.Blocked, Executed: sample.Executed, Reused: sample.Reused, Usage: sample.Usage}
-		if !ok || sample.Iteration < 0 || sample.WallNS < 0 || validatePerformanceObservation(manifest.Environment, manifest.effectiveStep(step), o, true) != nil {
+		if !ok || sample.Iteration < 0 || sample.WallNS < 0 || validatePerformanceObservation(manifest.Environment, manifest.effectiveStep(step), o, true) != nil || validatePerformanceLineage(manifest.Environment, o, sample.RunID, sample.ReuseKey, sample.ReusedFrom) != nil {
 			return ErrInvalid
 		}
 		byStep[sample.StepID] = append(byStep[sample.StepID], sample)
@@ -487,6 +575,83 @@ func (r PerformanceReport) Validate(manifest PerformanceManifest) error {
 	return nil
 }
 
+type performanceTransitionWitness interface {
+	CurrentPerformanceTransition(PerformanceStep) (PerformanceTransitionEvidence, error)
+	PostPerformanceStep(context.Context, PerformanceStep) error
+}
+
+// MeasurePerformanceOrdered keeps a changing owner head current for each
+// release step: prepare, resolve, probe, measure, then re-resolve. A later
+// failed probe leaves CorrectnessPassed false and cannot produce a valid report.
+// The ordinary two-pass harness remains for immutable fixture scenarios.
+func MeasurePerformanceOrdered(ctx context.Context, manifest PerformanceManifest, runner PerformanceRunner, clock Clock) (PerformanceReport, error) {
+	witness, ok := runner.(performanceTransitionWitness)
+	if ctx == nil || runner == nil || !ok || manifest.Validate() != nil || manifest.Kind != PerformanceFinalStress {
+		return PerformanceReport{}, ErrInvalid
+	}
+	if clock == nil {
+		clock = time.Now
+	}
+	raw, _ := json.Marshal(manifest)
+	sum := sha256.Sum256(raw)
+	report := PerformanceReport{SchemaVersion: 1, ManifestID: manifest.ID, ManifestDigest: hex.EncodeToString(sum[:]), CurrentBinding: coldPerformanceBinding(manifest), Kind: manifest.Kind, EvidenceMode: manifest.EvidenceMode, Environment: manifest.Environment, StartedAt: clock().UTC(), Ordered: true}
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(manifest.MaxDurationMS)*time.Millisecond)
+	defer cancel()
+	for _, step := range manifest.Steps {
+		step = manifest.effectiveStep(step)
+		preparer, ok := runner.(performanceStepPreparer)
+		if !ok {
+			return PerformanceReport{}, ErrMode
+		}
+		if err := preparer.PreparePerformanceStep(runCtx, step); err != nil {
+			report.CompletedAt = clock().UTC()
+			return sealPerformanceReport(report), err
+		}
+		if step.Allowed {
+			transition, err := witness.CurrentPerformanceTransition(step)
+			if err != nil {
+				report.CompletedAt = clock().UTC()
+				return sealPerformanceReport(report), err
+			}
+			report.Transitions = append(report.Transitions, transition)
+		}
+		result, err := runner.Check(runCtx, step)
+		o, outcomeErr := derivePerformanceObservation(manifest.Environment, step, result, false)
+		if err != nil || outcomeErr != nil || validatePerformanceObservation(manifest.Environment, step, o, false) != nil {
+			report.CompletedAt = clock().UTC()
+			if runCtx.Err() != nil {
+				return sealPerformanceReport(report), runCtx.Err()
+			}
+			return sealPerformanceReport(report), ErrGate
+		}
+		if step.ResetBefore {
+			if err := runner.Reset(runCtx); err != nil {
+				report.CompletedAt = clock().UTC()
+				return sealPerformanceReport(report), err
+			}
+		}
+		samples, err := measurePerformanceStep(runCtx, manifest.Environment, step, runner)
+		if err != nil {
+			report.CompletedAt = clock().UTC()
+			return sealPerformanceReport(report), err
+		}
+		report.Samples = append(report.Samples, samples...)
+		summary := summarizePerformance(step.ID, samples)
+		report.Summaries = append(report.Summaries, summary)
+		if summary.Executions != step.ExpectedExecutions || summary.Blocks != step.ExpectedBlocks {
+			report.CompletedAt = clock().UTC()
+			return sealPerformanceReport(report), ErrGate
+		}
+		if err := witness.PostPerformanceStep(runCtx, step); err != nil {
+			report.CompletedAt = clock().UTC()
+			return sealPerformanceReport(report), err
+		}
+	}
+	report.CorrectnessPassed = true
+	report.CompletedAt = clock().UTC()
+	return sealPerformanceReport(report), nil
+}
+
 // MeasurePerformance runs every correctness gate before collecting any timing.
 func MeasurePerformance(ctx context.Context, manifest PerformanceManifest, runner PerformanceRunner, clock Clock) (PerformanceReport, error) {
 	if ctx == nil || runner == nil || manifest.Validate() != nil {
@@ -502,6 +667,12 @@ func MeasurePerformance(ctx context.Context, manifest PerformanceManifest, runne
 	defer cancel()
 	for _, step := range manifest.Steps {
 		step = manifest.effectiveStep(step)
+		if preparer, ok := runner.(performanceStepPreparer); ok {
+			if err := preparer.PreparePerformanceStep(runCtx, step); err != nil {
+				report.CompletedAt = clock().UTC()
+				return sealPerformanceReport(report), err
+			}
+		}
 		result, err := runner.Check(runCtx, step)
 		o, outcomeErr := derivePerformanceObservation(manifest.Environment, step, result, false)
 		if err != nil || outcomeErr != nil || validatePerformanceObservation(manifest.Environment, step, o, false) != nil {
@@ -515,6 +686,12 @@ func MeasurePerformance(ctx context.Context, manifest PerformanceManifest, runne
 	report.CorrectnessPassed = true
 	for _, step := range manifest.Steps {
 		step = manifest.effectiveStep(step)
+		if preparer, ok := runner.(performanceStepPreparer); ok {
+			if err := preparer.PreparePerformanceStep(runCtx, step); err != nil {
+				report.CompletedAt = clock().UTC()
+				return sealPerformanceReport(report), err
+			}
+		}
 		if step.ResetBefore {
 			if err := runner.Reset(runCtx); err != nil {
 				report.CompletedAt = clock().UTC()
@@ -581,7 +758,7 @@ func measurePerformanceStep(ctx context.Context, environment PerformanceEnvironm
 						errs <- ErrInvalid
 						return
 					}
-					results <- PerformanceSample{StepID: step.ID, Iteration: iteration, WallNS: wall, SemanticDigest: o.SemanticDigest, BindingDigest: o.BindingDigest, Blocked: o.Blocked, Executed: o.Executed, Reused: o.Reused, Usage: o.Usage}
+					results <- PerformanceSample{StepID: step.ID, Iteration: iteration, WallNS: wall, SemanticDigest: o.SemanticDigest, BindingDigest: o.BindingDigest, Blocked: o.Blocked, Executed: o.Executed, Reused: o.Reused, Usage: o.Usage, RunID: result.Receipt.RunID, ReuseKey: result.Receipt.ReuseKey, ReusedFrom: result.Receipt.ReusedFrom}
 				}
 			}
 		}()
@@ -622,7 +799,23 @@ func derivePerformanceObservation(environment PerformanceEnvironment, step Perfo
 	if environment.ModelMode == "none" && (u.ModelCalls != 0 || u.ModelNS != nil || u.Tokens != nil || u.CostUSD != nil) {
 		return PerformanceObservation{}, ErrInvalid
 	}
+	if err := validatePerformanceLineage(environment, o, result.Receipt.RunID, result.Receipt.ReuseKey, result.Receipt.ReusedFrom); err != nil {
+		return PerformanceObservation{}, err
+	}
 	return o, nil
+}
+
+func validatePerformanceLineage(environment PerformanceEnvironment, o PerformanceObservation, runID, reuseKey, reusedFrom string) error {
+	if runID == "" && reuseKey == "" && reusedFrom == "" {
+		return nil // synthetic and ledger-only adapters have no product frozen-run lineage.
+	}
+	if !identifier(runID) || !validDigest(reuseKey) || reusedFrom != "" && (!identifier(reusedFrom) || reusedFrom == runID) || o.Blocked || o.Executed && reusedFrom != "" || o.Reused && reusedFrom == "" {
+		return ErrInvalid
+	}
+	if environment.SourceMode != "real_postgres" || environment.ModelMode != "recorded" && environment.ModelMode != "live" {
+		return ErrInvalid
+	}
+	return nil
 }
 
 func validatePerformanceObservation(environment PerformanceEnvironment, step PerformanceStep, o PerformanceObservation, measured bool) error {

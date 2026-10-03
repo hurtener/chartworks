@@ -104,19 +104,20 @@ type ChoiceSelection struct {
 // Topic reach, source bindings, rule text and facet text are resolved from
 // current published state by Service.Route.
 type RouteRequest struct {
-	ConceptPolicy string                          `json:"concept_policy,omitempty"`
-	Grouping      *GroupingSelection              `json:"grouping,omitempty"`
-	Answers       []semantics.ClarificationAnswer `json:"answers,omitempty"`
-	AnswerContext string                          `json:"answer_context,omitempty"`
-	Topic         string                          `json:"topic,omitempty"`
-	Topics        []string                        `json:"topics,omitempty"`
-	Context       string                          `json:"context"`
-	Locale        nlq.Language                    `json:"locale"`
-	Question      string                          `json:"question"`
-	Templates     []rulesets.TemplateSelection    `json:"templates,omitempty"`
-	Kinds         []string                        `json:"kinds,omitempty"`
-	LimitPerKind  int                             `json:"limit_per_kind,omitempty"`
-	References    []semantics.Reference           `json:"references,omitempty"`
+	GroupingIntentPolicy string                          `json:"grouping_intent_policy,omitempty"`
+	ConceptPolicy        string                          `json:"concept_policy,omitempty"`
+	Grouping             *GroupingSelection              `json:"grouping,omitempty"`
+	Answers              []semantics.ClarificationAnswer `json:"answers,omitempty"`
+	AnswerContext        string                          `json:"answer_context,omitempty"`
+	Topic                string                          `json:"topic,omitempty"`
+	Topics               []string                        `json:"topics,omitempty"`
+	Context              string                          `json:"context"`
+	Locale               nlq.Language                    `json:"locale"`
+	Question             string                          `json:"question"`
+	Templates            []rulesets.TemplateSelection    `json:"templates,omitempty"`
+	Kinds                []string                        `json:"kinds,omitempty"`
+	LimitPerKind         int                             `json:"limit_per_kind,omitempty"`
+	References           []semantics.Reference           `json:"references,omitempty"`
 	// OmittedRoots suppress automatic concept selection; they cannot disable a required rule.
 	OmittedRoots []semantics.Reference `json:"omitted_roots,omitempty"`
 	Choices      []ChoiceSelection     `json:"choices,omitempty"`
@@ -171,6 +172,7 @@ type Stage struct {
 // assembler's private seal so the wire schema cannot accept a forged sealed
 // context on a later generation call.
 type ContextView struct {
+	MetricFormat nlq.MetricFormat     `json:"metric_format,omitempty"`
 	Tier         nlq.Tier             `json:"tier"`
 	Budget       int                  `json:"budget"`
 	Tokens       int                  `json:"tokens"`
@@ -192,16 +194,23 @@ type ContextView struct {
 // RouteResult is a detached routing and context result. A Clarification or
 // StrategyNoRoute result has no Context and therefore cannot reach generation.
 type RouteResult struct {
-	Concepts            *ConceptEvidence `json:"concept_selection,omitempty"`
-	conceptReplay       bool
-	AnswerContext       string                              `json:"answer_context,omitempty"`
-	SourceBindingDigest string                              `json:"source_binding_digest,omitempty"`
-	Clarifications      []semantics.ClarificationEvaluation `json:"clarifications,omitempty"`
-	Resolutions         []semantics.ClarificationResolution `json:"resolutions,omitempty"`
-	business            []readexec.BusinessConstraint
-	metricPeriods       []MetricPeriodApplication
-	resolutionSeal      string
-	Outcome             nlq.Strategy `json:"outcome"`
+	protectedRedact      func(string, []semantics.ClarificationAnswer) string `json:"-"`
+	Applicability        *ApplicabilityEvidence                               `json:"clarification_applicability,omitempty"`
+	applicabilitySeal    string
+	applicabilityTopics  []ApplicabilityTopic
+	applicabilityPins    []clarificationTopicPin
+	GroupingIntent       *GroupingIntentEvidence `json:"grouping_intent,omitempty"`
+	groupingIntentReplay bool
+	Concepts             *ConceptEvidence `json:"concept_selection,omitempty"`
+	conceptReplay        bool
+	AnswerContext        string                              `json:"answer_context,omitempty"`
+	SourceBindingDigest  string                              `json:"source_binding_digest,omitempty"`
+	Clarifications       []semantics.ClarificationEvaluation `json:"clarifications,omitempty"`
+	Resolutions          []semantics.ClarificationResolution `json:"resolutions,omitempty"`
+	business             []readexec.BusinessConstraint
+	metricPeriods        []MetricPeriodApplication
+	resolutionSeal       string
+	Outcome              nlq.Strategy `json:"outcome"`
 	// Request is the bounded, caller-selected routing input that was admitted
 	// for this result. Persisted refinements use it as their semantic base; it
 	// contains no SQL or authority material.
@@ -242,11 +251,12 @@ func (r RouteResult) GenerationContext() (nlq.AssembledContext, error) {
 // Service coordinates current topic admission, reviewed constraints, one
 // gateway and the existing vector index. It has no cache and no executor.
 type Service struct {
-	topics    TopicReader
-	rules     RuleReader
-	index     IndexReader
-	engine    gateway.Engine
-	assembler *nlq.ContextAssembler
+	applicabilityReader ApplicabilityReader
+	topics              TopicReader
+	rules               RuleReader
+	index               IndexReader
+	engine              gateway.Engine
+	assembler           *nlq.ContextAssembler
 }
 
 // New binds the actual production seams and the pinned cl100k_base assembler.
@@ -277,15 +287,28 @@ type admittedTopic struct {
 
 // Route performs the bounded first routing consumer. Current source and topic
 // checks occur before Embed; only authorized vindex hits enter Rerank.
-func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteRequest) (RouteResult, error) {
+func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteRequest) (out RouteResult, err error) {
+	original := in
+	defer func() {
+		if err == nil && ctx != nil {
+			out.sealApplicability(e, ctx, original)
+		}
+	}()
 	if ctx == nil || s == nil || s.topics == nil || s.rules == nil || s.index == nil || s.engine == nil || s.assembler == nil {
 		return RouteResult{}, ErrInvalid
 	}
 	if !e.Valid() {
 		return RouteResult{}, access.ErrUnauthenticated
 	}
+	ctx, err = admitApplicabilityContext(ctx, e, in)
+	if err != nil {
+		return RouteResult{}, err
+	}
 	ids, err := normalizeRequest(in)
 	if err != nil {
+		return RouteResult{}, err
+	}
+	if err := prepareGroupingIntentRequest(ctx, e, &in); err != nil {
 		return RouteResult{}, err
 	}
 	if len(ids) == 0 {
@@ -454,12 +477,21 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 	if !contextMatches(admitted, in.Context) {
 		return RouteResult{}, readexec.ErrBinding
 	}
-	if unresolved := unresolvedQuestionRequirements(in); unresolved != nil {
+	safeInference := cloneRouteRequest(in)
+	safeInference.Question = groundedQuestion(in, admitted)
+	if unresolved := unresolvedQuestionRequirements(safeInference); unresolved != nil {
 		result.Outcome, result.Clarification = nlq.StrategyClarify, unresolved
+		result.Request = selectionFailureRequest(in, admitted)
 		return result, nil
 	}
-	if unresolved := requestedNetMeaning(in, admitted); unresolved != nil {
+	if unresolved := requestedNetMeaning(safeInference, admitted); unresolved != nil {
 		result.Outcome, result.Clarification = nlq.StrategyClarify, unresolved
+		result.Request = selectionFailureRequest(in, admitted)
+		return result, nil
+	}
+	if err := protectedCatalogMeaning(in, admitted); err != nil {
+		result.Outcome, result.Clarification = nlq.StrategyClarify, err.(*Clarification)
+		result.Request = selectionFailureRequest(in, admitted)
 		return result, nil
 	}
 	interpretation, interpretationConstraints, err := s.interpret(ctx, e, &in, admitted)
@@ -467,7 +499,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		var clarification *Clarification
 		if errors.As(err, &clarification) {
 			result.Outcome, result.Clarification = nlq.StrategyClarify, clarification
-			result.Request = cloneRouteRequest(in)
+			result.Request = selectionFailureRequest(in, admitted)
 			return result, nil
 		}
 		return RouteResult{}, err
@@ -477,11 +509,17 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 	if interpretation != nil {
 		result.SourceBindingDigest = interpretation.BindingDigest
 	}
+	if err := s.selectGroupingIntent(ctx, e, &in, admitted, &result); err != nil {
+		return RouteResult{}, err
+	}
 	result.Request = cloneRouteRequest(in)
+	if result.Clarification != nil {
+		return result, nil
+	}
 	if err := s.resolveSemanticSelection(ctx, e, in, admitted, &result); err != nil {
 		err = semanticSelectionError(err, in.Locale)
 		var clarification *Clarification
-		if errors.As(err, &clarification) && (strings.HasPrefix(clarification.Reason, "ambiguous_semantic") || strings.HasPrefix(clarification.Reason, "conflicting_semantic")) {
+		if errors.As(err, &clarification) && (strings.HasPrefix(clarification.Reason, "ambiguous_semantic") || strings.HasPrefix(clarification.Reason, "conflicting_semantic") || clarification.Reason == "ambiguous_protected_meaning") {
 			result.Request = selectionFailureRequest(in, admitted)
 			result.Outcome, result.Clarification = nlq.StrategyClarify, clarification
 			return result, nil
@@ -491,7 +529,8 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 	if result.Clarification != nil {
 		return result, nil
 	}
-	meaningRequest := in
+	meaningRequest := cloneRouteRequest(in)
+	meaningRequest.Question = groundedQuestion(in, admitted)
 	meaningRequest.MetricIDs = nil
 	meaningRequest.References = nil
 	if result.Selection != nil {
@@ -503,6 +542,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 	}
 	if unresolved := requestedNetMeaning(meaningRequest, admitted); unresolved != nil {
 		result.Outcome, result.Clarification = nlq.StrategyClarify, unresolved
+		result.Request = selectionFailureRequest(in, admitted)
 		return result, nil
 	}
 	if err := bindMetricPeriodApplications(&result, admitted); err != nil {
@@ -679,6 +719,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		return RouteResult{}, err
 	}
 	input := nlq.ContextInput{
+		MetricFormat: nlq.MetricFormatSharedV2,
 		Locale:       in.Locale,
 		Strategy:     result.Outcome,
 		Topic:        admitted[0].id,
@@ -727,6 +768,9 @@ func admissionVector(dimensions int) []float32 {
 }
 
 func normalizeRequest(in RouteRequest) ([]string, error) {
+	if err := validateGroupingIntentPolicy(in.GroupingIntentPolicy); err != nil {
+		return nil, err
+	}
 	if err := validateConceptPolicy(in.ConceptPolicy); err != nil {
 		return nil, err
 	}
@@ -839,7 +883,7 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 			return nil, ErrInvalid
 		}
 	}
-	if in.InterpretationPolicy != "" && in.InterpretationPolicy != InterpretationContinuationPolicy {
+	if in.InterpretationPolicy != "" && in.InterpretationPolicy != InterpretationContinuationPolicy && in.InterpretationPolicy != GroundedCalendarPolicy {
 		return nil, ErrInvalid
 	}
 	if !validateInterpretationSelections(in.InterpretationSelections) {
@@ -1484,7 +1528,7 @@ func stageFromReceipt(name string, started time.Time, receipt gateway.Receipt) S
 
 func contextView(input nlq.AssembledContext) *ContextView {
 	out := &ContextView{
-		Tier: input.Tier, Budget: input.Budget, Tokens: input.Tokens, Locale: input.Locale,
+		MetricFormat: input.MetricFormat, Tier: input.Tier, Budget: input.Budget, Tokens: input.Tokens, Locale: input.Locale,
 		Strategy: input.Strategy, Topic: input.Topic, TopicVersion: input.TopicVersion, Topics: append([]nlq.TopicRevision(nil), input.Topics...),
 		Question: input.Question, Prompt: input.Prompt, Evidence: append([]nlq.Evidence(nil), input.Evidence...),
 		Relations: append([]nlq.SourceRelation(nil), input.Relations...),

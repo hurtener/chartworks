@@ -26,9 +26,10 @@ const (
 // SemanticSelection is detached interpretation evidence, never authority or a
 // SQL conformance certificate. A nil selection denotes the legacy replay path.
 type SemanticSelection struct {
-	Version string          `json:"version"`
-	Topics  []SelectedTopic `json:"topics"`
-	Digest  string          `json:"digest"`
+	GroupingIntent string          `json:"grouping_intent_digest,omitempty"`
+	Version        string          `json:"version"`
+	Topics         []SelectedTopic `json:"topics"`
+	Digest         string          `json:"digest"`
 }
 
 // SelectedTopic pins roots and rule facts to an admitted immutable publication.
@@ -274,7 +275,7 @@ func selectCatalogTerms(ctx context.Context, in RouteRequest, admitted []admitte
 		for _, phrase := range append([]string{name}, aliases...) {
 			n := normalizedPhrase(phrase)
 			words := len(strings.Fields(n))
-			if words == 0 {
+			if words == 0 || strings.Contains(n, opaqueInferenceToken) {
 				continue
 			}
 			entries++
@@ -296,7 +297,6 @@ func selectCatalogTerms(ctx context.Context, in RouteRequest, admitted []admitte
 		}
 		return nil
 	}
-	var redactions []semantics.ClarificationResolution
 	for i, item := range admitted {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -319,15 +319,9 @@ func selectCatalogTerms(ctx context.Context, in RouteRequest, admitted []admitte
 				return err
 			}
 		}
-		for _, p := range item.rules.Definition.Patterns {
-			for _, slot := range p.Slots {
-				if slot.Sensitivity == semantics.LiteralSensitive {
-					redactions = append(redactions, semantics.ClarificationResolution{Topic: item.id, Pattern: p.ID, Slot: slot.ID, Sensitivity: slot.Sensitivity})
-				}
-			}
-		}
 	}
-	words := strings.Fields(normalizedPhrase(semantics.RedactClarificationText(in.Question, in.Answers, redactions)))
+	surface := questionInferenceSurface(in, admitted)
+	words := surface.words
 	for start := 0; start < len(words); start++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -339,9 +333,10 @@ func selectCatalogTerms(ctx context.Context, in RouteRequest, admitted []admitte
 			}
 			// Longest complete term wins. A suppressed/negated longer concept must
 			// not accidentally select a shorter constituent name inside that span.
-			negated := start > 0 && temporalNegator(words[start-1])
-			if start > 1 && (words[start-1] == "by" || words[start-1] == "por") {
-				negated = negated || temporalNegator(words[start-2])
+			originalNegated := catalogNegatedAt(surface.original, surface.origins[start])
+			negated := catalogNegatedAt(words, start)
+			if negated != originalNegated {
+				return protectedMeaningFailure(in.Locale)
 			}
 			if !negated {
 				var eligible, explicit []selectionTerm
@@ -520,6 +515,19 @@ func (s *Service) resolveSemanticSelection(ctx context.Context, e identity.Envel
 	if err := initialSemanticSelection(ctx, in, admitted, result.Interpretation); err != nil {
 		return err
 	}
+	if result.GroupingIntent != nil && in.Grouping != nil {
+		for i := range admitted {
+			for _, key := range in.Grouping.Keys {
+				if admitted[i].id == key.Topic {
+					ref := semantics.Reference{Kind: semantics.KindDimension, ID: key.Dimension}
+					if admitted[i].selection.roots[ref] == "" {
+						return readexec.ErrBinding
+					}
+					admitted[i].selection.roots[ref] = "grounded_grouping"
+				}
+			}
+		}
+	}
 	if err := s.selectGroundedConcepts(ctx, e, &in, admitted, result); err != nil {
 		return err
 	}
@@ -530,11 +538,13 @@ func (s *Service) resolveSemanticSelection(ctx context.Context, e identity.Envel
 		return err
 	}
 	base := *result
+	completenessRequest := cloneRouteRequest(in)
+	completenessRequest.Question = groundedQuestion(in, admitted)
 	for pass := 0; pass < maxSelectionPasses; pass++ {
 		changed := false
 		for i := range admitted {
 			item := &admitted[i]
-			addedCompleteness, err := selectCompletenessOutputs(ctx, in, item)
+			addedCompleteness, err := selectCompletenessOutputs(ctx, completenessRequest, item)
 			if err != nil {
 				return err
 			}
@@ -618,6 +628,11 @@ func (s *Service) resolveSemanticSelection(ctx context.Context, e identity.Envel
 			return readexec.ErrBinding
 		}
 		current.Selection = selectionView(admitted)
+		if current.GroupingIntent != nil {
+			current.Selection.GroupingIntent = readexec.Hash(current.GroupingIntent)
+			current.Selection.Digest = ""
+			current.Selection.Digest = readexec.Hash(current.Selection)
+		}
 		*result = current
 		return nil
 	}
@@ -752,19 +767,10 @@ func makeSelectionEvidence(hits []hitWithTopic, admitted []admittedTopic, omitte
 
 func selectionFailureRequest(in RouteRequest, admitted []admittedTopic) RouteRequest {
 	out := cloneRouteRequest(in)
-	var redactions []semantics.ClarificationResolution
-	for _, item := range admitted {
-		for _, p := range item.rules.Definition.Patterns {
-			for _, slot := range p.Slots {
-				if slot.Sensitivity == semantics.LiteralSensitive {
-					redactions = append(redactions, semantics.ClarificationResolution{Topic: item.id, Pattern: p.ID, Slot: slot.ID, Sensitivity: slot.Sensitivity})
-				}
-			}
-		}
-	}
-	out.Question = semantics.RedactClarificationText(in.Question, in.Answers, redactions)
+	answers, redactions := inferenceRedactions(in, admitted)
+	out.Question = semantics.RedactClarificationText(in.Question, answers, redactions)
 	for i := range out.Examples {
-		out.Examples[i].Text = semantics.RedactClarificationText(out.Examples[i].Text, in.Answers, redactions)
+		out.Examples[i].Text = semantics.RedactClarificationText(out.Examples[i].Text, answers, redactions)
 	}
 	out.Answers = nil
 	out.Choices = nil

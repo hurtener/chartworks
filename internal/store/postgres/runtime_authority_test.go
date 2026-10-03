@@ -7,6 +7,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
+	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/reporting"
@@ -70,6 +71,13 @@ func TestRuntimePersistenceRequiresAuthorityBeforeStorage(t *testing.T) {
 		"run reuse": func() error {
 			_, _, err := db.ReuseFrozenRun(ctx, jobs.Invocation{}, "run", config.DefaultReportingExecution())
 			return err
+		},
+		"cold reuse claim": func() error {
+			_, err := db.ClaimFrozenReuse(ctx, jobs.Invocation{}, "run", config.DefaultReportingExecution())
+			return err
+		},
+		"cold query reservation": func() error {
+			return db.ReserveFrozenQuery(ctx, jobs.Invocation{}, readexec.Options{Operation: "run", Number: 1})
 		},
 		"run read": func() error {
 			_, err := db.ReadFrozenRun(ctx, e, "run", false)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
@@ -30,8 +31,10 @@ type authoringAggregate struct {
 	Disclosure string         `json:"disclosure"`
 }
 type authoringRelation struct {
-	Schema string `json:"schema"`
-	Name   string `json:"name"`
+	Schema            string     `json:"schema"`
+	Name              string     `json:"name"`
+	NonNullUniqueKeys [][]string `json:"non_null_unique_keys,omitempty"`
+	KeyEvidence       string     `json:"key_evidence,omitempty"`
 }
 
 type authoringEvidence struct {
@@ -41,7 +44,7 @@ type authoringEvidence struct {
 	ObservedAt     time.Time                 `json:"observed_at"`
 	PolicyDigest   string                    `json:"policy_digest"`
 	Sampling       engineering.Sampling      `json:"sampling"`
-	Columns        []authoringAggregate      `json:"columns"`
+	Columns        authoringColumns          `json:"columns"`
 }
 type authoringRedaction struct {
 	Entity  string `json:"entity"`
@@ -128,7 +131,7 @@ func buildAuthoringContext(model semantics.Model, profiles map[string]engineerin
 		if !ok || !evidence.Active || pr.Version != d.Source.ProfileVersion || pr.Source != d.Source.Source || pr.Context != d.Source.Context || pr.Dataset != d.ID || pr.SourceRevision != d.Source.SourceRevision || pr.DeterministicHash() != d.Source.ProfileDigest {
 			return authoringContext{}, readexec.ErrBinding
 		}
-		item := authoringEvidence{Origin: d.Source, ObservedAt: pr.ObservedAt, PolicyDigest: pr.PolicyHash, Sampling: pr.Sampling, Columns: []authoringAggregate{}}
+		item := authoringEvidence{Origin: d.Source, ObservedAt: pr.ObservedAt, PolicyDigest: pr.PolicyHash, Sampling: pr.Sampling, Columns: authoringColumns{}}
 		actual := map[string]readexec.Column{}
 		for _, c := range pr.Schema {
 			actual[c.Name] = c
@@ -188,15 +191,85 @@ func sealAuthoringContext(out authoringContext) (authoringContext, error) {
 }
 
 func matchAuthoringRelation(dataset semantics.Dataset, profile engineering.Profile, catalog sources.Discovery) (authoringRelation, error) {
-	if catalog.ContextID != dataset.Source.Context || catalog.Revision != dataset.Source.SourceRevision {
+	if catalog.SourceID != dataset.Source.Source || catalog.ContextID != dataset.Source.Context || catalog.Revision != dataset.Source.SourceRevision {
 		return authoringRelation{}, readexec.ErrBinding
 	}
+	var selected *readexec.Relation
 	for _, relation := range catalog.Relations {
-		if relation.ID == dataset.ID && relation.Schema != "" && relation.Name != "" && reflect.DeepEqual(relation.Columns, profile.Schema) {
-			return authoringRelation{Schema: relation.Schema, Name: relation.Name}, nil
+		if relation.ID == dataset.ID {
+			if selected != nil || relation.Schema == "" || relation.Name == "" || !reflect.DeepEqual(relation.Columns, profile.Schema) {
+				return authoringRelation{}, readexec.ErrBinding
+			}
+			copy := relation
+			selected = &copy
 		}
 	}
-	return authoringRelation{}, readexec.ErrBinding
+	if selected == nil {
+		return authoringRelation{}, readexec.ErrBinding
+	}
+	keys, err := authoringNonNullKeys(dataset, *selected)
+	if err != nil {
+		return authoringRelation{}, err
+	}
+	out := authoringRelation{Schema: selected.Schema, Name: selected.Name, NonNullUniqueKeys: keys}
+	if len(keys) > 0 {
+		out.KeyEvidence = "current_authorized_catalog"
+	}
+	return out, nil
+}
+
+// Catalog equality keys can contain nullable columns: they prove ordinary join
+// cardinality, not that every row has a unique non-NULL business identifier.
+// Authoring receives only complete, nonnullable keys projected to the current
+// candidate's column IDs. Hidden/unsafe/nullable components suppress the whole
+// key; they are never removed to manufacture a smaller guarantee.
+func authoringNonNullKeys(dataset semantics.Dataset, relation readexec.Relation) ([][]string, error) {
+	if len(relation.UniqueKeys) > 32 {
+		return nil, readexec.ErrLimit
+	}
+	columns := map[string]readexec.Column{}
+	for _, column := range relation.Columns {
+		if _, duplicate := columns[column.Name]; duplicate {
+			return nil, readexec.ErrBinding
+		}
+		columns[column.Name] = column
+	}
+	identities := map[string]string{}
+	ids := map[string]bool{}
+	for _, column := range dataset.Columns {
+		if column.ID == "" || column.SourceName == "" || identities[column.SourceName] != "" || ids[column.ID] {
+			return nil, readexec.ErrBinding
+		}
+		identities[column.SourceName], ids[column.ID] = column.ID, true
+	}
+	var out [][]string
+	previous := ""
+	for _, key := range relation.UniqueKeys {
+		if len(key) == 0 || len(key) > 16 {
+			return nil, readexec.ErrBinding
+		}
+		canonical := strings.Join(key, "\x00")
+		if previous != "" && previous >= canonical {
+			return nil, readexec.ErrBinding
+		}
+		previous = canonical
+		complete := true
+		projected := make([]string, 0, len(key))
+		for i, name := range key {
+			column, ok := columns[name]
+			if !ok || i > 0 && key[i-1] >= name {
+				return nil, readexec.ErrBinding
+			}
+			complete = complete && column.Safe && !column.Nullable && identities[name] != ""
+			projected = append(projected, identities[name])
+		}
+		if complete {
+			sort.Strings(projected)
+			out = append(out, projected)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.Join(out[i], "\x00") < strings.Join(out[j], "\x00") })
+	return out, nil
 }
 
 func redactAuthoringCandidate(out *authoringContext) {

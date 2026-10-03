@@ -352,8 +352,15 @@ func generatedCalendarCorrect(rows [][]json.RawMessage, expected map[string]stri
 	return len(want) == 0
 }
 
-func recordedGeneratedStep(t *testing.T, columns []semantics.Reference) string {
+func recordedGeneratedStep(t *testing.T, columns []semantics.Reference, calendars ...string) string {
 	t.Helper()
+	calendar := "gregorian"
+	if len(calendars) > 1 {
+		t.Fatal("ambiguous recorded calendar")
+	}
+	if len(calendars) == 1 {
+		calendar = calendars[0]
+	}
 	items := []any{}
 	for _, ref := range columns {
 		common := map[string]any{"dataset": ref.Dataset, "column": ref.ID, "aliases": []string{}}
@@ -371,7 +378,7 @@ func recordedGeneratedStep(t *testing.T, columns []semantics.Reference) string {
 			common["description"] = "Gregorian UTC order calendar date"
 			common["role"] = "temporal"
 			common["semantic_role"] = "event_time"
-			common["temporal"] = map[string]any{"calendar": "gregorian", "timezone": "UTC", "grains": []string{"month", "quarter", "year"}}
+			common["temporal"] = map[string]any{"calendar": calendar, "timezone": "UTC", "grains": []string{"month", "quarter", "year"}}
 			common["aliases"] = []string{"order month"}
 		case "order_id":
 			common["kind"] = "dimension"
@@ -399,6 +406,7 @@ func recordedGeneratedStep(t *testing.T, columns []semantics.Reference) string {
 
 func TestGeneratedTopicPipelineRecorded(t *testing.T) {
 	model := newGatewayFixture(t, func(c *config.Gateway) {
+		recordedLiveChatCaps(c)
 		r := c.Roles["embedding"]
 		r.MaxBatchItems = 64
 		r.MaxBatchBytes = 65536
@@ -429,6 +437,7 @@ func TestGeneratedTopicPipelineRecorded(t *testing.T) {
 
 func TestGeneratedTopicProfileHeadFreshness(t *testing.T) {
 	model := newGatewayFixture(t, func(c *config.Gateway) {
+		recordedLiveChatCaps(c)
 		r := c.Roles["embedding"]
 		r.MaxBatchItems = 64
 		r.MaxBatchBytes = 65536
@@ -597,6 +606,7 @@ func recordedPaidGeneratedStep(t *testing.T, columns []semantics.Reference) stri
 
 func TestGeneratedTopicPaidVocabularyPipelineRecorded(t *testing.T) {
 	model := newGatewayFixture(t, func(c *config.Gateway) {
+		recordedLiveChatCaps(c)
 		r := c.Roles["embedding"]
 		r.MaxBatchItems = 64
 		r.MaxBatchBytes = 65536

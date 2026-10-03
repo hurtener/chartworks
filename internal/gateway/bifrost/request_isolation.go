@@ -59,5 +59,8 @@ func isolationInputError() *schemas.LLMPluginShortCircuit {
 func isolatedBifrostContext(parent context.Context) (*schemas.BifrostContext, context.CancelFunc) {
 	ctx, cancel := schemas.NewBifrostContextWithCancel(parent)
 	ctx.SetValue(schemas.BifrostContextKeySkipPluginPipeline, false)
+	ctx.SetValue(schemas.BifrostContextKeyPassthroughExtraParams, false)
+	ctx.SetValue(schemas.BifrostContextKeyUseRawRequestBody, false)
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadMode, false)
 	return ctx, cancel
 }

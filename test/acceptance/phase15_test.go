@@ -179,7 +179,7 @@ func enhancementResponse(t *testing.T, result any) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return "raw:" + string(wire)
+	return "chat_raw:" + string(wire)
 }
 
 func testPhase15ResumableEnhancement(t *testing.T) {

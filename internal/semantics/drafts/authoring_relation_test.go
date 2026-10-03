@@ -14,7 +14,7 @@ func TestAuthoringRelationUsesOnlyExactAuthorizedDiscovery(t *testing.T) {
 	model, profiles := authoringFixture(t)
 	dataset := model.Pack().Datasets[1]
 	profile := profiles[dataset.ID].Profile
-	catalog := sources.Discovery{ContextID: dataset.Source.Context, Revision: dataset.Source.SourceRevision, Relations: []readexec.Relation{{ID: "unselected", Schema: "private", Name: "FORBIDDEN_RELATION_CANARY"}, {ID: dataset.ID, Schema: "analytics", Name: "orders", Columns: profile.Schema}}}
+	catalog := sources.Discovery{SourceID: dataset.Source.Source, ContextID: dataset.Source.Context, Revision: dataset.Source.SourceRevision, Relations: []readexec.Relation{{ID: "unselected", Schema: "private", Name: "FORBIDDEN_RELATION_CANARY"}, {ID: dataset.ID, Schema: "analytics", Name: "orders", Columns: profile.Schema}}}
 	relation, err := matchAuthoringRelation(dataset, profile, catalog)
 	if err != nil || relation.Schema != "analytics" || relation.Name != "orders" {
 		t.Fatal("physical relation identity lost", relation, err)

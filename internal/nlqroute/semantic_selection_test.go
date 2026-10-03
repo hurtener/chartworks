@@ -96,7 +96,7 @@ func TestSQLRecoverySelectedQuestionPinsMetricDimensionAndJoin(t *testing.T) {
 			}
 			// Remove all optional evidence: the complete answer dependencies must remain.
 			assembled, _ := out.GenerationContext()
-			mandatory, err := service.assembler.Assemble(context.Background(), nlq.ContextInput{Locale: assembled.Locale, Strategy: assembled.Strategy, Topic: assembled.Topic, TopicVersion: assembled.TopicVersion, Topics: assembled.Topics, Question: assembled.Question, Relations: assembled.Relations, Metrics: assembled.Metrics, Constraints: assembled.Constraints}, nlq.TierHigh)
+			mandatory, err := service.assembler.Assemble(context.Background(), nlq.ContextInput{MetricFormat: assembled.MetricFormat, Locale: assembled.Locale, Strategy: assembled.Strategy, Topic: assembled.Topic, TopicVersion: assembled.TopicVersion, Topics: assembled.Topics, Question: assembled.Question, Relations: assembled.Relations, Metrics: assembled.Metrics, Constraints: assembled.Constraints}, nlq.TierHigh)
 			if err != nil || !strings.Contains(mandatory.Prompt, "sales_products") || !strings.Contains(mandatory.Prompt, "100 * margin") {
 				t.Fatal("selected semantics depended on optional retrieval", err)
 			}

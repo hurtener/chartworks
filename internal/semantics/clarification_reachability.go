@@ -14,7 +14,7 @@ func (e ClarificationEvaluation) MayRequireSourceBinding() bool {
 // unrelated or unseeded reference cycles stay inactive. Authored rules bound
 // the graph to 128 patterns, 32 targets per pattern and 16 slots per pattern.
 // Input/canonical answer validation has already completed in the evaluator.
-func possibleClarificationBinding(d RuleSetDefinition, in ClarificationInput, answers map[clarificationKey]ClarificationAnswer) bool {
+func possibleClarificationBinding(d RuleSetDefinition, in ClarificationInput, answers map[clarificationKey]ClarificationAnswer, termContext []ClarificationTermMatch) bool {
 	facts := make(map[Reference]bool, len(in.References))
 	for _, r := range in.References {
 		facts[r] = true
@@ -30,7 +30,7 @@ func possibleClarificationBinding(d RuleSetDefinition, in ClarificationInput, an
 			if p.Policy != nil {
 				// The term matcher is the same as actual applicability; reference lookup
 				// uses the bounded graph rather than promoting a hypothetical selection.
-				active, _ = matchClarificationPattern(p, in.Question, nil)
+				active, _ = matchClarificationInputPattern(p, in, nil, termContext)
 				for _, r := range p.Policy.When.AnyReferences {
 					active = active || facts[r]
 				}

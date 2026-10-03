@@ -173,15 +173,19 @@ func commonMappedYear(question string, locale nlq.Language) (parsedSpan, bool) {
 	return span, ok && err == nil
 }
 
-func explicitCalendarGrouping(question string, locale nlq.Language) semantics.TimeGrain {
+func explicitCalendarGroupingForms(locale nlq.Language) map[semantics.TimeGrain][]string {
 	var forms map[semantics.TimeGrain][]string
 	if locale == nlq.LanguageSpanish {
 		forms = map[semantics.TimeGrain][]string{semantics.GrainMonth: {"por mes", "por mes local", "por mes calendario"}, semantics.GrainQuarter: {"por trimestre", "por trimestre local"}, semantics.GrainYear: {"por año", "por ano"}}
 	} else {
 		forms = map[semantics.TimeGrain][]string{semantics.GrainMonth: {"by month", "per month", "by calendar month", "by local calendar month"}, semantics.GrainQuarter: {"by quarter", "per quarter", "by calendar quarter", "by local calendar quarter"}, semantics.GrainYear: {"by year", "per year", "by calendar year", "by local calendar year"}}
 	}
+	return forms
+}
+
+func explicitCalendarGrouping(question string, locale nlq.Language) semantics.TimeGrain {
 	var found semantics.TimeGrain
-	for grain, phrases := range forms {
+	for grain, phrases := range explicitCalendarGroupingForms(locale) {
 		for _, phrase := range phrases {
 			if containsPhrase(question, phrase) {
 				if found != "" && found != grain {
@@ -195,7 +199,10 @@ func explicitCalendarGrouping(question string, locale nlq.Language) semantics.Ti
 }
 
 func reviewedCalendarGrouping(in RouteRequest, admitted []admittedTopic) semantics.TimeGrain {
-	q := normalizedPhrase(unquotedIntent(in.Question))
+	// Mask before quote handling: a quote inside a private value is not public
+	// grouping syntax. The shared inference lexer reserves marker boundaries.
+	in.Question = unquotedIntent(groundedQuestion(in, admitted))
+	q := questionInferenceSurface(in, admitted).text
 	for _, item := range admitted {
 		labels := []string{}
 		for _, m := range item.publication.Definition.Measures {

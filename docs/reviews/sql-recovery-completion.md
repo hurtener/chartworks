@@ -1,16 +1,108 @@
 # SQL recovery — completion tracker
 
-PR #62; implementation baseline `ea38c0774ac9f16bc7a7d3ffeeb4f26b666320c7`.
-Latest hosted-qualified checkpoint: `c755ad3c5311cd606b58ef5b32be7030f0f2d3bd`
-(tree `3d638fa90133806e0c2cf599705c5066d4d4445b`). The subsequent runtime tree
-`0ce69bd875deb82df3d3276cbd1c060f815ebfbd` passed integrated local qualification
-below; its new published head still requires hosted qualification.
-S1/S2/S3/S7/S8/S9/S10/S11/S12 have completed their documented finite software
-scopes. S4/S5/S6 and Q1/Q2/Q3 remain open; the legacy-refinement review transition
-and its remaining approval/resume work are explicit below.
-Updated 2026-09-30. This is the current AP-00–AP-08 tracker. Historical
-checkpoint prose in the [recovery ledger](sql-context-recovery.md) is evidence
-at its stated revision, not the current completion status.
+Merged SQL/topic foundation (PR #62): `9ada852c5a78490dff5ba9aeb300e9d927031522`
+(tree `6982af6dfeaa40989f80b477071c165e31a29160`). On this exact head, both
+Go 1.26.4 and 1.27.1 recovery jobs recorded 2,998 passing unit/subtest events
+across 32 packages and 412 acceptance events, with zero failures or missing
+required tests. The sole opt-in paid-reranker skip is not live model evidence.
+[Hosted recovery](https://github.com/hurtener/chartworks/actions/runs/36814989291).
+
+PR #70 hosted recovery verified both Go 1.26.4 and 1.27.1 with 3,477 passing
+unit/subtest events across 33 packages and 470 acceptance events each, with no
+failures, missing required tests or acceptance skips. The sole opt-in reranker
+skip is not live evidence. Tested merge `ea78f277` has tree `a3516039`.
+[PR #70 SQL recovery](https://github.com/hurtener/chartworks/actions/runs/36946745827).
+Reporting retains only the kernel memory/stability and Phase32 AC03/AC04/AC05
+failures caused by the absent charged-memory hierarchy. The automatic live attempt
+remains incomplete at the scalar `select`/empty-keys producer mismatch; PR #72
+corrects that schema separately at `112d327d417a90242e898d0e15c535aa39a531e2`
+(tree `d338d8a5`) without a paid rerun. No full-live completion follows from either
+software checkpoint.
+
+Updated 2026-10-02. S1/S2/S3/S7/S8/S9/S10/S11/S12 have completed their documented
+finite software scopes. S4/S5/S6 and Q1/Q2/Q3 remain open. Later sections retain
+historical evidence at their stated revision; the current finite residuals are
+listed below and in the [software matrix](sql-recovery-software-matrix.md).
+
+PR #63 is stacked on this checkpoint. It contains the subsequent captured-report
+variants, retained amount-completeness transport, ownership/retention, explicit
+saved-origin derivation, PNG renditions and deterministic statistical narratives.
+The recovered charged-memory renderer is published at `9797f3518adcc2b037600172eb5a2b7badc04706`.
+Its standard CI and both SQL recovery jobs passed. Reporting passed scheduling,
+actual browser, charts, retained disclosures/PNG/ownership, units and build, but
+kernel memory/stability gates and Phase32 AC03/AC04/AC05 fail because the runner
+lacks the required operator-provisioned cgroup root. This is still unqualified
+kernel isolation, not permission to remove the guard.
+[Reporting evidence](https://github.com/hurtener/chartworks/actions/runs/36912568242).
+
+PR #64 is stacked on #63 at `3a3e5095940602ec5e091b3a7670e766ba6d87c0`.
+Both Go 1.26.4 and 1.27.1 recorded 3,230 unit/subtest passes across 32 packages
+and 421 acceptance passes, zero failures or missing required cases, and only the
+opt-in live reranker skip. Tested merge `f807e921878e45157034adb577ffdb64a41a5d17`
+has exactly the head tree `bba449315e59d301d916824c4360731bc514e826`.
+All eight grouped-period variants passed. Standard CI passed; reporting retains
+only the inherited kernel isolation failures described above.
+[SQL recovery](https://github.com/hurtener/chartworks/actions/runs/36917357859),
+[reporting](https://github.com/hurtener/chartworks/actions/runs/36917358205).
+
+PR #65 corrected strict-provider checkpoint `2c52670b55fd5bf3a3605e68db2f2c66b244e2a5`
+passed both Go toolchains with 3,430 unit/subtest and 445 acceptance events each.
+PR #66 calendar checkpoint `8bc87fff035fe9bd88667733d920b363b24e1ab4` passed both
+with 3,435 unit/subtest and 456 acceptance events each, zero failures/missing
+required cases/acceptance skips; only the opt-in reranker was skipped. Tested
+merge `8ba3bf358ba1584f4e55a9fa11c877a4c07fe096` has the exact PR #66 head tree
+`3c437e601e42cca8b266ccf96863d71d4033c6aa`. Fast CI passed. Reporting retained only
+the kernel memory/stability and Phase32 AC03/AC04/AC05 isolation failures.
+[PR #65 SQL](https://github.com/hurtener/chartworks/actions/runs/36929174725),
+[PR #66 SQL](https://github.com/hurtener/chartworks/actions/runs/36929979827),
+[PR #66 reporting](https://github.com/hurtener/chartworks/actions/runs/36929980894).
+
+The live provider now accepts the strict transport, and the calendar authoring
+fix produced canonical metadata. A subsequent synthetic full run passed two
+enhancement responses and reached whole-topic review, but the advisory used
+unqualified entity references and failed before final draft save. Offline replay
+isolated that exact mismatch. The [request-bound review correction](../contracts/topic-quality-review-bindings-v1.md)
+retains all downstream validation and distinguishes declared business meaning
+from physical proof. PR #67 published that correction at
+`48e759cfd9e4a39e2c613ec1a7485ae91299e978`. A subsequent live call exposed a stricter
+provider limitation: quoted canonical column coordinates cannot be strict string
+enum literals. The quality-role continuation uses exact request-local handles,
+a complete measured mapping and canonical-schema validation after decoding.
+No identities or findings are guessed, dropped or silently approved.
+
+The subsequent PR #68 candidate `a2567f816dce7c52981e2ef9e17af544f7bb6b50`
+passed the fixed synthetic live baseline: two enhancement pages, valid retained
+review, explicit operator publication and two correct generated SQL queries.
+Gross was USD 700.00; monthly results were USD 320.00/240.00/140.00. One genuine
+uniqueness-evidence advisory was preserved and adjudicated against the fixture's
+actual primary key. Ten provider calls cost USD 0.007315153; no SQL correction
+was used. See [exact qualification and limits](generated-topic-live-qualification.md).
+This is bounded live evidence, not full semantic-quality or migration qualification.
+
+## Current residual software and qualification
+
+- V10 now composes authenticated reviewed fact-owned periods with grouped
+  PostgreSQL region/calendar CTE lanes, schema-3 custody and exact replay. See the
+  [grouped-period contract](../contracts/analytical-grouped-owned-periods-v1.md).
+  V11 now selects complete aligned groups through authenticated direct shared-key
+  predicates at the final spine, with optional fact periods and schema4 replay.
+  Generic fact/shared-dimension pushdown, derived owned-lane binding and broader
+  dialects remain open; scalar v9 receipts retain their old meaning
+- Outer joins have equality-key proof but no reviewed ON-versus-WHERE predicate
+  placement policy. Analytical windows/general sets remain unsupported except
+  the reviewed UNION DISTINCT group-key spine
+- Grouped proof covers PostgreSQL/MySQL; scoped scalar proof covers PostgreSQL.
+  Required remaining dialects need concrete consumers and physical uniqueness
+  evidence, not only parser normalization. Named-local-zone MySQL instant buckets
+  and hour/week/fiscal/occurrence-aware DST grain remain outside the admitted proof
+- Scoped schema-2/schema-3 query receipts are ineligible for the schema-1 reusable
+  learning consumer. That continuation does not reopen the completed S10 baseline
+- Topic generation/enhancement/review/publication and correction-derived learning
+  have recorded-provider, real-source consumers. The unchanged independent-oracle
+  corpus now passes all eight answer, five clarification and six rejection contracts
+- Same-snapshot A/B/C/D comparison, live generated-topic quality, required engine
+  qualification, owner results and final phase-34/25 release evidence remain open.
+  Configuration-only live tests and hosted unit success do not close those gates
 
 **Overall: in progress.** All nine phases have delivered increments; none is
 claimed fully closed. A fixed defect review, a safe unsupported disposition, and
@@ -26,7 +118,7 @@ No scope has been discarded and no release or cutover has been approved.
 | AP-00 | Exact source snapshots; engine and effective provider-wire capture; EN/ES synthetic fixtures | Paired cohort execution/reporting as needed by the existing evaluation runtime | Same-snapshot original/replacement owner cohort with frozen expected results; opt-in live diagnostics |
 | AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay; S1 dependent applicability qualified at 6273c80 | No remaining finite S2 software item after c755ad3; model calibration remains qualification | Held-out selection/ambiguity calibration, not similarity-as-confidence |
 | AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3 complete at c18a5b2: exact confirmed joins and mandatory projection; no remaining S3 software item | Operator tokenizer/model-window/framing qualification |
-| AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
+| AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | V9 delivers reviewed order/limit/filter, physical join/fan-out proof, grouped programs and scoped PostgreSQL fact lanes. Remaining S4/S5 capability is outside these documented closed forms; S6 retains non-PostgreSQL scoped-lane and required dialect boundaries | Business-result cohorts and actual required engines; safe rejection is not support |
 | AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7 complete at 2dd7e9b: closed diagnostic vocabulary and bounded consumers qualified; wider engine quality remains Q2 | Broader privacy, repair/result and engine matrix within existing attempt limits |
 | AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody/replacement; S8 governed scalar/calendar inheritance, replacement/removal, empty-state policy, SDK, saved views and replay qualified at 93539cc; S9 grouping inheritance/replacement/totals/calendar and pending refinement qualified at 996db06 | S9 native parameter-scope extension qualified at 8cceaa1 for immutable CTE/derived/join/subquery/window/set inputs and eligible outer edits; wider language is S2 | Wider language and owner journeys beyond the checked EN/ES continuation grammar |
 | AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | No remaining finite S10 item in the admitted nine-domain matrix; unknown/custom domains do not borrow authority | Actual remaining engine/profile qualification; owner result quality |
@@ -461,3 +553,61 @@ is remaining explicit S4/S9 work, not a claim of unchanged automatic continuity.
 [Finite software matrix](sql-recovery-software-matrix.md) identifies the remaining
 derived/grouped/calendar/placement and temporal policies. Hosted exact-head checks,
 owner cohorts, live providers and remaining real engines retain separate gates.
+
+
+## Grouped owned-period checkpoint — v10
+
+The bounded grouped-period consumer now passes eight real PostgreSQL variants:
+region/month × cohort/activity × raw/qualifying group domains. Independent source-row
+oracles preserve NULL keys, all-NULL measures, zero versus absent counts, canceled-only
+groups, month/year boundaries and prior/future order-month activity keys. Initial
+HTTP/SDK Plan and terminal Run replay preserve schema-3 custody; altered policy,
+source/context, population identity, parameter indexes and output ordinals fail closed.
+Period refinement uses current authenticated mappings and preserves its unbound base.
+
+Completed local evidence: 1,120 full exec/NLQ race events (one existing optional
+MySQL-fixture skip), 29 focused v10 events, 22 retained PostgreSQL regression
+events, all 40 unchanged generated-adversarial events, 261 store/API/SDK events,
+and all eight new source variants. Planning, vet and whitespace checks passed.
+After integration with renderer head `9797f35`, 50 focused race events and 18
+PostgreSQL/reporting events passed (82.085 seconds for the source suite), with
+zero failures/skips; full build and vet also passed. The hosted workflow explicitly
+requires the new family and all eight variant pass events.
+Hosted recovery at `3a3e509` now passes on both Go toolchains: 3,230 unit/subtest
+and 421 acceptance events each, including every required variant. The tested
+merge tree equals the published head tree, as recorded above. These remain
+recorded-provider software results; no generic-filter, live-model, renderer-kernel
+or release gate is closed by this increment.
+
+## Full recovery scope status — 2026-10-02 UTC
+
+This task covers topics, reusable learning, SQL, reporting, charting and final
+qualification. It is not a SQL-only target. No percentage is derived from the
+counts of tests, PRs or finite S-items: those items differ materially in size and
+none is a weighted full-product denominator.
+
+| Subsystem | Implemented and evidenced | Still missing or unqualified |
+|---|---|---|
+| Topics and authoring | Profile scaffold, bounded generation, whole-candidate advisory, exact operator review/publication, strict provider projection and canonical calendars; fixed live generated-topic baseline | Broader generated-topic quality and ambiguity calibration, same-snapshot owner cohorts; one six-row baseline is not general quality |
+| Learning and continuation | Reviewed redacted examples, feedback proposals, lineage, private predicate and parameter custody, saved/refined query consumers | Reusable learning for scoped schema-2/schema-3 receipts; remaining engine/profile and broader language journeys |
+| SQL and analytical semantics | Selected metrics/KPIs, direct/calendar grouping, reviewed populations, grouped fact periods, native validation and exact retained replay; recorded independent-oracle corpus | Shared/non-temporal grouped filter ownership, derived owned lanes, outer-join predicate placement, general windows/sets, remaining dialect/physical-key qualification; richer automatic grouping is being implemented separately |
+| Reporting and retention | Captured variants, amount-completeness transport, immutable ownership/derivation, scheduling and retained artifact reads, deletion/expiry gates | Full integrated renderer qualification and broader owner workflows; no full-report PNG/PDF claim |
+| Charts and viewer/export | Reviewed display intent, rich charts, actual browser checks, retained HTML/SVG and bounded single-output PNG, deterministic statistical narratives | Mandatory kernel isolation/stability and 100 representative concurrent renders; forthcoming broader authoring/dashboard experience is not yet qualified |
+| Performance and release | Existing finite phase criteria and pinned source/provider evidence | Actual frozen-run reuse adapter/current performance evidence, remaining engines, same-snapshot comparisons, phase34 then phase25 final release |
+
+PR #62 is merged as `b8ec74fd5a196f75704543938ff70deba94a5344`; its tree exactly
+matches the previously qualified `9ada852c` checkpoint. The reporting and later
+stack remains separately reviewable; mandatory renderer failures are not skipped
+or hidden by that merge. PR #68 has both-toolchain hosted evidence and the bounded
+live/held-out results described in [the qualification note](generated-topic-live-qualification.md).
+The held-out grouped live lanes used explicit reviewed grouping; the original
+three automatic-grouping admission failures remain failures.
+
+
+The direct shared-key group-selection continuation is implemented with migration078
+and exact schema4 replay/refinement. Its final local gate passed1,951 affected race
+unit/subtests and70 actual PostgreSQL acceptance events, plus build/vet/planning;
+only the existing optional MySQL local unit test skipped. Six new group-selection
+configurations preserve independent fact populations and NULL/missing/zero meaning.
+See [scope, failures and qualification](group-selection-qualification.md). Hosted
+qualification and all broader residuals remain separate obligations.

@@ -2,6 +2,7 @@ package nlqexec
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -98,5 +99,37 @@ func TestSQLRecoveryLegacyGroupedReviewGuidance(t *testing.T) {
 	}
 	if isGroupedDomainReview(exec.ErrBinding) || !isGroupedDomainReview(&exec.AnalyticalError{Code: exec.AnalyticalGroupDomainReviewCode, Unsupported: true}) {
 		t.Fatal("broad group review gate")
+	}
+}
+
+func TestReviewedApplicabilityOriginRequiresPrivateProducer(t *testing.T) {
+	proof := &IntentReviewEvidence{Legacy: IntentReviewOrigin{QueryID: "legacy", Revision: 1, Digest: exec.Hash("legacy")}, Preflight: IntentReviewOrigin{QueryID: "preflight", Revision: 1, Digest: exec.Hash("preflight")}, AnswerDigest: exec.Hash("answers")}
+	q := QueryRecord{ID: "child", Session: "session", Context: "context", Parent: "legacy", ParentRevision: 1, ParentDigest: proof.Legacy.Digest, AnalyticalVersion: 7}
+	ctx := context.WithValue(t.Context(), intentReviewKey{}, proof)
+	bindIntentReview(ctx, &q)
+	if origin, ok := q.ReviewedApplicabilityOrigin(); !ok || origin != proof.Preflight {
+		t.Fatal("private review origin missing")
+	}
+	b, _ := json.Marshal(q)
+	var decoded QueryRecord
+	_ = json.Unmarshal(b, &decoded)
+	if _, ok := decoded.ReviewedApplicabilityOrigin(); ok {
+		t.Fatal("JSON manufactured review write seal")
+	}
+	copy := q
+	fresh := *q.IntentReview
+	fresh.producerSeal = ""
+	copy.IntentReview = &fresh
+	if _, ok := copy.ReviewedApplicabilityOrigin(); ok {
+		t.Fatal("recomputed public review pins manufactured custody")
+	}
+	for _, change := range []func(*QueryRecord){func(q *QueryRecord) { q.Context = "other" }, func(q *QueryRecord) { q.ParentDigest = exec.Hash("changed") }, func(q *QueryRecord) { q.IntentReview.Preflight.QueryID = "same-mask-other-preflight" }} {
+		copy = q
+		value := *q.IntentReview
+		copy.IntentReview = &value
+		change(&copy)
+		if _, ok := copy.ReviewedApplicabilityOrigin(); ok {
+			t.Fatal("changed review borrowed private seal")
+		}
 	}
 }

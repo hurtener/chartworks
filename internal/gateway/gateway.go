@@ -36,9 +36,10 @@ var (
 // Call is an immutable, authorized data partition. Domain services supply actual resolved references.
 // It cannot turn a caller's label into a narrower source context; source validation owns that proof.
 type Call struct {
-	envelope  identity.Envelope
-	partition string
-	key       string
+	envelope     identity.Envelope
+	partition    string
+	key          string
+	authorityKey string
 }
 
 // Authorize validates every supplied reference before making any input eligible for inference.
@@ -59,11 +60,15 @@ func Authorize(e identity.Envelope, action, partition string, resources ...acces
 	})
 	material, _ := json.Marshal([]any{e.Tenant(), e.User(), e.Session(), partition, action, scopes, refs})
 	hash := sha256.Sum256(material)
-	return Call{envelope: e, partition: partition, key: hex.EncodeToString(hash[:])}, nil
+	authorityMaterial, _ := json.Marshal([]any{e.Tenant(), e.User(), e.Session(), action, scopes, refs})
+	authorityHash := sha256.Sum256(authorityMaterial)
+	return Call{envelope: e, partition: partition, key: hex.EncodeToString(hash[:]), authorityKey: hex.EncodeToString(authorityHash[:])}, nil
 }
 
 // Valid checks the value's invariants and any attached authority expiry.
-func (c Call) Valid() bool { return c.envelope.Valid() && c.partition != "" && c.key != "" }
+func (c Call) Valid() bool {
+	return c.envelope.Valid() && c.partition != "" && c.key != "" && c.authorityKey != ""
+}
 
 // Tenant returns the verified tenant partition.
 func (c Call) Tenant() string { return c.envelope.Tenant() }
@@ -81,6 +86,16 @@ func (c Call) Deadline() time.Time { return c.envelope.Deadline() }
 // Key returns the digest of the exact identity, signed reach and data context.
 func (c Call) Key() string {
 	return c.key
+}
+
+// AuthorityKey retains the verified subject, action and resolved resources,
+// excluding only the per-operation partition. Recorded integration fixtures
+// use it with the exact request digest across distinct frozen run IDs.
+func (c Call) AuthorityKey() string {
+	if !c.Valid() {
+		return ""
+	}
+	return c.authorityKey
 }
 
 // Candidate contains an already resolved reference; IDs are stable output associations, not authority.

@@ -125,6 +125,7 @@ func (s *Service) requalifyExample(ctx context.Context, e identity.Envelope, in 
 	if contract == nil {
 		return ExampleRecord{}, exec.ErrAnalyticalUnsupported
 	}
+	a.analytical = contract
 	candidate, err := bindClarificationCandidate(ctx, a, generatedCandidate{SQL: old.SQL, Parameters: parameters})
 	if err != nil {
 		return ExampleRecord{}, err

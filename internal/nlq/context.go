@@ -262,6 +262,7 @@ type SourceRelation struct {
 
 // ContextInput is detached, validated input for context assembly.
 type ContextInput struct {
+	MetricFormat MetricFormat     `json:"metric_format,omitempty"`
 	Locale       Language         `json:"locale"`
 	Strategy     Strategy         `json:"strategy"`
 	Topic        string           `json:"topic,omitempty"`
@@ -310,6 +311,7 @@ type Omission struct {
 
 // AssembledContext is the sealed model-facing context and its bounded audit.
 type AssembledContext struct {
+	MetricFormat MetricFormat     `json:"metric_format,omitempty"`
 	Tier         Tier             `json:"tier"`
 	Budget       int              `json:"budget"`
 	Tokens       int              `json:"tokens"`
@@ -422,7 +424,7 @@ func (a *ContextAssembler) Assemble(ctx context.Context, input ContextInput, tie
 	})
 
 	assembled := AssembledContext{
-		Tier: tier, Budget: budget, Locale: copyInput.Locale, Strategy: copyInput.Strategy,
+		MetricFormat: copyInput.MetricFormat, Tier: tier, Budget: budget, Locale: copyInput.Locale, Strategy: copyInput.Strategy,
 		Topic: copyInput.Topic, TopicVersion: copyInput.TopicVersion, Topics: cloneTopicRevisions(copyInput.Topics), Question: copyInput.Question,
 		Relations:   cloneSourceRelations(copyInput.Relations),
 		Constraints: cloneConstraintState(copyInput.Constraints), Metrics: cloneMetrics(copyInput.Metrics),
@@ -673,7 +675,7 @@ func renderItem(lane Lane, id, text string) string {
 }
 
 func outputInput(output AssembledContext) ContextInput {
-	return ContextInput{Locale: output.Locale, Strategy: output.Strategy, Topic: output.Topic, TopicVersion: output.TopicVersion, Topics: cloneTopicRevisions(output.Topics), Question: output.Question, Relations: cloneSourceRelations(output.Relations), Evidence: cloneEvidence(output.Evidence), Constraints: cloneConstraintState(output.Constraints), Metrics: cloneMetrics(output.Metrics), Advisory: cloneOptional(output.Advisory), Examples: cloneOptional(output.Examples)}
+	return ContextInput{MetricFormat: output.MetricFormat, Locale: output.Locale, Strategy: output.Strategy, Topic: output.Topic, TopicVersion: output.TopicVersion, Topics: cloneTopicRevisions(output.Topics), Question: output.Question, Relations: cloneSourceRelations(output.Relations), Evidence: cloneEvidence(output.Evidence), Constraints: cloneConstraintState(output.Constraints), Metrics: cloneMetrics(output.Metrics), Advisory: cloneOptional(output.Advisory), Examples: cloneOptional(output.Examples)}
 }
 
 func renderAssembledPrompt(input ContextInput) string {
@@ -759,7 +761,7 @@ func cloneAndValidateInput(input ContextInput) (ContextInput, error) {
 	if input.Constraints != nil && len(input.Constraints.Required)+len(input.Constraints.Excluded) > MaxConstraints {
 		return ContextInput{}, &ValidationError{Code: CodeLimit, Path: "constraints"}
 	}
-	out := ContextInput{Locale: input.Locale, Strategy: input.Strategy, Topic: input.Topic, TopicVersion: input.TopicVersion, Topics: cloneTopicRevisions(input.Topics), Question: input.Question}
+	out := ContextInput{MetricFormat: input.MetricFormat, Locale: input.Locale, Strategy: input.Strategy, Topic: input.Topic, TopicVersion: input.TopicVersion, Topics: cloneTopicRevisions(input.Topics), Question: input.Question}
 	seenRelations := map[string]bool{}
 	for _, relation := range input.Relations {
 		key := relation.Topic + "/" + relation.Dataset

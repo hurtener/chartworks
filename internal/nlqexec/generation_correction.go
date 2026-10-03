@@ -39,7 +39,23 @@ func (s *Service) finalizeGenerationCorrection(ctx context.Context, e identity.E
 	request := RefineRequest{QueryID: q.ID}
 	pendingCtx := withGenerationContinuation(ctx, &generationContinuation{refinement: &request})
 	question := refinementQuestion(q, QuestionRequest{})
-	pending, err := s.prepareGenerationPending(pendingCtx, e, question, correctionPendingOperation(q), q.ID, &q, correction.admitted, correction.generation, correction.receipt, 0, runErr)
+	var custodyErr error
+	if correction.admitted.route.Applicability != nil {
+		keeper, ok := s.router.(applicabilityKeeper)
+		if !ok {
+			custodyErr = exec.ErrBinding
+		} else {
+			correction.admitted.route, custodyErr = keeper.ReissueApplicabilityForPending(ctx, e, q.ID, q.Route)
+		}
+	}
+	if q.IntentReview != nil {
+		pendingCtx = context.WithValue(pendingCtx, intentReviewKey{}, q.IntentReview)
+	}
+	var pending QueryRecord
+	err := custodyErr
+	if err == nil {
+		pending, err = s.prepareGenerationPending(pendingCtx, e, question, correctionPendingOperation(q), q.ID, &q, correction.admitted, correction.generation, correction.receipt, 0, runErr)
+	}
 	if err != nil {
 		if finalErr := s.repo.UpdateQuery(ctx, mustScope(e), q, q.Revision-1); finalErr != nil {
 			return finalErr, true

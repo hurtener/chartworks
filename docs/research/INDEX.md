@@ -6,8 +6,8 @@
 > and phase plans decide.
 
 Both predecessors are referred to only as **the client predecessor**
-(`_ref/original_wayfinder`) and **the generalistic predecessor**
-(`_ref/forked_wayfinder_explorer`) (CLAUDE.md "Predecessor hygiene"); no predecessor
+(private review mapping) and **the generalistic predecessor**
+(private comparison mapping) (CLAUDE.md "Predecessor hygiene"); no predecessor
 code or file is ever pasted into a brief. Citation convention: `_ref/` root directory
 names are sanctioned; inner package names are elided as `<pkg>`.
 

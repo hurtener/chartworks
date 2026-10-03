@@ -8,13 +8,15 @@ Existing shipped phase labels and historical defect-review results do not
 close this subsequent extension. No required behavior is discarded by this
 tracker correction; prior named acceptance criteria and historical evidence stay.
 
-Current hosted-qualified checkpoint: `c755ad3`. The subsequent runtime tree
-`0ce69bd875deb82df3d3276cbd1c060f815ebfbd` passed integrated local qualification,
-including finite S10/S11 domain/signature completion. Its final published head
-still needs hosted checks. S4/S5/S6 and the explicitly documented legacy predicate
-approval/resume path remain implementation work; Q1/Q2/Q3 are separate gates.
-The canonical tracker controls current scope; historical evidence below does not
-qualify later source.
+Current hosted-qualified SQL checkpoint: PR #68
+`a2567f816dce7c52981e2ef9e17af544f7bb6b50`. Both supported Go toolchains passed
+3,450 unit/subtest and 461 acceptance events; the exact bounded live baseline
+and explicitly selected held-out lanes are recorded in
+[generated-topic qualification](../reviews/generated-topic-live-qualification.md).
+Automatic grouping for the three rich held-out grouping questions was still an
+open gap at that head. The separately opt-in grouping-intent continuation below
+requires its own exact-source local, hosted and live qualification. Full S4/S5/S6,
+engine, renderer and Q1/Q2/Q3 release obligations remain open.
 
 
 Status: shipped. Owner: internal/nlq. Hard dependencies: 05, 07, 15, 16. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
@@ -231,3 +233,29 @@ closure/rules, not SQL authority. Explicit choices and historical replay retain
 their behavior; unknown/ambiguous model choices cannot produce executable plans.
 No interpretation-confidence, live quality or full-recovery completion is inferred
 from these software changes. Historical results above retain their stated scope.
+
+## Grounded grouping-intent continuation
+
+[Grounded grouping intent v1](../contracts/grounded-grouping-intent-v1.md) adds an
+explicit normal-route opt-in for reviewed grouping selection from rich language.
+Its current implementation and required regression roots live in
+`internal/nlqroute/grouping_intent.go`, the route replay/selection consumers and
+`TestSQLRecoveryGroundedGrouping*`. It keeps default/manual costs unchanged,
+binds the complete current admitted catalog and uses typed ambiguity rather than
+question rewriting. Optional protected route JSON requires no migration.
+The ordinary SDK/PG consumer is `TestGeneratedTopicGroundedGroupingIntentRecorded`.
+Recorded evidence does not qualify live language quality or the full phase.
+
+## Explicit shared-metric presentation version
+
+The [generation-packet contract](../contracts/generation-packet-v2.md#explicit-metric-wrapper-format-and-retained-compatibility)
+now separates fresh `shared-versioned-v2` wrappers from omitted historical format.
+All exact definition bodies, versioned namespaces and root edges remain mandatory;
+legacy prompt/JSON/seal/lineage compatibility is covered by pre-change synthetic
+goldens. Route and clarification budget assembly select the explicit fresh format;
+retained replay and generation/provider refitting preserve their selected version.
+The token tiers, semantic selection and analytical proof contracts are unchanged.
+`TestMetricFormat*` covers the pure/service boundaries and
+`TestMetricFormatLegacyStoredReplayAcceptance` names the separate synthetic
+PostgreSQL/SDK legacy replay and fresh-child continuation control. A named test is
+not a qualification claim until its exact-source run is recorded.

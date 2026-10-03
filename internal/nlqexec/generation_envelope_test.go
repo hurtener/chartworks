@@ -43,7 +43,7 @@ func TestSQLRecoveryServiceRefitsBeforeGenerateAndRetainsActualPacket(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	model := &envelopeCapture{maxBytes: 2400 + len(encoded) - 2, recoveryCapture: recoveryCapture{sequenceGateway: sequenceGateway{responses: []gateway.Generated{recoveryCandidate("SELECT id FROM analytics.sales", nil, "sqlgen")}}}}
+	model := &envelopeCapture{maxBytes: 2400 + len(encoded) - 2 + strictFramingOverhead(t), recoveryCapture: recoveryCapture{sequenceGateway: sequenceGateway{responses: []gateway.Generated{recoveryCandidate("SELECT id FROM analytics.sales", nil, "sqlgen")}}}}
 	svc := &Service{engine: model, validator: &sequenceValidator{}}
 	got, fixes, _, _, err := svc.generateAndValidate(context.Background(), e, admitted, g, call, budget, "")
 	if err != nil {
@@ -78,10 +78,24 @@ func TestSQLRecoveryServiceMandatoryEnvelopeFailureDoesNotGenerate(t *testing.T)
 func TestSQLRecoveryRepairUsesOwnEnvelopeAndRetainsInitialUsage(t *testing.T) {
 	e := testEnvelope(t)
 	admitted, g, call, budget := testGeneration(t, e)
-	model := &envelopeCapture{maxBytes: 8192, recoveryCapture: recoveryCapture{sequenceGateway: sequenceGateway{responses: []gateway.Generated{recoveryCandidate("SELECT wrong FROM analytics.sales", nil, "sqlgen"), recoveryCandidate("SELECT id FROM analytics.sales", nil, "sqlfix")}}}}
+	model := &envelopeCapture{maxBytes: 8192 + strictFramingOverhead(t), recoveryCapture: recoveryCapture{sequenceGateway: sequenceGateway{responses: []gateway.Generated{recoveryCandidate("SELECT wrong FROM analytics.sales", nil, "sqlgen"), recoveryCandidate("SELECT id FROM analytics.sales", nil, "sqlfix")}}}}
 	svc := &Service{engine: model, validator: &sequenceValidator{errors: []error{exec.ErrUnsafe, nil}}}
 	candidate, fixes, _, _, err := svc.generateAndValidate(context.Background(), e, admitted, g, call, budget, "")
 	if err != nil || fixes != 1 || len(model.roles) != 2 || model.roles[0] != "sqlgen" || model.roles[1] != "sqlfix" || candidate.generation == nil || strings.Contains(candidate.generation.Prompt, "validation_repair") {
 		t.Fatal("repair envelope or initial usage lost", err)
 	}
+}
+
+// Preserve the tests' original semantic-content allowance while accounting for
+// the SDK's actual indented schema framing introduced by envelope policy v2.
+func strictFramingOverhead(t *testing.T) int {
+	t.Helper()
+	projection, err := gateway.NewStrictSchema(generationSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := map[string]any{"model": "recorded", "messages": []any{map[string]any{"role": "system", "content": "system"}, map[string]any{"role": "user", "content": "prompt"}}, "response_format": map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": generationSchema.Name(), "strict": true, "schema": projection.Document()}}, "max_completion_tokens": 256, "store": false}
+	compact, _ := json.Marshal(body)
+	indented, _ := json.MarshalIndent(body, "", "  ")
+	return len(indented) - len(compact)
 }

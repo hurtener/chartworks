@@ -1,0 +1,11 @@
+strategy:single_topic
+locale:en
+topic:sales
+version:v3
+question:Compare reviewed sum and unknown count
+metrics[sales:total]:Reviewed total
+metric_dependency[sales:total/column/orders:amount_total]:{"dataset":"orders","column":{"id":"amount","source_name":"amount_usd","nullable":true},"meaning":"USD; unknown remains NULL"}
+metric_dependency[sales:total/measure/total]:{"id":"total","aggregation":"sum","scope":"paid orders","keys":["division","order_id"],"filter":"status = P","meaning":"total"}
+metrics[sales:unknown]:Reviewed unknown
+metric_dependency[sales:unknown/column/orders:amount_unknown]:{"dataset":"orders","column":{"id":"amount","source_name":"amount_usd","nullable":true},"meaning":"USD; unknown remains NULL"}
+metric_dependency[sales:unknown/measure/unknown]:{"id":"unknown","aggregation":"count","scope":"paid orders","keys":["division","order_id"],"filter":"status = P","meaning":"unknown"}

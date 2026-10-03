@@ -2,6 +2,7 @@ package foundation
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,7 +24,7 @@ type Build struct{ Version, Commit, Date string }
 // Starter is the command's injected, cancellable service lifecycle.
 type Starter func(context.Context, config.Config, io.Writer) error
 
-const usage = "usage: chartworks version | config-check [--defaults | --config PATH] | serve --config PATH [--listen IP:PORT] | mcp --config PATH [--listen IP:PORT] | client --help | eval gate|inspect --suite PATH | eval perf-inspect --profile PATH\n"
+const usage = "usage: chartworks version | schema-manifest | config-check [--defaults | --config PATH] | serve --config PATH [--listen IP:PORT] | mcp --config PATH [--listen IP:PORT] | client --help | eval gate|inspect --suite PATH | eval perf-inspect --profile PATH\n"
 
 // Command has deterministic exit codes and injectable environment, I/O and startup.
 func Command(ctx context.Context, args []string, lookup func(string) (string, bool), stdout, stderr io.Writer, build Build, start Starter) int {
@@ -38,6 +39,28 @@ func Command(ctx context.Context, args []string, lookup func(string) (string, bo
 			return 2
 		}
 		if !write(stdout, fmt.Sprintf("chartworks %s (%s; %s)\n", build.Version, build.Commit, build.Date)) {
+			return 1
+		}
+		return 0
+	}
+	if args[0] == "schema-manifest" {
+		if len(args) != 1 {
+			write(stderr, usage)
+			return 2
+		}
+		manifest, err := postgres.Migrations()
+		if err != nil {
+			return 1
+		}
+		digest, err := postgres.SchemaDigest()
+		if err != nil {
+			return 1
+		}
+		if json.NewEncoder(stdout).Encode(struct {
+			Commit         string `json:"commit"`
+			MigrationCount int    `json:"migration_count"`
+			SHA256         string `json:"sha256"`
+		}{build.Commit, len(manifest), digest}) != nil {
 			return 1
 		}
 		return 0

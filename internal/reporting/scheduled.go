@@ -149,6 +149,16 @@ func scheduledDefinition(d DocumentDefinition, dispatch *jobs.ReportingDispatch)
 		if t.Type == "saved_question" && w.Kind != "query" {
 			return DocumentDefinition{}, ErrStale
 		}
+		if IsCapturedQueryVariant(w) {
+			ref := w.Query.Variant
+			pin, found := pins[w.ID]
+			if t.Type == "saved_question" || !validVariantReference(ref) || !found || pin.Block != ref.Block || pin.Revision != ref.Revision || pin.Digest != ref.Digest {
+				return DocumentDefinition{}, ErrStale
+			}
+			delete(pins, w.ID)
+			widgets = append(widgets, w)
+			continue
+		}
 		if w.Kind == "query" && (!t.Dynamic || w.Query == nil || w.Query.Durability != "replayable") {
 			return DocumentDefinition{}, ErrUnavailable
 		}
@@ -273,6 +283,23 @@ func (s *Scheduled) ValidateScheduledReporting(ctx context.Context, e identity.E
 			continue
 		}
 		found = true
+		if IsCapturedQueryVariant(w) {
+			if target.Type == "saved_question" {
+				return ErrInvalid
+			}
+			ref := w.Query.Variant
+			block, err := runs.blocks.repo.ReadBlock(ctx, e, ref.Block, Reference{Revision: ref.Revision}, Execute)
+			if err != nil {
+				return err
+			}
+			if err = CheckCapturedQueryVariant(ref, block); err != nil {
+				return err
+			}
+			w, err = CapturedVariantBlock(w)
+			if err != nil {
+				return err
+			}
+		}
 		switch w.Kind {
 		case "query":
 			if !target.Dynamic || !s.delivery.documents.limits.Composition.LiveQueries || s.delivery.documents.queries == nil || w.Query.Durability != "replayable" {

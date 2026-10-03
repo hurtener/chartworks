@@ -27,7 +27,7 @@ func compileCurrentAnalytical(ctx context.Context, a admission) (contract *exec.
 			return nil, analyticalUnsupported(AnalyticalMetricPeriodReviewCode)
 		}
 		a.metricPeriods = applications
-		version = analyticalScopedRecordVersion
+		version = analyticalGroupedOwnedRecordVersion
 	}
 	if !hasActiveBusinessEvidence(a.route) {
 		return compileAnalyticalVersion(ctx, a, version)
@@ -35,6 +35,12 @@ func compileCurrentAnalytical(ctx context.Context, a admission) (contract *exec.
 	constraints, err := a.route.ResolvedBusinessConstraints()
 	if err != nil {
 		return nil, err
+	}
+	if len(constraints) > 0 && !selectedKnownAmountCompleteness(a) {
+		version = analyticalGroupedFactsRecordVersion
+		if selectedMetricPeriods(a) {
+			version = analyticalScalarEntailmentRecordVersion
+		}
 	}
 	return compileAnalyticalVersion(ctx, a, version, constraints)
 }
@@ -75,7 +81,7 @@ func compileQueryPopulation(ctx context.Context, a admission, contract *exec.Ana
 // Persisted route JSON has no in-process predicate seal. Reconstruct through the
 // existing authenticated router replay, never by trusting saved resolutions.
 func (s *Service) expectedAnalytical(ctx context.Context, e identity.Envelope, q QueryRecord, a admission) (*exec.AnalyticalContract, error) {
-	if isScalarPeriodRecord(q) {
+	if isScalarEntailmentRecord(q) || isScalarPeriodRecord(q) || isGroupedPeriodRecord(q) || (isGroupedSelectionRecord(q) || isGroupedFactRecord(q)) {
 		a, constraints, err := s.scalarPeriodAdmission(ctx, e, q, a)
 		if err != nil {
 			return nil, err
@@ -93,6 +99,12 @@ func (s *Service) expectedAnalytical(ctx context.Context, e identity.Envelope, q
 }
 
 func analyticalPopulationGuidance(contract *exec.AnalyticalContract) string {
+	if contract != nil && contract.Version == exec.AnalyticalGroupedFactsVersion {
+		return " The service separately binds exact fact-owned row predicates before aggregation and any direct final key-spine selection after alignment. Do not invent private values, parameters or cross-lane predicate placement. Preserve every reviewed lane domain and aggregate filter."
+	}
+	if contract != nil && contract.Version == exec.AnalyticalGroupedSelectionVersion {
+		return " The service selects complete aligned groups using authenticated predicates only on direct final key-spine columns, after independent fact aggregation. Do not insert those predicates into a fact lane or UNION spine, do not supply private values or parameters, and preserve the unfiltered raw or qualifying domain of every fact. Fact-owned periods, if declared, remain separately bound inside their own named aggregate CTE. Keep a flat named CTE program with no derived wrappers."
+	}
 	if contract != nil && contract.ScalarPopulations != nil {
 		return ""
 	}
@@ -102,7 +114,7 @@ func analyticalPopulationGuidance(contract *exec.AnalyticalContract) string {
 	if contract.GroupDomain != nil {
 		return analyticalGroupDomainGuidance(contract)
 	}
-	if contract.Version == exec.AnalyticalGroupedProgramsVersion && contract.GroupedPopulations != nil {
+	if (contract.Version == exec.AnalyticalGroupedProgramsVersion || contract.Version == exec.AnalyticalGroupedOwnedPopulationsVersion) && contract.GroupedPopulations != nil {
 		return " Query-owned predicates are supplied and verified by the service from typed reviewed constraints; do not invent WHERE/HAVING restrictions or inline private values. Each lane has a separately reviewed group-domain policy: follow its exact WHERE placement and retain every aggregate's own FILTER/CASE population. Raw-source groups and qualifying-population groups are not interchangeable."
 	}
 	return " Query-wide predicates are supplied and verified by the service from typed reviewed constraints. Do not invent extra WHERE or HAVING restrictions or inline private values. Keep metric-specific filters on their own aggregates; only a reviewed filter shared by every selected metric may be moved to WHERE. The service binds the query-wide scalar/time/aggregate predicates after generation."

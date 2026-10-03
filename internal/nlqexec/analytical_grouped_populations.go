@@ -120,16 +120,33 @@ func analyticalGroupedPopulationGuidance(c *exec.AnalyticalContract, dialects ..
 	if c == nil || c.GroupedPopulations == nil {
 		return ""
 	}
-	lanes, _ := json.Marshal(c.GroupedPopulations) // Closed source coordinates; no values or SQL.
+	public := *c.GroupedPopulations
+	public.Lanes = append([]exec.AnalyticalGroupedLane(nil), c.GroupedPopulations.Lanes...)
+	for i := range public.Lanes {
+		public.Lanes[i].QueryPopulation = nil
+		public.Lanes[i].FactPopulation = nil
+	}
+	lanes, _ := json.Marshal(public) // Closed source coordinates; no values or SQL.
 	extensions := ""
 	nullEquality := "IS NOT DISTINCT FROM"
 	if len(dialects) > 0 && dialects[0] == "mysql" {
 		nullEquality = "<=>"
 	}
 	spineForm := "CTE"
-	if c.Version == exec.AnalyticalGroupedProgramsVersion {
+	if c.Version == exec.AnalyticalGroupedProgramsVersion || c.Version == exec.AnalyticalGroupedOwnedPopulationsVersion {
 		spineForm = "CTE or derived SELECT"
 		extensions = " Each lane contract explicitly names its group domain. raw_source_groups requires no row WHERE: keep reviewed metric predicates in FILTER/CASE aggregates. qualifying_population requires WHERE to be exactly the union (OR) of complete reviewed metric-filter populations, while each aggregate retains its own predicate. An unfiltered metric makes that union all rows. A qualifying all-NULL aggregate input still produces its group. Shared reviewed calendar buckets are exact group keys, including source field, calendar, unit and timezone. Transparent SELECT projections may wrap lanes or the complete query; a key spine may be a derived SELECT. Wrappers may only rename or reorder proved columns. Keep reviewed ORDER/LIMIT at the final SELECT, never inside a wrapped program. "
+	}
+	if c.Version == exec.AnalyticalGroupedOwnedPopulationsVersion || c.Version == exec.AnalyticalGroupedSelectionVersion {
+		spineForm = "named CTE"
+		extensions = " The service binds each authenticated reviewed fact-owned period inside that exact fact aggregate CTE. Supply no parameters or private period values. Use flat named aggregate CTEs and a named distinct UNION spine; derived wrappers are unsupported for owned periods. A raw domain has only the service-owned row restriction; a qualifying domain also has exactly the reviewed metric-population union. Keep each aggregate predicate. "
+	}
+	if c.Version == exec.AnalyticalGroupedSelectionVersion {
+		extensions = " Use flat named aggregate CTEs and a named distinct UNION spine; derived wrappers are unsupported for group selection. A raw domain has no row restriction except optional service-owned fact periods; a qualifying domain also has exactly the reviewed metric-population union. Keep every aggregate predicate. The service binds the private group selection only on direct final key-spine columns after all lanes are aligned, and any reviewed fact-owned periods only inside their own named aggregate CTEs. Supply no parameters or private values. "
+	}
+	if c.Version == exec.AnalyticalGroupedFactsVersion {
+		spineForm = "named CTE"
+		extensions = " Use flat named aggregate CTEs and a named distinct UNION spine. The service binds reviewed fact-row predicates and optional periods only inside their exact owning fact aggregate, before grouping; final-group predicates stay on the final key spine after complete alignment. Supply no private values or parameters. A raw domain has only service-owned row predicates; a qualifying domain additionally has exactly the reviewed metric-population union. Keep every aggregate's reviewed predicate. Derived wrappers and predicate pushdown to other lanes are unsupported. "
 	}
 	return extensions + " Reviewed grouped-population policy: independently aggregate each selected fact in its own named CTE at exactly the selected shared dimension columns. In each lane use only its reviewed physically unique dimension joins and metric predicates. Build one key-spine " + spineForm + " with UNION (distinct, never UNION ALL) of the complete named grouping keys from every lane, in the same order. LEFT JOIN every lane to that spine using " + nullEquality + " on every grouping key. Project grouping keys from the spine and selected metrics using lane aggregate outputs. Preserve missing lane measures as NULL, including counts; do not add unreviewed COALESCE, filters, limits, or raw fact joins inside a lane or the spine. Outer ordering/limit follows reviewed intent. Exact compiled lane contract: " + string(lanes)
 }

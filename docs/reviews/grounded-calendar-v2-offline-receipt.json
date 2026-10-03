@@ -1,0 +1,79 @@
+{
+  "format": "grounded-calendar-v2-exact-source-receipt-v1",
+  "source_commit": "6376e0abf4e2fa7580a998d77e07f4e6449f92f4",
+  "source_tree": "2316fea74dc0327371defd7a0ce3ba4999e6c12a",
+  "required_native_roots": [
+    "TestGeneratedAdversarialHeldOutRecorded",
+    "TestPairedCohortFrozenLineage",
+    "TestPairedCohortGroundedCalendarV2",
+    "TestPairedCohortRecorded",
+    "TestPairedExpectedFailedEvaluationMutations",
+    "TestPairedMeaningComparisonControls"
+  ],
+  "verified_native_roots": [
+    "TestGeneratedAdversarialHeldOutRecorded",
+    "TestPairedCohortFrozenLineage",
+    "TestPairedCohortGroundedCalendarV2",
+    "TestPairedCohortRecorded",
+    "TestPairedExpectedFailedEvaluationMutations",
+    "TestPairedMeaningComparisonControls"
+  ],
+  "native_pass_events": 31,
+  "unit_pass_events": 960,
+  "unit_skips": [
+    "TestSQLRecoveryMySQLCompletenessLocal"
+  ],
+  "unit_fail_events": 0,
+  "arms": {
+    "A": {
+      "matched": 20,
+      "total": 28
+    },
+    "B": {
+      "matched": 20,
+      "total": 28
+    },
+    "C": {
+      "matched": 20,
+      "total": 28
+    },
+    "D": {
+      "matched": 28,
+      "total": 28
+    }
+  },
+  "shared_controls_matched": 3,
+  "training_matched": 3,
+  "training_total": 12,
+  "reviewed_examples": 3,
+  "C_used_cells": [
+    "gross-en",
+    "month-en",
+    "count-orders",
+    "count-known",
+    "cohort-known-net",
+    "fresh-known-gross-en"
+  ],
+  "D_learning": "no_examples_before_training",
+  "original_answer_contracts_unchanged": true,
+  "legacy_outcomes_equal_exact_red_predecessor": true,
+  "original_quality_gate_passed": false,
+  "repair_regression_passed": true,
+  "source_snapshot": "a0603234683ce70896142f975d5065271205b467da9df609501a2f9cf3696be8",
+  "predecessor_first_D_selection_omission": "53fecfc first D run did not select TestPairedMeaningComparisonControls: regex named nonexistent TestPairedManualMeaningComparison. It is explicitly selected and verified in this final run.",
+  "independent_static_review": "no static blockers at6376e0a; no native evidence inferred from review",
+  "negative_evaluation_fixture_passed": true,
+  "mutation_gate_passed": true,
+  "hosted_ci_status": "not_run",
+  "binary_sha256": "d4ebc1cac9dcdf5f194b7334148402b8da994be3ce60b2722ba9ff781cdeaf06",
+  "hashes": {
+    "test.log": "38691a6af050960fa3687c9442c72295c1459d20aace74983c0a3d91b4a1478d",
+    "paired-report.json": "dd66cf238088d53ea29dc2c45f6843cfd8161dff52658a263b109e2f34c65e88",
+    "negative-baseline-report.json": "6bfcc25c65dcb0e6ecc9b7c0c1b1d986c6a2e6e496bc0fef3e2fecfd747dbdb4",
+    "mutations.log": "87c45567428b33f286b805ecb2b7e7f3a3966e35ee81b81449fcf886d4e7235a",
+    "units.jsonl": "642a3e60c7e5df5b9009f5f28997e6d62f80fa15d9724b3019b342f89a2ecf8e",
+    "repair.patch": "be78e05787794ab8244270f8c6b6e3032b1f9c49a07d769dd3879aded6b71ebb",
+    "planning.log": "3f52acf977db9b5808f65f78f36fa5e29cbf896be9791410f44f932192d0aeee",
+    "command.sh": "ab447708bced25d49eb5f7877aff815c60fc996a659f3e5e19f7307fa3d0a197"
+  }
+}

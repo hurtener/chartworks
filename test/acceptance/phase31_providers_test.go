@@ -31,7 +31,7 @@ func testPhase31AppsDiscovery(t *testing.T) {
 	if err := json.Unmarshal(phase22RPC(t, client, "tools/list", map[string]any{}), &tools); err != nil {
 		t.Fatal(err)
 	}
-	if len(tools.Tools) != 6 {
+	if len(tools.Tools) != 7 {
 		t.Fatalf("actual reporting tools: %+v", tools.Tools)
 	}
 	seen := map[string]bool{}
@@ -54,7 +54,7 @@ func testPhase31AppsDiscovery(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"reporting_search", "reporting_describe", "reporting_filter_options", "reporting_run", "reporting_runs", "reporting_view"} {
+	for _, name := range []string{"prepare_captured_query_variant", "reporting_search", "reporting_describe", "reporting_filter_options", "reporting_run", "reporting_runs", "reporting_view"} {
 		if !seen[name] {
 			t.Fatal("missing actual tool", name)
 		}
@@ -127,11 +127,11 @@ func testPhase31AppsDiscovery(t *testing.T) {
 		}
 	}
 	bindings, err := reportingapi.DeliveryMCPBindings(f.service, false)
-	if err != nil || len(bindings) != 4 {
+	if err != nil || len(bindings) != 5 {
 		t.Fatal("metadata-only capability registration", len(bindings), err)
 	}
 	registry, err := reportingapi.DeliveryRegistry(false)
-	if err != nil || len(registry.Definitions()) != 4 {
+	if err != nil || len(registry.Definitions()) != 5 {
 		t.Fatal("run advertised without configured executor", err)
 	}
 	if beforeSource != f.domain.f.f.lookups.Load() || beforeModels != f.domain.f.model.requests.Load() {

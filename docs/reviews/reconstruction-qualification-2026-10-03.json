@@ -1,0 +1,273 @@
+{
+  "format": "chartworks-reconstruction-qualification-v1",
+  "recorded_at": "2026-10-03T09:28:00Z",
+  "scope": "Fresh reconstructed source qualification; not lost-work recovery or full release evidence",
+  "completed_composition": {
+    "local_commit": "ca9fb56d34a7b5c95c8f24148102457c7ae6aaa4",
+    "source_tree": "c06d7119409e60fd9b1d4d5e89171de169d1c9b8",
+    "publication_status": "Not published at qualification time; public PR49 remains 7519cc7703288ba45539c1e8b8cdf7b5214efe20. Later documentation-only updates do not relabel this tested source tree.",
+    "go": "1.27.1 linux/amd64",
+    "postgres": "17.11",
+    "native_parser_source": "5f562c2959496a04d57f5f199f5e3ad22159fa9f",
+    "native_patch_sha256": "b68325ec48d9055c08fa7afcecc39035d8b023fb18c4bc3d0cb5fa404508e5b0",
+    "gates": {
+      "unit_race_pass_events": 3079,
+      "unit_skips": [
+        "TestSQLRecoveryMySQLCompletenessLocal"
+      ],
+      "native_race_pass_events": 306,
+      "native_failures": 0,
+      "native_skips": 0,
+      "native_elapsed_seconds": 1318.135,
+      "all_required_acceptance_roots_present": true,
+      "build": "passed",
+      "vet": "passed",
+      "planning": "passed",
+      "source_content_and_tree_unchanged": true,
+      "synthetic_postgres_stopped": true
+    },
+    "commands": {
+      "units": "go test -race -json ./internal/exec/... ./internal/nlq/... ./internal/nlqroute ./internal/nlqexec ./internal/nlqapi ./internal/store/postgres ./internal/reporting ./internal/semantics/... ./sdk/chartworks -count=1 -timeout=300s",
+      "native": "go test -race -json ./test/acceptance -run '^(TestFrozen(Cold.*Postgres|ConcurrentColdReusePostgres|ReuseIdentityPostgres)|TestPhase28|TestCW01|TestGeneratedAdversarialCatalogEnvelopeRecorded|TestProtectedGenerationPendingAcceptance|TestProtectedLegacyPendingCompatibilityAcceptance|TestMetricFormatLegacyStoredReplayAcceptance|TestScalarEntailmentLifecycleAcceptance|TestScalarEntailmentPopulatedMigration|TestScalarPredicateEntailmentPublicBoundary|TestGeneratedTopicCatalogKeyEvidenceRecorded|TestGeneratedTopicPipelineRecorded|TestGeneratedTopicProfileHeadFreshness|TestLiveReceiptCallFuseBoundsConcurrentAttempts|TestProtectedApplicabilityStorageMigrationAcceptance|TestProtectedApplicabilitySDKStoredReplayAcceptance|TestProtectedApplicabilityNumericAndNullSDKAcceptance|TestProtectedExactOriginalQuestionSDKAcceptance|TestSQLRecovery(GroupedFactLearningSourceFences|DurableGenerationQuestionsAcceptance|DurablePrivateRefinementAcceptance|DurableCorrectionQuestionsAcceptance|ScopedLearningBaseAcceptance|ScopedExampleRequalificationAcceptance|GroupedFactAcceptance|GroupedFactMatrixAcceptance|GroupedSelectionAcceptance|GroupedOwnedPeriodsAcceptance|ScalarCohortActivityAcceptance|OwnedExample.*Acceptance|OwnedExampleCorrectedBoundFeedbackIsNotTemplate|ExampleRequalificationAcceptance))$' -count=1 -timeout=1800s",
+      "build": "go build ./...",
+      "vet": "go vet ./...",
+      "planning": "make planning-check"
+    },
+    "log_sha256": {
+      "units.jsonl": "db0e9b91d7e9cf5ff6438773aaf7c78d68d5a253326293a096fd0d297ce30445",
+      "acceptance.jsonl": "a73fe9caeb3de95bd4a6fd6e7568977ffbab80269ea78f61c1175ed1b68daff8",
+      "source.txt": "ed172d6d328149230346a4771267592d19deef42b84cf299cb78376f51349268",
+      "content-before.sha256": "ba2683a433938eea72bc444d22677a5509e94038560e8622de653f8830181893",
+      "gates.txt": "c4fd02df496e2c1d5e1952512a02c77f025d10974fbd4f02539470713e714a1b",
+      "status.txt": "a473a68c3ae7e452594a85ad042d3c0a5ed5c70c630ab3d86f2d0d1d973e229c",
+      "summary.json": "b79526b043e86b4ea84757c65e25478e52802a907499c51aab769ffa7f1a38b1",
+      "build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "vet.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "planning.log": "489a7efc4ad23d0584d12a6ffd26af20ab355273a578399052f49918d50c2fe3",
+      "stop.log": "ca19178a35ab4153b75b494963b66ce8243e1b94c173107c87b44d09db23652d"
+    }
+  },
+  "open_gates": [
+    "Optional MySQL completeness lane was skipped, not passed.",
+    "Renderer charged-memory qualification requires the approved operator-provisioned host workflow.",
+    "Live-provider learning improvement, held-out corpus completeness, final performance profile and release gates remain open.",
+    "Schema 6 scalar-entailment owned-base learning remains refused pending a separately qualified consumer.",
+    "Generated-topic live pipeline remains stopped at independent semantic review; retrieval and SQL were not reached.",
+    "Publication of the remaining reconstructed source and hosted qualification of its exact remote commit remain pending."
+  ],
+  "evidence_interpretation": "Pass-event counts include parent tests and subtests. Recorded model fixtures do not prove live learning gains. Later source changes are not qualified by the earlier exact-tree composition.",
+  "hosted_5c48": {
+    "standard": "passed",
+    "sql_context": "failed: CW01/AC09 clarification origin question mismatch and 15-minute aggregate timeout on both Go lanes",
+    "sql_run": "https://github.com/hurtener/chartworks/actions/runs/37098454049",
+    "reporting": "renderer qualification remains blocked"
+  },
+  "live_generated_topic_attempts": [
+    {
+      "source_tree": "f93d15dafbcdfc045f1518d02eff0e7f629aaaa7",
+      "roles": [
+        "enhance",
+        "enhance",
+        "topic_review"
+      ],
+      "model": "openai/gpt-6-luna",
+      "outcome": "needs_review/incomplete_evidence: prefix sample did not establish identifier uniqueness; physical primary-key catalog evidence had not been supplied",
+      "publication": "not reached",
+      "retrieval": "not reached",
+      "sql_oracles": "not reached",
+      "claim": "A real bounded provider attempt; not a complete live pipeline or learning-improvement result."
+    },
+    {
+      "source_tree": "562de958497faf9eeb9eee4756bc5907a8954df3",
+      "roles": [
+        "enhance",
+        "enhance",
+        "topic_review"
+      ],
+      "model": "openai/gpt-6-luna",
+      "outcome": "needs_review/ambiguous_meaning: declared sum, currency, population and grain were present, but source amount components and business calculation were not defined",
+      "publication": "not reached",
+      "retrieval": "not reached",
+      "sql_oracles": "not reached",
+      "candidate_modified_to_pass": false,
+      "claim": "Independent advisory refusal preserved. No complete live pipeline or learning improvement claim."
+    }
+  ],
+  "subsequent_composed_unit_race": {
+    "local_commit": "216f0a023ec1d80f4b8ab1e3c3d699294060e985",
+    "source_tree": "3ec8e90625d44f7c63cff3b2a4662db5c27e46ef",
+    "pass_events": 2933,
+    "skips": [
+      "TestSQLRecoveryMySQLCompletenessLocal"
+    ],
+    "scope": "Scalar, context, catalog and initial custody composition before pending-transition and schema5 changes",
+    "source_seals_unchanged": true
+  },
+  "historical_compositions": [
+    {
+      "local_commit": "d52a40c795446f540e44da1f14e0fead8f4891f0",
+      "source_tree": "02f835cbcad977df030e7518a19fc732edf58de8",
+      "equivalent_published_commit": "5c48b2061c26f8afe2918aa18c5cbe6acd2662a7",
+      "go": "1.27.1 linux/amd64",
+      "postgres": "17.11",
+      "native_parser_source": "5f562c2959496a04d57f5f199f5e3ad22159fa9f",
+      "native_patch_sha256": "b68325ec48d9055c08fa7afcecc39035d8b023fb18c4bc3d0cb5fa404508e5b0",
+      "gates": {
+        "unit_race_pass_events": 2096,
+        "unit_skips": [
+          "TestSQLRecoveryMySQLCompletenessLocal"
+        ],
+        "native_race_pass_events": 112,
+        "native_failures": 0,
+        "native_skips": 0,
+        "native_elapsed_seconds": 905.916,
+        "build": "passed",
+        "vet": "passed",
+        "planning": "passed",
+        "source_content_and_tree_unchanged": true
+      },
+      "commands": {
+        "units": "go test -race -json ./internal/nlqexec ./internal/nlqroute ./internal/reporting ./internal/store/postgres ./internal/exec ./sdk/chartworks -count=1 -timeout=300s",
+        "native": "go test -race -json ./test/acceptance -run '^(TestFrozen(Cold.*Postgres|ConcurrentColdReusePostgres|ReuseIdentityPostgres)|TestPhase28|TestSQLRecovery(ScopedLearningBaseAcceptance|ScopedExampleRequalificationAcceptance|GroupedFactAcceptance|GroupedFactMatrixAcceptance|GroupedSelectionAcceptance|GroupedOwnedPeriodsAcceptance|ScalarCohortActivityAcceptance|OwnedExample.*Acceptance|OwnedExampleCorrectedBoundFeedbackIsNotTemplate|ExampleRequalificationAcceptance))$' -count=1 -timeout=1800s",
+        "build": "go build ./...",
+        "vet": "go vet ./...",
+        "planning": "make planning-check"
+      },
+      "log_sha256": {
+        "units.jsonl": "a969091b725fb03c0832189c8cc3d47fab030e7c643ec298ab460026792d4fa4",
+        "acceptance.jsonl": "cded7cefddcdd229beb70158c43bf45816c1346bc1a1e425a9769d81747dd8b4",
+        "source.txt": "e2ded63427c4ce32528cb44773120e8f7814ca3d90f85002cab7fe4820af6d28",
+        "content-before.sha256": "228c803cd50813f6830ae54579e6e8128094483bff9fec057fa586a261adbe14",
+        "gates.txt": "c4fd02df496e2c1d5e1952512a02c77f025d10974fbd4f02539470713e714a1b",
+        "status.txt": "a473a68c3ae7e452594a85ad042d3c0a5ed5c70c630ab3d86f2d0d1d973e229c"
+      }
+    },
+    {
+      "local_commit": "bde060fefd3b760d0420e055f07ab08577d2cdbf",
+      "source_tree": "c4855946901917bc1c8aab167cdab993e63b4602",
+      "equivalent_published_commit": "33e35666aa91e8300567ae18352b290ec69e8cc1",
+      "go": "1.27.1 linux/amd64",
+      "postgres": "17.11",
+      "native_parser_source": "5f562c2959496a04d57f5f199f5e3ad22159fa9f",
+      "native_patch_sha256": "b68325ec48d9055c08fa7afcecc39035d8b023fb18c4bc3d0cb5fa404508e5b0",
+      "gates": {
+        "unit_race_pass_events": 1956,
+        "unit_skips": [
+          "TestSQLRecoveryMySQLCompletenessLocal"
+        ],
+        "native_race_pass_events": 99,
+        "native_failures": 0,
+        "native_skips": 0,
+        "native_elapsed_seconds": 743.992,
+        "build": "passed",
+        "vet": "passed",
+        "planning": "passed",
+        "source_content_and_tree_unchanged": true
+      },
+      "commands": {
+        "units": "go test -race -json ./internal/nlqexec ./internal/nlqroute ./internal/reporting ./internal/store/postgres ./internal/exec ./sdk/chartworks -count=1 -timeout=300s",
+        "native": "go test -race -json ./test/acceptance -run '^(TestFrozen(Cold.*Postgres|ConcurrentColdReusePostgres|ReuseIdentityPostgres)|TestPhase28|TestSQLRecovery(ScopedLearningBaseAcceptance|ScopedExampleRequalificationAcceptance|GroupedFactAcceptance|GroupedSelectionAcceptance|GroupedOwnedPeriodsAcceptance|ScalarCohortActivityAcceptance|OwnedExample.*Acceptance|OwnedExampleCorrectedBoundFeedbackIsNotTemplate|ExampleRequalificationAcceptance))$' -count=1 -timeout=1200s",
+        "build": "go build ./...",
+        "vet": "go vet ./...",
+        "planning": "make planning-check"
+      },
+      "log_sha256": {
+        "units.jsonl": "c3f359a3389938992e38248413a5318a0a92d2cc743c7707402327fd1b1dfea7",
+        "acceptance.jsonl": "f7b22ff7c3f6d8dd34f706e8dbc15df0b7034020261b8a73b75a10a08a74b1f4",
+        "source.txt": "3598c233aff254c640f262af5e47aa60c862d4968f97c68bd7aba7bbe482a86d",
+        "content-before.sha256": "1966de03d2327e5a926f7183e7a999e5f5e055c5a6ad68868e1437475968c03a",
+        "gates.txt": "c4fd02df496e2c1d5e1952512a02c77f025d10974fbd4f02539470713e714a1b",
+        "status.txt": "a473a68c3ae7e452594a85ad042d3c0a5ed5c70c630ab3d86f2d0d1d973e229c"
+      }
+    }
+  ],
+  "qualified_source_changes": {
+    "scalar_entailment": "Bounded v13/schema 6, migration 081, native lifecycle/tamper/populated-upgrade and public numeric/NULL oracles passed in this composed native-race gate. Schema 6 learning remains closed.",
+    "protected_applicability": "Private applicability custody, exact-original/canonical replay, forward migration 082, saved copies and sanitized pending/correction/refinement transitions passed isolated review and this composed native-race gate.",
+    "authoring_catalog_keys": "Complete current non-null catalog-key projection passed full drafts race and native new/existing generated-topic consumers; independently source-reviewed. Subsequent live advisory stopped on genuinely unspecified amount meaning.",
+    "schema5_learning": "Distinct current-owned-grouped-fact-predicates-v1 supports authenticated unbound-base learning, current consumption and v3/v5 portability/requalification. Exact e2c8dd4 native gate passed 86 events without race; full nlqexec race passed 536 events with one existing optional MySQL skip. Complete fresh analytical receipt proof rejects forged output ordinals.",
+    "metric_context": "Explicit shared-versioned-v2 preserves all definition bytes and edges while reducing wrapper overhead. Omitted legacy format preserves historical prompt/JSON/seal behavior; exact legacy restart/replay/refine and ten native suites passed. See dedicated scalar qualification ledger.",
+    "authoring_column_codec": "Versioned lossless profile-column-table-v1 preserves all seven aggregate fields and complete catalog-key/profile identity. The full 24-packet, 11-page enhancement/review envelope regression and all four previously failing scalar consumers passed with unchanged 65536 budget and 4096 output reserve. Observed maximum reservation 65012 leaves 524 tokens."
+  },
+  "prior_failed_composition": {
+    "local_commit": "644479e",
+    "source_tree": "2acbea5363dedab5fefd1c35c9046b48f0c5b6ce",
+    "unit_race_pass_events": 3046,
+    "native_pass_events": 229,
+    "native_fail_events": 4,
+    "cause": "Shared authoring context reservation 65565 exceeded 65536 by 29 tokens before dispatch after complete catalog-key evidence was added. Lossless column codec repaired the envelope without dropping evidence or raising limits.",
+    "repaired_roots": [
+      "TestMetricFormatLegacyStoredReplayAcceptance",
+      "TestScalarEntailmentLifecycleAcceptance",
+      "TestScalarPredicateEntailmentPublicBoundary",
+      "TestSQLRecoveryScalarCohortActivityAcceptance"
+    ],
+    "log_sha256": "5766c748d433629840ca3a3ca43d00b4c550329f33798584f10136bb4964beac"
+  },
+  "hosted_7519cc": {
+    "standard": "passed",
+    "sql_context": "failed: CW01/AC09 clarification origin; one Go lane exceeded 15-minute aggregate cap. Current composed local custody and 30-minute aggregate fixes are absent from this published 37-file checkpoint.",
+    "sql_run": "https://github.com/hurtener/chartworks/actions/runs/37108594766",
+    "reporting": "failed only charged-memory and isolated-rendering steps: operator-provisioned cgroup root unavailable",
+    "reporting_run": "https://github.com/hurtener/chartworks/actions/runs/37108594917"
+  },
+  "preserved_topic_learning_requalification": {
+    "local_commit": "3acafc8fc78dc5004064eeaa70133dca5f19cc6c",
+    "source_tree": "e371e5053fad213cd4a20290511ba8edafc11b89",
+    "runtime_equivalent_to_composed_tree": "c06d7119409e60fd9b1d4d5e89171de169d1c9b8",
+    "native_race_pass_events": 119,
+    "native_elapsed_seconds": 394.315,
+    "failures": 0,
+    "skips": 0,
+    "all_required_roots": [
+      "TestGeneratedAdversarialCatalogEnvelopeRecorded",
+      "TestGeneratedAdversarialCivilMonthCompatibilityRecorded",
+      "TestGeneratedAdversarialCompletenessOutputIdentityRecorded",
+      "TestGeneratedAdversarialCorpusOracleAndIsolation",
+      "TestGeneratedAdversarialCountSemanticsRecorded",
+      "TestGeneratedAdversarialHeldOutRecorded",
+      "TestGeneratedAdversarialMonthlyOriginalPlanReplayRecorded",
+      "TestGeneratedAdversarialNetAuthoringRecorded",
+      "TestGeneratedAdversarialNetExecutionRecorded",
+      "TestGeneratedAdversarialNetMeaningClarificationsRecorded",
+      "TestGeneratedAdversarialWarehouseHasRealTraps",
+      "TestGeneratedTopicCalendarVocabularyRecorded",
+      "TestGeneratedTopicCatalogKeyEvidenceRecorded",
+      "TestGeneratedTopicGroundedGroupingIntentRecorded",
+      "TestGeneratedTopicInvalidReviewDoesNotSave",
+      "TestGeneratedTopicMissingVocabularyDeniesPopulation",
+      "TestGeneratedTopicPaidVocabularyPipelineRecorded",
+      "TestGeneratedTopicPipelineRecorded",
+      "TestGeneratedTopicProfileHeadFreshness",
+      "TestGeneratedTopicReviewQuotedEnumProviderContract",
+      "TestGeneratedTopicReviewReferencesRecorded",
+      "TestGeneratedTopicUnsupportedCalendarDoesNotSave",
+      "TestSQLRecoveryEligibleExampleRetrievalAcceptance",
+      "TestSQLRecoveryGroundedConceptAmbiguityAcceptance",
+      "TestSQLRecoveryGroundedConceptLifecycleAcceptance",
+      "TestSQLRecoveryGroundedConceptPrivatePendingAcceptance",
+      "TestSQLRecoveryGroupingComposesWithInferredFiltersAcceptance",
+      "TestSQLRecoveryGroupingContinuationLifecycleAcceptance",
+      "TestSQLRecoveryGroupingPrivateBindingsAcceptance",
+      "TestSQLRecoveryNegativeFailureObservationAcceptance",
+      "TestSQLRecoverySavedGroupingContinuationAcceptance",
+      "TestTopicFeedbackDocumentRetentionBoundary",
+      "TestTopicFeedbackProposalLifecycle",
+      "TestTopicFeedbackVocabularyLifecycle",
+      "TestTopicFeedbackVocabularyProfileFence"
+    ],
+    "source_content_and_tree_unchanged": true,
+    "synthetic_postgres_stopped": true,
+    "mode": "recorded providers with actual PostgreSQL/native HTTP/SDK consumers; paid credentials unset",
+    "scope": "Complete existing 19-case generated-topic held-out corpus, advisory/provider/schema/calendar/profile controls, feedback proposal/review/publication/reindex/current prompt/result, eligible-example starvation and negative feedback, grounded concept/grouping and private saved/refined continuation. This is not a paired live learning-improvement measurement.",
+    "log_sha256": {
+      "acceptance.jsonl": "9f3553345f3c18a89912726589f69d3a49d1ad5dabc018bf553cee62edd22bc0",
+      "summary.json": "de899f10a933ffacc6040cf7de363b9db30c1a3ce34e664ebb31f4a6acdcccb7",
+      "source.txt": "b656db9c565703bcb8938bb3acc836b6686720904a81750c2d0ffd1f2d3dc60c",
+      "content-before.sha256": "475b085a81cc7e22f427bd0fe6cdfe622d0f04c29384c4d0fd30afa262fc5faa",
+      "gates.txt": "6eb6393749b6ebfb919a21b8846ed410171ebf650f34087d9fb4b8ca08408446",
+      "status.txt": "a473a68c3ae7e452594a85ad042d3c0a5ed5c70c630ab3d86f2d0d1d973e229c",
+      "stop.log": "ca19178a35ab4153b75b494963b66ce8243e1b94c173107c87b44d09db23652d"
+    }
+  }
+}

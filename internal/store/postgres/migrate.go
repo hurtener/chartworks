@@ -119,6 +119,20 @@ func SchemaVersion() string {
 	return fmt.Sprint(len(m))
 }
 
+// SchemaDigest identifies the exact ordered migration bytes embedded in this
+// binary. It is safe to expose in release metadata and contains no row data.
+func SchemaDigest() (string, error) {
+	migrations, err := Migrations()
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	for _, m := range migrations {
+		_, _ = fmt.Fprintf(h, "%d:%s:%s\n", m.Version, m.Name, m.Checksum)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 // Required relation presence complements history checks, without claiming a superuser-tamper sandbox.
 func requiredRelations(ctx context.Context, tx pgx.Tx) error {
 	relations := []string{

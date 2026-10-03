@@ -57,3 +57,10 @@ D-053 narrows the existing gateway seam to one production SDK driver. A local SD
 ## Implemented evidence and limits
 
 See [phase 05–06 review](../reviews/phase-05-06-adversarial.md), [operator setup](../../GETTING-STARTED.md), and [execution authority v1](../contracts/execution-authority-v1.md). Named criteria execute against the pinned SDK and PostgreSQL 17, not mocked production drivers. D-062/D-063 record provider corrections, the exact Pengui-owned companion and scope boundaries. Broader analytics, pipeline, report and delivery targets remain owned by their subsequent phases.
+
+The [strict provider transport correction](../contracts/strict-provider-schemas-v1.md)
+adds lossless nullable optional projection, unchanged domain validation, explicit
+local uniqueness enforcement and capability-bound OpenRouter dispatch. Effective
+admission now counts the pinned SDK's indented schema envelope. Recorded tests and
+actual role-schema regressions cover this boundary; paid live qualification is
+separate and not implied by these tests.

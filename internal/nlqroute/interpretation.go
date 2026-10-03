@@ -124,7 +124,38 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 		return nil, nil, ErrInvalid
 	}
 	out := &Interpretation{Version: interpretationVersion, Parser: "deterministic-span-v2", Locale: in.Locale, Anchor: in.InterpretationAnchor}
-	question := normalizedPhrase(in.Question)
+	surface := questionInferenceSurface(*in, admitted)
+	question := surface.text
+	calendarQuestion := question
+	dimensionQuestion := question
+	var calendar calendarProjection
+	if in.InterpretationPolicy == GroundedCalendarPolicy {
+		if err := protectedGroundedCalendarMeaning(*in, admitted); err != nil {
+			return nil, nil, err
+		}
+		calendarQuestion, err = calendarUnquotedQuestionV2(*in, admitted, surface)
+		if err != nil {
+			return nil, nil, err
+		}
+		calendarQuestion = calendarInferenceQuestionV2(calendarQuestion, in.Locale, admitted)
+		calendar, err = calendarProjectionV2(calendarQuestion, in.Locale)
+		if err != nil {
+			return nil, nil, err
+		}
+		values := append([]string(nil), surface.words...)
+		for at := range calendar.consumed {
+			values[at] = opaqueInferenceToken
+		}
+		question = strings.Join(values, " ")
+		dimensions := strings.Fields(calendarQuestion)
+		for at := range calendar.consumed {
+			dimensions[at] = opaqueInferenceToken
+		}
+		dimensionQuestion = strings.Join(dimensions, " ")
+	}
+	if err := protectedCalendarGroupingMeaning(*in, admitted); err != nil {
+		return nil, nil, err
+	}
 	knownTargets := map[string]string{}
 	var values []valueCandidate
 	var temporalCandidates []struct {
@@ -163,6 +194,9 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 					knownTargets[interpretationTarget(item.id, dim.ID, governed.ID)] = "value"
 					for _, phrase := range append([]string{governed.Value}, governed.Aliases...) {
 						n := normalizedPhrase(phrase)
+						if surface.damagedPhrase(n) {
+							return nil, nil, protectedMeaningFailure(in.Locale)
+						}
 						if n != "" && containsPhrase(question, n) {
 							values = append(values, valueCandidate{item, dim, governed, ds, column, n})
 						}
@@ -222,6 +256,9 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 				return nil, nil, ErrInvalid
 			}
 		}
+		if !surface.stablePhrasePolarity(phrase) {
+			return nil, nil, protectedMeaningFailure(in.Locale)
+		}
 		op := "eq"
 		if negatedPhrase(question, phrase, in.Locale) {
 			op = "ne"
@@ -237,26 +274,65 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 		id := readexec.Hash([]any{interpretationVersion, target, candidate.value.ID, op, out.Pins})
 		out.Values = append(out.Values, ValueInterpretation{ID: id, Topic: candidate.item.id, Dimension: candidate.dim.ID, Dataset: candidate.dataset.ID, Column: candidate.column.SourceName, GovernedValue: candidate.value.ID, CanonicalValue: candidate.value.Value, Operator: op, Geography: geography, Provenance: "reviewed_governed_value"})
 	}
-	span, hasSpan, spanErr := temporalSpan(question, in.Locale, anchor)
-	if spanErr != nil && len(requestedPeriodDimensions(*in, admitted)) > 0 {
-		if mapped, ok := commonMappedYear(question, in.Locale); ok {
-			span, hasSpan, spanErr = mapped, true, nil
+	parsePeriod := func(text string) (parsedSpan, bool, error) {
+		if in.InterpretationPolicy == GroundedCalendarPolicy {
+			projected, err := calendarProjectionV2(text, in.Locale)
+			if err != nil {
+				return parsedSpan{}, false, err
+			}
+			text = projected.text
 		}
+		span, has, err := temporalSpan(text, in.Locale, anchor)
+		if err != nil && len(requestedPeriodDimensions(*in, admitted)) > 0 {
+			if mapped, ok := commonMappedYear(text, in.Locale); ok {
+				span, has, err = mapped, true, nil
+			}
+		}
+		if len(in.InterpretationSelections) > 0 || (in.InterpretationPolicy == InterpretationContinuationPolicy || in.InterpretationPolicy == GroundedCalendarPolicy) {
+			span, has, err = continuationSpan(text, anchor, span, has, err)
+		}
+		return span, has, err
 	}
-	if len(in.InterpretationSelections) > 0 || in.InterpretationPolicy == InterpretationContinuationPolicy {
+	if len(in.InterpretationSelections) > 0 || (in.InterpretationPolicy == InterpretationContinuationPolicy || in.InterpretationPolicy == GroundedCalendarPolicy) {
 		out.Parser = "deterministic-continuation-v1"
-		span, hasSpan, spanErr = continuationSpan(question, anchor, span, hasSpan, spanErr)
+	}
+	if in.InterpretationPolicy == GroundedCalendarPolicy {
+		out.Parser = "deterministic-grounded-calendar-v2"
+	}
+	span, hasSpan, spanErr := parsePeriod(calendarQuestion)
+	comparison := surface.temporalComparisonQuestion(in.Locale)
+	if comparison != surface.text && spanErr == nil {
+		before, had, beforeErr := parsePeriod(comparison)
+		if beforeErr != nil || had != hasSpan || had && (before.start != span.start || before.end != span.end || before.grain != span.grain) {
+			return nil, nil, protectedMeaningFailure(in.Locale)
+		}
 	}
 	if spanErr != nil {
 		return nil, nil, spanErr
 	}
+
+	if !hasSpan && (calendar.grouping != "" || calendar.zone != "") && in.Grouping == nil {
+		return nil, nil, calendarMeaningError(in.Locale, "unsupported_temporal_span")
+	}
 	if hasSpan {
-		groupGrain, groupErr := requestedGroupingGrain(question, in.Locale)
+		groupGrain, groupErr := requestedGroupingGrain(calendarQuestion, in.Locale)
 		if explicit := reviewedCalendarGrouping(*in, admitted); explicit != "" {
 			groupGrain = explicit
 		}
 		if groupErr != nil {
 			return nil, nil, groupErr
+		}
+		if calendar.grouping != "" {
+			if groupGrain != "" && groupGrain != calendar.grouping {
+				return nil, nil, calendarMeaningError(in.Locale, "ambiguous_temporal_grain")
+			}
+			groupGrain = calendar.grouping
+		}
+		if in.InterpretationPolicy == GroundedCalendarPolicy && in.Grouping != nil {
+			groupGrain = ""
+			if len(in.Grouping.Keys) == 1 {
+				groupGrain = in.Grouping.Keys[0].Grain
+			}
 		}
 		eligible := temporalCandidates[:0]
 		for _, candidate := range temporalCandidates {
@@ -289,7 +365,7 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 			}
 			for _, candidate := range eligible {
 				for _, label := range append([]string{candidate.dim.ID, candidate.dim.Name}, candidate.dim.Aliases...) {
-					if containsPhrase(question, normalizedPhrase(label)) {
+					if containsPhrase(dimensionQuestion, normalizedPhrase(label)) {
 						named = append(named, candidate)
 						break
 					}
@@ -319,12 +395,15 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 		if len(eligible) != 1 && len(periodDimensions) == 0 {
 			return nil, nil, &Clarification{Reason: "ambiguous_temporal_dimension", Outcome: semantics.ClarificationConflicting, Prompt: "Choose the reviewed temporal dimension for this period."}
 		}
-		if in.Grouping == nil && len(eligible) == 1 && reviewedCalendarGrouping(*in, admitted) != "" {
+		if in.Grouping == nil && len(eligible) == 1 && (reviewedCalendarGrouping(*in, admitted) != "" || calendar.grouping != "") {
 			candidate := eligible[0]
 			in.Grouping = &GroupingSelection{Policy: GroupingPolicy, Keys: []GroupingKey{{Topic: candidate.item.id, Dimension: candidate.dim.ID, Grain: groupGrain}}}
 		}
 		for _, candidate := range eligible {
 			candidateSpan := span
+			if err := calendar.validateZone(candidate.dim.Temporal.Timezone); err != nil {
+				return nil, nil, err
+			}
 			fresh[candidate.item.id+"\x00"+candidate.dim.ID] = true
 			target := interpretationTarget(candidate.item.id, candidate.dim.ID, "time")
 			_, _, remove := applyInterpretationEdit(in.InterpretationEdits, target)
@@ -361,6 +440,13 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 	}
 	if err := s.mergeRetainedInterpretation(ctx, *in, admitted, out, fresh); err != nil {
 		return nil, nil, err
+	}
+	if in.InterpretationPolicy == GroundedCalendarPolicy {
+		// Retained selection merging must not downgrade the opted-in parser identity.
+		out.Parser = "deterministic-grounded-calendar-v2"
+		if err := calendar.validateResolvedTargets(*in, admitted, out); err != nil {
+			return nil, nil, err
+		}
 	}
 	if len(out.Values)+len(out.Temporal) > 128 {
 		return nil, nil, ErrInvalid
@@ -472,7 +558,17 @@ func temporalGroupingAligned(span parsedSpan, grouping semantics.TimeGrain) bool
 	}
 }
 
+func requestedGroupingPhrases() []string {
+	return []string{"by month", "per month", "monthly", "by quarter", "per quarter", "quarterly", "by year", "per year", "yearly", "por mes", "mensual", "por trimestre", "trimestral", "por año", "por ano", "anual"}
+}
+
 func requestedGroupingGrain(question string, locale nlq.Language) (semantics.TimeGrain, error) {
+	for _, phrase := range requestedGroupingPhrases() {
+		if containsPhrase(question, phrase) && negatedPhrase(question, phrase, locale) {
+			return "", &Clarification{Reason: "unsupported_grouping_negation", Outcome: semantics.ClarificationInvalid, Prompt: "Clarify the reviewed grouping to use."}
+		}
+	}
+
 	month := locale == nlq.LanguageEnglish && (containsPhrase(question, "by month") || containsPhrase(question, "per month") || containsPhrase(question, "monthly")) ||
 		locale == nlq.LanguageSpanish && (containsPhrase(question, "por mes") || containsPhrase(question, "mensual"))
 	quarter := locale == nlq.LanguageEnglish && (containsPhrase(question, "by quarter") || containsPhrase(question, "per quarter") || containsPhrase(question, "quarterly")) ||
@@ -505,21 +601,16 @@ func temporalColumnType(column semantics.Column) string {
 	return "timestamp"
 }
 func normalizedPhrase(s string) string {
-	var b strings.Builder
-	space := true
-	for _, r := range strings.ToLower(s) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-			space = false
-		} else if !space {
-			b.WriteByte(' ')
-			space = true
-		}
+	tokens := inferenceLex(s)
+	words := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		words = append(words, token.text)
 	}
-	return strings.TrimSpace(b.String())
+	return strings.Join(words, " ")
 }
+
 func containsPhrase(text, phrase string) bool {
-	if phrase == "" {
+	if phrase == "" || strings.Contains(phrase, opaqueInferenceToken) {
 		return false
 	}
 	return strings.Contains(" "+text+" ", " "+phrase+" ")
@@ -553,12 +644,14 @@ func negatedPhrase(question, phrase string, locale nlq.Language) bool {
 		return false
 	}
 	prefix := strings.Fields((" " + question + " ")[:idx])
-	if len(prefix) > 3 {
-		prefix = prefix[len(prefix)-3:]
-	}
-	neg := map[string]bool{"not": true, "except": true, "excluding": true, "without": true, "no": true, "sin": true, "excepto": true, "excluyendo": true}
-	for _, p := range prefix {
-		if neg[p] {
+	return phraseNegatedAt(prefix, len(prefix))
+}
+
+// This is the actual governed-value, continuation, and requested-grain predicate.
+// The protected comparison reuses it at the matching surviving occurrence.
+func phraseNegatedAt(words []string, start int) bool {
+	for i := max(0, start-3); i < start; i++ {
+		if temporalNegator(words[i]) {
 			return true
 		}
 	}

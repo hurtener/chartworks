@@ -172,10 +172,10 @@ func (c *Client) ViewReporting(ctx context.Context, in ReportingViewRequest) (ou
 	return
 }
 
-// ExportReporting produces JSON, CSV, static HTML or static SVG from retained
+// ExportReporting produces JSON, CSV, static HTML, SVG or PNG from retained
 // values only. It never runs a query or model and requires explicit export reach.
 func (c *Client) ExportReporting(ctx context.Context, in ReportingExportRequest) (out ReportingRendition, err error) {
-	if !validReportingKind(in.View.Kind) || !identity.Identifier(in.View.Run) || in.View.Page != "" && !identity.Identifier(in.View.Page) || in.View.Widget != "" && !identity.Identifier(in.View.Widget) || in.View.Output != "" && !identity.Identifier(in.View.Output) || in.View.Offset < 0 || in.View.Offset > 100000 || in.View.Limit < 0 || in.View.Limit > 1000 || !oneOfString(in.Format, "json", "csv", "html", "svg") || !oneOfString(in.Theme, "light", "dark") || in.Width < 320 || in.Width > 4096 || in.Height < 200 || in.Height > 4096 {
+	if !validReportingKind(in.View.Kind) || !identity.Identifier(in.View.Run) || in.View.Page != "" && !identity.Identifier(in.View.Page) || in.View.Widget != "" && !identity.Identifier(in.View.Widget) || in.View.Output != "" && !identity.Identifier(in.View.Output) || in.View.Offset < 0 || in.View.Offset > 100000 || in.View.Limit < 0 || in.View.Limit > 1000 || !oneOfString(in.Format, "json", "csv", "html", "svg", "png") || !oneOfString(in.Theme, "light", "dark") || in.Width < 320 || in.Width > 4096 || in.Height < 200 || in.Height > 4096 {
 		return out, ErrReportingRequest
 	}
 	err = c.callLimit(ctx, "POST", "/v1/reporting/export", "", in, &out, 20<<20)
@@ -184,7 +184,7 @@ func (c *Client) ExportReporting(ctx context.Context, in ReportingExportRequest)
 
 // CreateReportingRendition idempotently persists one static retained export.
 func (c *Client) CreateReportingRendition(ctx context.Context, in ReportingExportRequest) (out ReportingRendition, err error) {
-	if !validReportingKind(in.View.Kind) || !identity.Identifier(in.View.Run) || !oneOfString(in.Format, "json", "csv", "html", "svg") {
+	if !validReportingKind(in.View.Kind) || !identity.Identifier(in.View.Run) || !oneOfString(in.Format, "json", "csv", "html", "svg", "png") {
 		return out, ErrReportingRequest
 	}
 	err = c.callLimit(ctx, "POST", "/v1/reporting/renditions", "", in, &out, 20<<20)
@@ -225,4 +225,10 @@ func oneOfString(value string, allowed ...string) bool {
 		}
 	}
 	return false
+}
+
+// ReportingRenditionBytes validates content identity and returns decoded bytes.
+// PNG content is canonical base64; historical text formats remain UTF-8.
+func ReportingRenditionBytes(ctx context.Context, rendition ReportingRendition, maxBytes int) ([]byte, error) {
+	return rendering.ContentBytes(ctx, rendition, maxBytes)
 }

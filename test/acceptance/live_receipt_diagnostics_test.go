@@ -19,11 +19,25 @@ import (
 // preserves the production envelope provider and every other constructor seam.
 type liveReceiptEngine struct {
 	*bifrost.Engine
-	mu           sync.Mutex
-	calls        []gateway.Usage
-	traceEnabled bool
-	traceBytes   int
-	traces       []liveGenerationTrace
+	mu            sync.Mutex
+	calls         []gateway.Usage
+	callLimit     int
+	admittedCalls int
+	traceEnabled  bool
+	traceBytes    int
+	traces        []liveGenerationTrace
+}
+
+// admitCall is a test-only fuse. Attempts are admitted before delegation and
+// never refunded after failures, so missing receipts cannot restore capacity.
+func (e *liveReceiptEngine) admitCall() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.callLimit > 0 && e.admittedCalls >= e.callLimit {
+		return gateway.ErrBudget
+	}
+	e.admittedCalls++
+	return nil
 }
 
 func (e *liveReceiptEngine) record(r gateway.Receipt) {
@@ -38,22 +52,34 @@ func (e *liveReceiptEngine) since(n int) []gateway.Usage {
 	return append([]gateway.Usage(nil), e.calls[n:]...)
 }
 func (e *liveReceiptEngine) Generate(ctx context.Context, c gateway.Call, b *gateway.Budget, role, system, prompt string, s *gateway.Schema) (gateway.Generated, error) {
+	if err := e.admitCall(); err != nil {
+		return gateway.Generated{}, err
+	}
 	o, err := e.Engine.Generate(ctx, c, b, role, system, prompt, s)
 	e.record(o.Receipt)
 	e.recordTrace(role, system, prompt, o, err)
 	return o, err
 }
 func (e *liveReceiptEngine) Embed(ctx context.Context, c gateway.Call, b *gateway.Budget, role string, in []string) (gateway.Embedded, error) {
+	if err := e.admitCall(); err != nil {
+		return gateway.Embedded{}, err
+	}
 	o, err := e.Engine.Embed(ctx, c, b, role, in)
 	e.record(o.Receipt)
 	return o, err
 }
 func (e *liveReceiptEngine) Rerank(ctx context.Context, c gateway.Call, b *gateway.Budget, q string, in gateway.Candidates) (gateway.Ranked, error) {
+	if err := e.admitCall(); err != nil {
+		return gateway.Ranked{}, err
+	}
 	o, err := e.Engine.Rerank(ctx, c, b, q, in)
 	e.record(o.Receipt)
 	return o, err
 }
 func (e *liveReceiptEngine) VisualRank(ctx context.Context, c gateway.Call, b *gateway.Budget, q string, in gateway.Candidates) (gateway.Ranked, error) {
+	if err := e.admitCall(); err != nil {
+		return gateway.Ranked{}, err
+	}
 	o, err := e.Engine.VisualRank(ctx, c, b, q, in)
 	e.record(o.Receipt)
 	return o, err
@@ -149,5 +175,43 @@ func TestLiveSyntheticTraceOmitsParameterValues(t *testing.T) {
 	disabled.recordTrace("sqlgen", "system", "prompt", gateway.Generated{JSON: json.RawMessage(`{"sql":"SELECT 1"}`)}, nil)
 	if len(disabled.traceSnapshot()) != 0 {
 		t.Fatal("trace enabled by default")
+	}
+}
+
+func TestLiveReceiptCallFuseBoundsConcurrentAttempts(t *testing.T) {
+	e := &liveReceiptEngine{callLimit: 32}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	admitted := 0
+	for range 128 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := e.admitCall()
+			if err == nil {
+				mu.Lock()
+				admitted++
+				mu.Unlock()
+			} else if !errors.Is(err, gateway.ErrBudget) {
+				t.Errorf("unexpected refusal: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if admitted != 32 || e.admittedCalls != 32 || len(e.calls) != 0 {
+		t.Fatal("missing receipts or concurrent attempts bypassed call fuse")
+	}
+	// Exhausted callers never reach even a nil underlying provider engine.
+	if _, err := e.Generate(t.Context(), gateway.Call{}, nil, "sqlgen", "", "", nil); !errors.Is(err, gateway.ErrBudget) {
+		t.Fatal(err)
+	}
+	if _, err := e.Embed(t.Context(), gateway.Call{}, nil, "embedding", nil); !errors.Is(err, gateway.ErrBudget) {
+		t.Fatal(err)
+	}
+	if _, err := e.Rerank(t.Context(), gateway.Call{}, nil, "", gateway.Candidates{}); !errors.Is(err, gateway.ErrBudget) {
+		t.Fatal(err)
+	}
+	if _, err := e.VisualRank(t.Context(), gateway.Call{}, nil, "", gateway.Candidates{}); !errors.Is(err, gateway.ErrBudget) {
+		t.Fatal(err)
 	}
 }

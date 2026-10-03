@@ -19,14 +19,14 @@ func TestWorkerResponseIntegrityRejectsEverySealedMismatch(t *testing.T) {
 	}
 	work := SealedWork{Version: WorkerProtocolVersion, Request: request, View: view}
 	work.Digest = sealedDigest(work)
-	if err := validateWorkerRendition(work, good); err != nil {
+	if err := validateWorkerRendition(t.Context(), work, good); err != nil {
 		t.Fatal(err)
 	}
 	mutations := []func(*Rendition){func(r *Rendition) { r.Version = "spoof" }, func(r *Rendition) { r.Format = "svg" }, func(r *Rendition) { r.MediaType = "text/plain" }, func(r *Rendition) { r.Width++ }, func(r *Rendition) { r.Height++ }, func(r *Rendition) { r.Theme = "dark" }, func(r *Rendition) { r.SourceDigest = "spoof" }, func(r *Rendition) { r.Projection.Digest = "spoof" }, func(r *Rendition) { r.Digest = "spoof" }, func(r *Rendition) { r.Content += "<script>bad</script>"; r.Bytes = len(r.Content) }}
 	for i, mutate := range mutations {
 		bad := good
 		mutate(&bad)
-		if !errors.Is(validateWorkerRendition(work, bad), ErrWorker) {
+		if !errors.Is(validateWorkerRendition(t.Context(), work, bad), ErrWorker) {
 			t.Fatalf("mutation %d accepted", i)
 		}
 	}

@@ -56,7 +56,7 @@ func hasActiveBusinessEvidence(route nlqroute.RouteResult) bool {
 }
 
 func bindClarificationCandidate(ctx context.Context, a admission, candidate generatedCandidate) (generatedCandidate, error) {
-	if a.analytical != nil && a.analytical.ScalarPopulations != nil {
+	if a.analytical != nil && (a.analytical.ScalarPopulations != nil || a.analytical.Version == exec.AnalyticalGroupedOwnedPopulationsVersion || a.analytical.Version == exec.AnalyticalGroupedSelectionVersion || a.analytical.Version == exec.AnalyticalGroupedFactsVersion) {
 		return bindScalarPeriodCandidate(ctx, a, candidate)
 	}
 	if !hasActiveBusinessEvidence(a.route) {
@@ -98,12 +98,17 @@ func sealClarificationCandidate(candidate *generatedCandidate, plan exec.Plan, p
 }
 
 func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Envelope, record QueryRecord) ([]exec.BusinessConstraint, error) {
-	if !usesGroundedConcepts(record.Route) && record.Route.AnswerContext == "" && len(record.Route.Resolutions) == 0 && len(record.Route.Request.Answers) == 0 && (record.Route.Interpretation == nil || len(record.Route.Interpretation.Values)+len(record.Route.Interpretation.Temporal) == 0) {
+	if !usesGroundedSelections(record.Route) && record.Route.AnswerContext == "" && len(record.Route.Resolutions) == 0 && len(record.Route.Request.Answers) == 0 && (record.Route.Interpretation == nil || len(record.Route.Interpretation.Values)+len(record.Route.Interpretation.Temporal) == 0) {
 		return nil, nil
 	}
 	replayer, ok := s.router.(clarificationReplayer)
 	if !ok {
 		return nil, exec.ErrBinding
+	}
+	var originErr error
+	ctx, originErr = s.withQueryApplicability(ctx, e, record, record.Route.Request, "query.execute", "replay")
+	if originErr != nil {
+		return nil, originErr
 	}
 	constraints, binding, err := replayer.ReplayClarifications(ctx, e, record.Route)
 	if err != nil {
@@ -119,11 +124,11 @@ func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Enve
 // before a new execution. It does not trust stored SQL, a digest, or a previous
 // answer as validator-issued proof; Run still performs normal fresh validation.
 func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identity.Envelope, record QueryRecord, a admission) error {
-	if isScalarPeriodRecord(record) {
+	if isScalarEntailmentRecord(record) || isScalarPeriodRecord(record) || isGroupedPeriodRecord(record) || (isGroupedSelectionRecord(record) || isGroupedFactRecord(record)) {
 		return s.verifyScalarPeriodBinding(ctx, e, record, a)
 	}
 	if !hasActiveBusinessEvidence(record.Route) {
-		if usesGroundedConcepts(record.Route) {
+		if usesGroundedSelections(record.Route) {
 			values, err := s.replayQueryClarifications(ctx, e, record)
 			if err != nil {
 				return err
@@ -288,11 +293,15 @@ func redactClarificationInstructions(in QuestionRequest, route nlqroute.RouteRes
 	redact := func(items []nlq.Instruction) []nlq.Instruction {
 		out := append([]nlq.Instruction(nil), items...)
 		for i := range out {
-			out[i].Text = semantics.RedactClarificationText(out[i].Text, in.Answers, route.Resolutions)
+			out[i].Text = route.RedactProtectedText(out[i].Text, in.Answers)
 		}
 		return out
 	}
 	in.Question = route.Request.Question
+	in.Examples = cloneRouteExamples(in.Examples)
+	for i := range in.Examples {
+		in.Examples[i].Text = route.RedactProtectedText(in.Examples[i].Text, in.Answers)
+	}
 	in.EditBase = redact(in.EditBase)
 	in.Hints = redact(in.Hints)
 	in.ExampleInput = redact(in.ExampleInput)
@@ -309,14 +318,17 @@ func publicClarificationChanges(evidence *ClarificationEvidence) []Clarification
 
 // A retained model-origin root cannot be downgraded merely by dropping the
 // optional policy/evidence fields from serialized query metadata.
-func usesGroundedConcepts(route nlqroute.RouteResult) bool {
-	if route.Concepts != nil || route.Request.ConceptPolicy != "" {
+func usesGroundedSelections(route nlqroute.RouteResult) bool {
+	if route.Concepts != nil || route.Request.ConceptPolicy != "" || route.GroupingIntent != nil || route.Request.GroupingIntentPolicy != "" {
 		return true
 	}
 	if route.Selection != nil {
+		if route.Selection.GroupingIntent != "" {
+			return true
+		}
 		for _, topic := range route.Selection.Topics {
 			for _, root := range topic.Roots {
-				if root.Reason == "grounded_model" {
+				if root.Reason == "grounded_model" || root.Reason == "grounded_grouping" {
 					return true
 				}
 			}
