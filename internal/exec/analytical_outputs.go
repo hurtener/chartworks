@@ -25,6 +25,16 @@ type AnalyticalCompletenessObligation struct {
 }
 
 func validateAnalyticalCapabilities(c AnalyticalContract, b Binding) error {
+	if c.Version == AnalyticalGroupedFactsVersion {
+		return validateGroupedFacts(c, b)
+	}
+	if c.GroupedPopulations != nil {
+		for _, lane := range c.GroupedPopulations.Lanes {
+			if lane.FactPopulation != nil {
+				return ErrBinding
+			}
+		}
+	}
 	if c.Version == AnalyticalGroupedSelectionVersion {
 		return validateGroupedSelection(c, b)
 	}
@@ -154,7 +164,7 @@ func AnalyticalOutputsValid(r *AnalyticalReceipt) bool {
 	if r == nil {
 		return false
 	}
-	if r.Version != AnalyticalScopedPopulationsVersion && r.Version != AnalyticalGroupedOwnedPopulationsVersion && r.Version != AnalyticalGroupedSelectionVersion {
+	if r.Version != AnalyticalScopedPopulationsVersion && r.Version != AnalyticalGroupedOwnedPopulationsVersion && r.Version != AnalyticalGroupedSelectionVersion && r.Version != AnalyticalGroupedFactsVersion {
 		return len(r.Outputs) == 0 && r.Completeness == nil
 	}
 	if len(r.Outputs) != len(r.Metrics) || len(r.Outputs) == 0 {
@@ -165,7 +175,7 @@ func AnalyticalOutputsValid(r *AnalyticalReceipt) bool {
 			return false
 		}
 	}
-	if (r.Version == AnalyticalGroupedOwnedPopulationsVersion || r.Version == AnalyticalGroupedSelectionVersion) && r.Completeness != nil {
+	if (r.Version == AnalyticalGroupedOwnedPopulationsVersion || r.Version == AnalyticalGroupedSelectionVersion || r.Version == AnalyticalGroupedFactsVersion) && r.Completeness != nil {
 		return false
 	}
 	if r.Completeness != nil {

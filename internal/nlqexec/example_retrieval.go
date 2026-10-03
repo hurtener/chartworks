@@ -46,6 +46,9 @@ func generationExampleQuery(a admission, question string) GenerationExampleQuery
 	constraints, err := a.route.ResolvedBusinessConstraints()
 	q.AllowOwned = hasActiveBusinessEvidence(a.route) && err == nil && len(constraints) > 0 && a.route.SourceBindingDigest == q.SourceBindingDigest
 	q.ScopedPolicy = currentScopedLearningPolicy(a)
+	if groupedFactLearningUnsupported(a) {
+		q.AllowOwned = false
+	}
 	set := map[string]bool{}
 	for _, word := range strings.FieldsFunc(strings.ToLower(question), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) }) {
 		if len(word) <= 128 {

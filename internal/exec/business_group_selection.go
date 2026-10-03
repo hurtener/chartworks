@@ -42,6 +42,12 @@ func BindGroupedSelectionConstraints(ctx context.Context, binding Binding, state
 			return BusinessBoundQuery{}, err
 		}
 	}
+	return finishGroupedSelectionBinding(ctx, binding, c, base, bound)
+}
+
+// Prove all aggregate lanes before locating direct keys on the final spine.
+func finishGroupedSelectionBinding(ctx context.Context, binding Binding, c, base AnalyticalContract, bound BusinessBoundQuery) (BusinessBoundQuery, error) {
+	var err error
 	var relation Relation
 	found := 0
 	for _, r := range binding.Relations {
@@ -68,11 +74,22 @@ func BindGroupedSelectionConstraints(ctx context.Context, binding Binding, state
 	if err = checker.queryGroupedPopulations(tree, expected, base.GroupedPopulations); err != nil {
 		return BusinessBoundQuery{}, err
 	}
+	schema, policy := 4, AnalyticalGroupedSelectionPolicy
+	if c.Version == AnalyticalGroupedFactsVersion {
+		schema, policy = 5, AnalyticalGroupedFactPolicy
+	}
+	if c.GroupSelection == nil {
+		if schema != 5 {
+			return BusinessBoundQuery{}, ErrBinding
+		}
+		bound.Receipt = BusinessBindingReceipt{SchemaVersion: schema, PopulationPolicy: policy, SourceBinding: Hash(binding), Constraints: Hash([]any{c.GroupedPopulations, c.GroupSelection}), Statement: Hash([]any{bound.SQL, bound.Parameters}), Bindings: bound.Receipt.Bindings}
+		return bound, nil
+	}
 	predicate, selected, bindings, err := groupedSelectionPredicate(ctx, binding, c.Dataset, checker.groupSelectionKeys, c.GroupSelection.Constraints, len(bound.Parameters))
 	if err != nil {
 		return BusinessBoundQuery{}, err
 	}
-	tokens, err = businessScan(ctx, bound.SQL, false)
+	tokens, err := businessScan(ctx, bound.SQL, false)
 	if err != nil {
 		return BusinessBoundQuery{}, err
 	}
@@ -95,11 +112,11 @@ func BindGroupedSelectionConstraints(ctx context.Context, binding Binding, state
 	if err := ctx.Err(); err != nil {
 		return BusinessBoundQuery{}, err
 	}
-	return BusinessBoundQuery{SQL: sql, Parameters: all, Receipt: BusinessBindingReceipt{SchemaVersion: 4, PopulationPolicy: AnalyticalGroupedSelectionPolicy, SourceBinding: Hash(binding), Constraints: Hash([]any{c.GroupedPopulations, c.GroupSelection}), Statement: Hash([]any{sql, all}), Bindings: effects}}, nil
+	return BusinessBoundQuery{SQL: sql, Parameters: all, Receipt: BusinessBindingReceipt{SchemaVersion: schema, PopulationPolicy: policy, SourceBinding: Hash(binding), Constraints: Hash([]any{c.GroupedPopulations, c.GroupSelection}), Statement: Hash([]any{sql, all}), Bindings: effects}}, nil
 }
 
-// Empty Population denotes the final group spine in schema4; fact-owned period
-// bindings retain their nonempty fact identity. Exact replay verifies every item.
+// Empty Population denotes the final group spine in schemas 4 and 5; fact-owned
+// period and row bindings retain their nonempty fact identity. Exact replay verifies every item.
 func groupedSelectionPredicate(ctx context.Context, binding Binding, base string, keys map[string][2]string, constraints []BusinessConstraint, offset int) (string, []Parameter, []BusinessParameterBinding, error) {
 	if ctx == nil || offset < 0 || offset > 64 || len(constraints) == 0 {
 		return "", nil, nil, ErrBinding

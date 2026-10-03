@@ -121,3 +121,10 @@ explicitly proves budget omission with both two candidates and one isolated
 candidate; the scalar cohort and grouped current-year replacement cases separately
 prove actual use. No larger token cap or reduced semantic fixture substitutes for
 that distinction, and these recorded controls do not prove live learning gains.
+
+The distinct [v12 primary-fact contract](analytical-grouped-fact-predicates-v1.md)
+uses binding schema 5. That schema has no qualified owned-base consumer yet.
+Feedback retains its normal evidence but does not auto-learn the schema-5 base;
+current v12 generation excludes existing owned example families. An unknown
+schema must never fall through to an empty ordinary-learning policy. Unowned
+advisory examples still require current native/analytical proof of generated SQL.

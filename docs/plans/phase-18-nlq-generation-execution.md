@@ -490,3 +490,21 @@ older receipt meaning. The focused compiler/native cases and six real-PostgreSQL
 boundary; their observed results are separate from this implementation inventory.
 Generic fact-filter ownership, derived-bucket predicates and extra dialects remain
 outside this increment.
+
+## Bounded primary-fact predicate continuation
+
+[Grouped fact predicates v1](../contracts/analytical-grouped-fact-predicates-v1.md)
+adds v12/schema5 for exact primary fact roots absent from other lanes' join paths,
+with explicitly reviewed domains and INNER-only affected lanes. It preserves
+v11 final-grain-only routing and keeps mixed final-spine selection separate from
+pre-aggregate fact restrictions. Migration 080 appends the new immutable receipt.
+The original LEFT regression remains unsupported; shared/join-only predicates,
+outer-join placement and broader grouped-filter recovery are still open.
+
+`TestSQLRecoveryGroupedFactCompilerPlacementRegression`, `TestGroupedFacts*` and
+`TestSQLRecoveryGroupedFactAcceptance` own the new compiler/native/service checks.
+The acceptance fixture computes its numeric/NULL oracle independently and checks
+current replacement, exact receipt tampering and zero-model terminal replay.
+Schema5 learning/owned-example consumption is explicitly ineligible; separately
+restored schemas2-4 retain their existing policies. Execution evidence is recorded
+separately from this inventory.

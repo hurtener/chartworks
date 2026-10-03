@@ -34,6 +34,9 @@ func compileAnalytical(ctx context.Context, a admission) (*exec.AnalyticalContra
 }
 
 func compileAnalyticalVersion(ctx context.Context, a admission, version int, queryConstraints ...[]exec.BusinessConstraint) (*exec.AnalyticalContract, error) {
+	if version == analyticalGroupedFactsRecordVersion {
+		return compileAnalyticalGroupedFacts(ctx, a, queryConstraints)
+	}
 	if version == analyticalGroupedSelectionRecordVersion {
 		return compileAnalyticalGroupedSelection(ctx, a, queryConstraints)
 	}
@@ -470,7 +473,7 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission, queryCo
 		}
 		return nil, nil
 	}
-	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalGroupedSelectionRecordVersion {
+	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalGroupedFactsRecordVersion {
 		return nil, exec.ErrBinding
 	}
 	contract, err := compileAnalyticalVersion(ctx, a, q.AnalyticalVersion, queryConstraints...)
@@ -519,6 +522,9 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission, queryCo
 	if contract.Version == exec.AnalyticalGroupedOwnedPopulationsVersion {
 		want.Scope = strings.ReplaceAll(want.Scope, "independent_grouped_populations", "independent_owned_grouped_populations")
 	}
+	if contract.Version == exec.AnalyticalGroupedFactsVersion {
+		want.Scope = strings.ReplaceAll(want.Scope, "independent_grouped_populations", "independent_filtered_grouped_populations")
+	}
 	if contract.Version == exec.AnalyticalGroupedSelectionVersion {
 		want.Scope = strings.ReplaceAll(want.Scope, "independent_grouped_populations", "independent_selected_grouped_populations")
 	}
@@ -558,7 +564,7 @@ func analyticalDiagnostic(err error) string {
 		return ""
 	}
 	switch e.Code {
-	case "analytical_group_selection_unsupported", "analytical_join_mismatch", "analytical_order_mismatch", "analytical_limit_mismatch", "analytical_query_population_mismatch", "analytical_grain_mismatch", "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy":
+	case "analytical_fact_predicate_unsupported", "analytical_group_selection_unsupported", "analytical_join_mismatch", "analytical_order_mismatch", "analytical_limit_mismatch", "analytical_query_population_mismatch", "analytical_grain_mismatch", "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy":
 		return e.Code
 	default:
 		return "analytical_shape_unsupported"
@@ -571,7 +577,7 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 	if q.AnalyticalVersion == 0 {
 		return q.Analytical == nil
 	}
-	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalGroupedSelectionRecordVersion {
+	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalGroupedFactsRecordVersion {
 		return false
 	}
 	selected := false
@@ -631,6 +637,9 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 	if q.AnalyticalVersion == analyticalGroupedSelectionRecordVersion {
 		version = exec.AnalyticalGroupedSelectionVersion
 	}
+	if q.AnalyticalVersion == analyticalGroupedFactsRecordVersion {
+		version = exec.AnalyticalGroupedFactsVersion
+	}
 	if r == nil || q.SQL == "" || r.Version != version || !analyticalReceiptScopeValid(r) || !topics.DigestValid(r.Contract) || !topics.DigestValid(r.Query) || r.Query != exec.AnalyticalQueryDigest(q.SQL, q.Parameters) || len(r.Metrics) == 0 || len(r.Metrics) > 32 {
 		return false
 	}
@@ -645,6 +654,16 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 func analyticalReceiptScopeValid(r *exec.AnalyticalReceipt) bool {
 	if !exec.AnalyticalOutputsValid(r) {
 		return false
+	}
+	if r.Version == exec.AnalyticalGroupedFactsVersion {
+		if r.Intent != exec.AnalyticalIntentPolicy || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy || r.Completeness != nil || !strings.HasSuffix(r.Scope, ";independent_filtered_grouped_populations") {
+			return false
+		}
+		copy := *r
+		copy.Version = exec.AnalyticalGroupedProgramsVersion
+		copy.Outputs = nil
+		copy.Scope = strings.ReplaceAll(r.Scope, "independent_filtered_grouped_populations", "independent_grouped_populations")
+		r = &copy
 	}
 	if r.Version == exec.AnalyticalGroupedSelectionVersion {
 		if r.Intent != exec.AnalyticalIntentPolicy || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy || r.Completeness != nil || !strings.HasSuffix(r.Scope, ";independent_selected_grouped_populations") {

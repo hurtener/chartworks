@@ -12,6 +12,10 @@ func BindGroupedPopulationConstraints(ctx context.Context, binding Binding, stat
 	if err := ValidateAnalyticalGroupedPopulations(contract, binding); err != nil {
 		return BusinessBoundQuery{}, err
 	}
+	return bindGroupedPopulationConstraints(ctx, binding, statement, contract)
+}
+
+func bindGroupedPopulationConstraints(ctx context.Context, binding Binding, statement string, contract AnalyticalContract) (BusinessBoundQuery, error) {
 	tokens, err := businessScan(ctx, statement, false)
 	if err != nil {
 		return BusinessBoundQuery{}, err
@@ -52,7 +56,11 @@ func BindGroupedPopulationConstraints(ctx context.Context, binding Binding, stat
 			return BusinessBoundQuery{}, businessSQLFailure("unsupported_missing_or_ambiguous_target")
 		}
 		used[fact] = true
-		bound, err := BindBusinessConstraints(ctx, binding, statement[body.start:body.end], nil, lane.QueryPopulation.Constraints)
+		var constraints []BusinessConstraint
+		if population := groupedLanePopulation(lane); population != nil {
+			constraints = population.Constraints
+		}
+		bound, err := BindBusinessConstraints(ctx, binding, statement[body.start:body.end], nil, constraints)
 		if err != nil {
 			return BusinessBoundQuery{}, err
 		}

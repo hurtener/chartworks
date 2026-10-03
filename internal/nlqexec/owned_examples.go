@@ -52,6 +52,11 @@ func (s *Service) reusableLearningBase(ctx context.Context, e identity.Envelope,
 		return QueryRecord{}, "", false, err
 	}
 	evidence := q.Clarification
+	// A new binding family requires its own authenticated reusable-base consumer.
+	// An empty unknown policy must never silently become ordinary learning.
+	if evidence != nil && evidence.Binding.SchemaVersion != 0 && learningPolicyForBinding(evidence.Binding.SchemaVersion) == "" {
+		return QueryRecord{}, "", false, nil
+	}
 	if correction != "" || evidence == nil || !clarificationBindingSchemaValid(q) || evidence.BaseSQL == "" {
 		return QueryRecord{}, "", false, nil
 	}
@@ -129,6 +134,9 @@ func (s *Service) reusableLearningBase(ctx context.Context, e identity.Envelope,
 func ownedExampleApplicable(example ExampleRecord, a admission) bool {
 	if example.Origin.BindingPolicy == "" {
 		return true
+	}
+	if groupedFactLearningUnsupported(a) {
+		return false
 	}
 	if scopedLearningPolicy(example.Origin.BindingPolicy) {
 		return scopedExampleApplicable(example.Origin.BindingPolicy, a)
