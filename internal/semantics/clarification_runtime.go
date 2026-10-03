@@ -145,6 +145,22 @@ func ClarificationBudgetText(resolution ClarificationResolution) (string, error)
 // question or instruction before persistence/provider use. Patterns are always
 // quoted literals; neither authors nor callers provide executable matchers.
 func RedactClarificationText(text string, answers []ClarificationAnswer, resolutions []ClarificationResolution) string {
+	spans := ClarificationTextRedactions(text, answers, resolutions)
+	var out strings.Builder
+	start := 0
+	for _, span := range spans {
+		out.WriteString(text[start:span[0]])
+		out.WriteString("[redacted answer]")
+		start = span[1]
+	}
+	out.WriteString(text[start:])
+	return out.String()
+}
+
+// ClarificationTextRedactions returns ordered, disjoint byte ranges to hide.
+// These ranges describe literal text only; they confer no applicability, source,
+// or answer authority. The public marker is always reserved, including replay.
+func ClarificationTextRedactions(text string, answers []ClarificationAnswer, resolutions []ClarificationResolution) [][2]int {
 	var literals []string
 	for _, r := range resolutions {
 		if r.Sensitivity != LiteralSensitive {
@@ -208,9 +224,6 @@ func RedactClarificationText(text string, answers []ClarificationAnswer, resolut
 		// separator categories plus these ASCII/control whitespace runes.
 		patterns = append(patterns, strings.Join(words, `[\t\n\v\f\r \x{0085}\p{Z}]+`))
 	}
-	if len(patterns) == 0 {
-		return text
-	}
 	// The stored question is redacted again during canonical replay. Reserve
 	// the public marker so values such as "red" cannot change its digest.
 	// Longest matching still consumes a longer known sensitive phrase that
@@ -218,10 +231,14 @@ func RedactClarificationText(text string, answers []ClarificationAnswer, resolut
 	patterns = append([]string{regexp.QuoteMeta("[redacted answer]")}, patterns...)
 	matcher, err := regexp.Compile("(?i)(?:" + strings.Join(patterns, "|") + ")")
 	if err != nil {
-		return "[redacted answer]"
+		return [][2]int{{0, len(text)}}
 	}
 	matcher.Longest()
-	return matcher.ReplaceAllString(text, "[redacted answer]")
+	var spans [][2]int
+	for _, span := range matcher.FindAllStringIndex(text, -1) {
+		spans = append(spans, [2]int{span[0], span[1]})
+	}
+	return spans
 }
 
 // String and GoString keep ordinary structured formatting content-free. JSON

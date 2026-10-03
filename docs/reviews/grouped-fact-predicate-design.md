@@ -1,8 +1,10 @@
 # Bounded grouped fact predicates: new implementation design
 
 This is a new implementation proposal derived from the current v8/v10/v11 source
-contracts. It does not recover an earlier unpublished implementation. Runtime
-qualification is pending.
+contracts. It does not recover an earlier unpublished implementation. The bounded
+INNER implementation and its qualification matrix are described in the current
+[grouped fact contract](../contracts/analytical-grouped-fact-predicates-v1.md);
+this design retains the original red-regression rationale below.
 
 ## Existing failure and owner
 

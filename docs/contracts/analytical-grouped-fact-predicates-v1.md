@@ -89,3 +89,33 @@ new real-PostgreSQL acceptance has an independently computed numeric and NULL
 oracle, current-value replacement, zero-work terminal replay and schema/receipt
 controls. Exact executed evidence is recorded separately; test inventory does not
 establish live provider quality, hosted qualification or full recovery completion.
+
+## Extended native and application matrix
+
+`TestSQLRecoveryGroupedFactMatrixAcceptance` executes twelve recorded-provider
+HTTP/SDK Plan/Run cases against real PostgreSQL: three and four independently
+aggregated fact roots, each with direct region, composite region/segment, or
+shared civil month keys, under both reviewed group domains. Every child fact has
+its own authenticated numeric maximum; the common order parent remains
+unrestricted. The calendar lanes all use the reviewed order-date origin, including
+NULL dates, month boundaries and the same month in different years. Refund event
+dates deliberately differ and do not become an interchangeable calendar axis.
+
+A row-only oracle establishes each population before complete-key union and is
+cross-checked against hand-calculated witnesses. The assertions distinguish a
+genuine zero SUM, an existing all-NULL group with COUNT(column) zero, an absent
+lane with NULL count, partial/full NULL composite keys, and raw versus qualifying
+existence for cancelled-only groups. Each case also replaces current private
+values from the original unbound base, checks original Plan and terminal Run
+replay with zero model/result execution, and rejects eleven retained-evidence
+mutations.
+
+`TestGroupedFactsExtendedNativeMatrix` separately proves three/four-lane
+composite keys and shared instant-valued calendar keys. It rejects missing or
+reordered spine keys, incomplete alignment, ordinary equality, changed calendar
+origin/unit/timezone, misplaced predicates and swapped private lane values.
+`TestGroupedFactsExtendedOwnershipBoundaries` keeps the typed refusals for a
+shared joined dimension and an affected LEFT lane. These checks extend evidence
+for the existing exclusive-primary INNER contract; they add no production scope.
+The preserved-root LEFT case remains unimplemented, and schema 5 learning remains
+ineligible. Exact executed source and logs accompany each qualification result.

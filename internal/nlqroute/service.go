@@ -460,12 +460,21 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 	if !contextMatches(admitted, in.Context) {
 		return RouteResult{}, readexec.ErrBinding
 	}
-	if unresolved := unresolvedQuestionRequirements(in); unresolved != nil {
+	safeInference := cloneRouteRequest(in)
+	safeInference.Question = groundedQuestion(in, admitted)
+	if unresolved := unresolvedQuestionRequirements(safeInference); unresolved != nil {
 		result.Outcome, result.Clarification = nlq.StrategyClarify, unresolved
+		result.Request = selectionFailureRequest(in, admitted)
 		return result, nil
 	}
-	if unresolved := requestedNetMeaning(in, admitted); unresolved != nil {
+	if unresolved := requestedNetMeaning(safeInference, admitted); unresolved != nil {
 		result.Outcome, result.Clarification = nlq.StrategyClarify, unresolved
+		result.Request = selectionFailureRequest(in, admitted)
+		return result, nil
+	}
+	if err := protectedCatalogMeaning(in, admitted); err != nil {
+		result.Outcome, result.Clarification = nlq.StrategyClarify, err.(*Clarification)
+		result.Request = selectionFailureRequest(in, admitted)
 		return result, nil
 	}
 	interpretation, interpretationConstraints, err := s.interpret(ctx, e, &in, admitted)
@@ -473,7 +482,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		var clarification *Clarification
 		if errors.As(err, &clarification) {
 			result.Outcome, result.Clarification = nlq.StrategyClarify, clarification
-			result.Request = cloneRouteRequest(in)
+			result.Request = selectionFailureRequest(in, admitted)
 			return result, nil
 		}
 		return RouteResult{}, err
@@ -493,7 +502,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 	if err := s.resolveSemanticSelection(ctx, e, in, admitted, &result); err != nil {
 		err = semanticSelectionError(err, in.Locale)
 		var clarification *Clarification
-		if errors.As(err, &clarification) && (strings.HasPrefix(clarification.Reason, "ambiguous_semantic") || strings.HasPrefix(clarification.Reason, "conflicting_semantic")) {
+		if errors.As(err, &clarification) && (strings.HasPrefix(clarification.Reason, "ambiguous_semantic") || strings.HasPrefix(clarification.Reason, "conflicting_semantic") || clarification.Reason == "ambiguous_protected_meaning") {
 			result.Request = selectionFailureRequest(in, admitted)
 			result.Outcome, result.Clarification = nlq.StrategyClarify, clarification
 			return result, nil
@@ -503,7 +512,8 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 	if result.Clarification != nil {
 		return result, nil
 	}
-	meaningRequest := in
+	meaningRequest := cloneRouteRequest(in)
+	meaningRequest.Question = groundedQuestion(in, admitted)
 	meaningRequest.MetricIDs = nil
 	meaningRequest.References = nil
 	if result.Selection != nil {
@@ -515,6 +525,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 	}
 	if unresolved := requestedNetMeaning(meaningRequest, admitted); unresolved != nil {
 		result.Outcome, result.Clarification = nlq.StrategyClarify, unresolved
+		result.Request = selectionFailureRequest(in, admitted)
 		return result, nil
 	}
 	if err := bindMetricPeriodApplications(&result, admitted); err != nil {

@@ -127,3 +127,31 @@ metric-closure budget overflow.
 Live confidence calibration, cloud-source population behavior, full date grammar
 and stress/performance qualification remain final-gap/manual-suite work. Current
 automatic PR checks remain the fast D-074 lane.
+
+## Protected answer inference surface
+
+Known sensitive answer spellings, reviewed defaults, and their bounded canonical
+forms are masking inputs only. Governed-value, calendar, continuation, catalog,
+and grouping inference use an opaque redaction token; neither that token nor a
+marker-touching token fragment can become a reviewed value or catalog term.
+Unicode whitespace and punctuation preserve independent public words.
+
+Masking a private substring or one component of a mixed public/private expression
+must not silently remove a public filter, change a calendar boundary, or turn
+negation into a positive request. Damaged reviewed phrases and materially changed
+calendar grammar produce the content-free `ambiguous_protected_meaning`
+clarification. Calendar comparison uses the same bounded parser for both
+projections, including continuation, while wholly private expressions may disappear
+and independent public periods remain usable. Learned concept and categorical
+selection enforce polarity checks before provider work. Unsupported-hourly and net
+meaning checks consume the redacted question, and their refusal requests exclude
+raw answers and sensitive spellings.
+
+`TestProtectedMixedExpressionsCannotLosePublicMeaning`,
+`TestProtectedGroundedPolarityRefusesBeforeGenerate`, and
+`TestProtectedEarlyRequirementsUseSafeQuestion` reproduce and guard these cases.
+`TestProtectedAnswerPolarityAndCanonicalReplay` covers public controls, optional
+private defaults, and canonical zero-model route replay. These route-level tests
+do not qualify protected stored-origin applicability or the full SDK lifecycle.
+Private-only applicability triggers still require separate protected-origin work;
+serialized matched-pattern metadata is not authority.

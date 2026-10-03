@@ -1,0 +1,56 @@
+{
+  "format": "chartworks-reconstruction-qualification-v1",
+  "recorded_at": "2026-10-03T04:53:00Z",
+  "scope": "Fresh reconstructed source qualification; not lost-work recovery or full release evidence",
+  "completed_composition": {
+    "local_commit": "bde060fefd3b760d0420e055f07ab08577d2cdbf",
+    "source_tree": "c4855946901917bc1c8aab167cdab993e63b4602",
+    "equivalent_published_commit": "33e35666aa91e8300567ae18352b290ec69e8cc1",
+    "go": "1.27.1 linux/amd64",
+    "postgres": "17.11",
+    "native_parser_source": "5f562c2959496a04d57f5f199f5e3ad22159fa9f",
+    "native_patch_sha256": "b68325ec48d9055c08fa7afcecc39035d8b023fb18c4bc3d0cb5fa404508e5b0",
+    "gates": {
+      "unit_race_pass_events": 1956,
+      "unit_skips": [
+        "TestSQLRecoveryMySQLCompletenessLocal"
+      ],
+      "native_race_pass_events": 99,
+      "native_failures": 0,
+      "native_skips": 0,
+      "native_elapsed_seconds": 743.992,
+      "build": "passed",
+      "vet": "passed",
+      "planning": "passed",
+      "source_content_and_tree_unchanged": true
+    },
+    "commands": {
+      "units": "go test -race -json ./internal/nlqexec ./internal/nlqroute ./internal/reporting ./internal/store/postgres ./internal/exec ./sdk/chartworks -count=1 -timeout=300s",
+      "native": "go test -race -json ./test/acceptance -run '^(TestFrozen(Cold.*Postgres|ConcurrentColdReusePostgres|ReuseIdentityPostgres)|TestPhase28|TestSQLRecovery(ScopedLearningBaseAcceptance|ScopedExampleRequalificationAcceptance|GroupedFactAcceptance|GroupedSelectionAcceptance|GroupedOwnedPeriodsAcceptance|ScalarCohortActivityAcceptance|OwnedExample.*Acceptance|OwnedExampleCorrectedBoundFeedbackIsNotTemplate|ExampleRequalificationAcceptance))$' -count=1 -timeout=1200s",
+      "build": "go build ./...",
+      "vet": "go vet ./...",
+      "planning": "make planning-check"
+    },
+    "log_sha256": {
+      "units.jsonl": "c3f359a3389938992e38248413a5318a0a92d2cc743c7707402327fd1b1dfea7",
+      "acceptance.jsonl": "f7b22ff7c3f6d8dd34f706e8dbc15df0b7034020261b8a73b75a10a08a74b1f4",
+      "source.txt": "3598c233aff254c640f262af5e47aa60c862d4968f97c68bd7aba7bbe482a86d",
+      "content-before.sha256": "1966de03d2327e5a926f7183e7a999e5f5e055c5a6ad68868e1437475968c03a",
+      "gates.txt": "c4fd02df496e2c1d5e1952512a02c77f025d10974fbd4f02539470713e714a1b",
+      "status.txt": "a473a68c3ae7e452594a85ad042d3c0a5ed5c70c630ab3d86f2d0d1d973e229c"
+    }
+  },
+  "subsequent_source_changes": {
+    "nested_cancellation_test": "Test-only correction;30 deterministic native race repetitions plus full store passed before integration;10 more integrated repetitions passed. Production unchanged.",
+    "extended_grouped_matrix": "12 PostgreSQL/native service cases passed without race;164 focused exec race test/subtest events passed. Integrated application race qualification pending.",
+    "protected_inference": "Source review approved; exact standalone nlqroute and semantics race packages passed. Integrated SDK/storage/whole-composition qualification pending."
+  },
+  "open_gates": [
+    "Optional MySQL completeness lane was skipped, not passed.",
+    "Renderer charged-memory qualification requires the approved operator-provisioned host workflow.",
+    "Protected applicability witness and stored/saved/refined SDK lifecycle reconstruction are incomplete.",
+    "Schema5 owned-base learning remains refused pending its own authenticated consumer.",
+    "Live-provider learning improvement, held-out corpus completeness, final performance profile and release gates remain open."
+  ],
+  "evidence_interpretation": "Pass-event counts include parent tests and subtests. Recorded model fixtures do not prove live learning gains. Later source changes are not qualified by the earlier exact-tree composition."
+}

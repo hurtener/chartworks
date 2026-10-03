@@ -62,29 +62,7 @@ type conceptCard struct {
 }
 
 func groundedQuestion(in RouteRequest, admitted []admittedTopic) string {
-	var redactions []semantics.ClarificationResolution
-	answers := semantics.CloneClarificationAnswers(in.Answers)
-	for _, item := range admitted {
-		for _, pattern := range item.rules.Definition.Patterns {
-			for _, slot := range pattern.Slots {
-				if slot.Sensitivity != semantics.LiteralSensitive {
-					continue
-				}
-				redactions = append(redactions, semantics.ClarificationResolution{Topic: item.id, Pattern: pattern.ID, Slot: slot.ID, Sensitivity: slot.Sensitivity})
-				if slot.Default != nil {
-					answers = append(answers, semantics.ClarificationAnswer{Topic: item.id, Pattern: pattern.ID, Slot: slot.ID, Value: slot.Default})
-				}
-				if slot.Effect != nil {
-					for _, value := range slot.Effect.Values {
-						redactions = append(redactions, semantics.ClarificationResolution{Value: value.Canonical, Sensitivity: semantics.LiteralSensitive})
-						for _, alias := range value.Aliases {
-							redactions = append(redactions, semantics.ClarificationResolution{Value: alias, Sensitivity: semantics.LiteralSensitive})
-						}
-					}
-				}
-			}
-		}
-	}
+	answers, redactions := inferenceRedactions(in, admitted)
 	return semantics.RedactClarificationText(in.Question, answers, redactions)
 }
 
@@ -190,6 +168,9 @@ func (s *Service) selectGroundedConcepts(ctx context.Context, e identity.Envelop
 			return readexec.ErrBinding
 		}
 		return nil
+	}
+	if err := protectedCatalogMeaning(*in, admitted); err != nil {
+		return err
 	}
 	cards, err := conceptCards(ctx, *in, admitted)
 	if err != nil {

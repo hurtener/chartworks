@@ -214,7 +214,9 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 			}
 		}
 	}
-	safeQuestion := semantics.RedactClarificationText(in.Question, in.Answers, redactions)
+	maskAnswers, maskResolutions := inferenceRedactions(in, admitted)
+	redactions = append(redactions, maskResolutions...)
+	safeQuestion := semantics.RedactClarificationText(in.Question, maskAnswers, redactions)
 	questionDigest := sha256.Sum256([]byte(safeQuestion))
 	for _, index := range order {
 		item := &admitted[index]
@@ -237,7 +239,7 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 	result.Request = cloneRouteRequest(in)
 	result.Request.Question = safeQuestion
 	for i := range result.Request.Examples {
-		result.Request.Examples[i].Text = semantics.RedactClarificationText(result.Request.Examples[i].Text, in.Answers, redactions)
+		result.Request.Examples[i].Text = semantics.RedactClarificationText(result.Request.Examples[i].Text, maskAnswers, redactions)
 	}
 	result.Request.Answers = semantics.CanonicalClarificationAnswers(result.Resolutions)
 	result.Request.AnswerContext = result.AnswerContext

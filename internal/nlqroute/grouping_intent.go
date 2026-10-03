@@ -229,9 +229,18 @@ func (s *Service) selectGroupingIntent(ctx context.Context, e identity.Envelope,
 	if err := validateGroupingIntentPolicy(in.GroupingIntentPolicy); err != nil {
 		return err
 	}
+	if err := protectedCatalogMeaning(*in, admitted); err != nil {
+		return err
+	}
 	cards, err := groupingIntentCards(ctx, *in, admitted)
 	if err != nil {
 		return err
+	}
+	surface := questionInferenceSurface(*in, admitted)
+	for _, phrase := range []string{"by month", "per month", "monthly", "by quarter", "per quarter", "quarterly", "by year", "per year", "yearly", "por mes", "mensual", "por trimestre", "trimestral", "por año", "por ano", "anual", "agrupar"} {
+		if !surface.stableCatalogPhrasePolarity(phrase) {
+			return protectedMeaningFailure(in.Locale)
+		}
 	}
 	question := groundedQuestion(*in, admitted)
 	if len(question) == 0 || len(question) > conceptchoice.MaxQuestionBytes || !utf8.ValidString(question) || strings.ContainsRune(question, 0) {
