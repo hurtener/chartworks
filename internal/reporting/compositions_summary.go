@@ -28,6 +28,9 @@ func SummarizeComposition(record CompositionRecord) CompositionView {
 				w.Outputs = clone(d.Block.Outputs)
 				w.QueryLimits = clone(d.Block.Limits)
 			}
+			if widget.Variant != nil {
+				w.Durability = "captured_variant"
+			}
 			if d.Query != nil {
 				w.Durability = d.Query.Durability
 			}

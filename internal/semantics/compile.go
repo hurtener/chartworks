@@ -49,6 +49,15 @@ func Compile(input TopicPack) (Model, error) {
 	if err = kpiCycles(p); err != nil {
 		return Model{}, err
 	}
+	if err = validateCompletenessReferences(p); err != nil {
+		return Model{}, err
+	}
+	if err = validateRelationshipFilters(p); err != nil {
+		return Model{}, err
+	}
+	if err = validateMetricPeriodReferences(p); err != nil {
+		return Model{}, err
+	}
 	raw, err := json.Marshal(p)
 	if err != nil {
 		return Model{}, invalid(CodeInvalidValue, "pack")
@@ -131,11 +140,23 @@ func validateShape(p TopicPack) error {
 			}
 		}
 	}
+	if err := validateGroupedPopulationReferences(p); err != nil {
+		return err
+	}
 	return validateEntities(p)
 }
 
 func validateEntities(p TopicPack) error {
+	if err := validateGroupDomain(p.GroupDomain); err != nil {
+		return err
+	}
+	if err := validateGroupedPopulationPolicy(p.GroupedPopulation); err != nil {
+		return err
+	}
 	for i, v := range p.Measures {
+		if err := validateCompletenessShape(v.Completeness); err != nil {
+			return err
+		}
 		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !v.Aggregation.valid() || !validOptionalLine(v.Unit, 64) || !validAliases(v.Aliases) || !validFilters(v.Filters) {
 			return invalid(CodeInvalidValue, "measures["+itoa(i)+"]")
 		}
@@ -149,6 +170,9 @@ func validateEntities(p TopicPack) error {
 		}
 	}
 	for i, v := range p.KPIs {
+		if err := validateMetricPeriodsShape(v.Periods); err != nil {
+			return err
+		}
 		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !validLine(v.Expression, 4096) || len(v.Inputs) < 1 || len(v.Inputs) > 32 || !validAliases(v.Aliases) || !validOptionalLine(v.Unit, 64) || !validFilters(v.Filters) {
 			return invalid(CodeInvalidValue, "kpis["+itoa(i)+"]")
 		}
@@ -161,12 +185,12 @@ func validateEntities(p TopicPack) error {
 		}
 	}
 	for i, v := range p.Joins {
-		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !v.Type.valid() || !v.Cardinality.valid() || !validRelationshipEvidence(v.Evidence, true) {
+		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !v.Type.valid() || !v.Cardinality.valid() || !validRelationshipEvidence(v.Evidence, true) || !validJoinKeys(v.Left, v.Right, v.AdditionalKeys) {
 			return invalid(CodeInvalidValue, "joins["+itoa(i)+"]")
 		}
 	}
 	for i, v := range p.RelationshipDecisions {
-		if !identity.Identifier(v.ID) || !v.Left.Valid() || !v.Right.Valid() || v.Left.Kind != KindColumn || v.Right.Kind != KindColumn || !v.Cardinality.valid() || v.State != "candidate" && v.State != "rejected" || !validRelationshipEvidence(v.Evidence, false) || !validText(v.Reason, 1024) {
+		if !identity.Identifier(v.ID) || !v.Left.Valid() || !v.Right.Valid() || v.Left.Kind != KindColumn || v.Right.Kind != KindColumn || !v.Cardinality.valid() || v.State != "candidate" && v.State != "rejected" || !validRelationshipEvidence(v.Evidence, false) || !validText(v.Reason, 1024) || !validJoinKeys(v.Left, v.Right, v.AdditionalKeys) {
 			return invalid(CodeInvalidValue, "relationship_decisions["+itoa(i)+"]")
 		}
 	}
@@ -258,6 +282,9 @@ func validFilters(values []SemanticFilter) bool {
 	}
 	seen := map[string]bool{}
 	for _, value := range values {
+		if value.Relationship != "" && !identity.Identifier(value.Relationship) {
+			return false
+		}
 		if !identity.Identifier(value.ID) || !value.Field.Valid() || value.Field.Kind != KindColumn || value.Operator != "eq" && value.Operator != "in" && value.Operator != "not_null" || len(value.Values) > 32 || value.Operator == "not_null" && len(value.Values) != 0 || value.Operator != "not_null" && len(value.Values) == 0 || seen[value.ID] {
 			return false
 		}
@@ -418,6 +445,14 @@ func validateReferences(p TopicPack, refs map[string]struct{}) error {
 		if err := require(v.Right, []Kind{KindColumn}, path+".right"); err != nil {
 			return err
 		}
+		for n, key := range v.AdditionalKeys {
+			if err := require(key.Left, []Kind{KindColumn}, path+".additional_keys["+itoa(n)+"].left"); err != nil {
+				return err
+			}
+			if err := require(key.Right, []Kind{KindColumn}, path+".additional_keys["+itoa(n)+"].right"); err != nil {
+				return err
+			}
+		}
 		if v.Left.Dataset == v.Right.Dataset || v.Left.key() == v.Right.key() {
 			return invalid(CodeInvalidReference, path)
 		}
@@ -425,8 +460,8 @@ func validateReferences(p TopicPack, refs map[string]struct{}) error {
 		if left.Source != right.Source || left.Context != right.Context || left.SourceRevision != right.SourceRevision {
 			return invalid(CodeEvidenceMismatch, path)
 		}
-		pair := v.Left.key() + "\x01" + v.Right.key()
-		reverse := v.Right.key() + "\x01" + v.Left.key()
+		pair := joinPairIdentity(v.KeyPairs(), false)
+		reverse := joinPairIdentity(v.KeyPairs(), true)
 		if joinPairs[pair] || joinPairs[reverse] {
 			return invalid(CodeInvalidReference, path)
 		}
@@ -453,6 +488,14 @@ func validateReferences(p TopicPack, refs map[string]struct{}) error {
 		if err := require(v.Right, []Kind{KindColumn}, path+".right"); err != nil {
 			return err
 		}
+		for n, key := range v.AdditionalKeys {
+			if err := require(key.Left, []Kind{KindColumn}, path+".additional_keys["+itoa(n)+"].left"); err != nil {
+				return err
+			}
+			if err := require(key.Right, []Kind{KindColumn}, path+".additional_keys["+itoa(n)+"].right"); err != nil {
+				return err
+			}
+		}
 		if v.Left.Dataset == v.Right.Dataset || v.Left.key() == v.Right.key() {
 			return invalid(CodeInvalidReference, path)
 		}
@@ -460,8 +503,8 @@ func validateReferences(p TopicPack, refs map[string]struct{}) error {
 		if left.Source != right.Source || left.Context != right.Context || left.SourceRevision != right.SourceRevision {
 			return invalid(CodeEvidenceMismatch, path)
 		}
-		pair := v.Left.key() + "\x01" + v.Right.key()
-		reverse := v.Right.key() + "\x01" + v.Left.key()
+		pair := joinPairIdentity(v.KeyPairs(), false)
+		reverse := joinPairIdentity(v.KeyPairs(), true)
 		if joinPairs[pair] || joinPairs[reverse] {
 			return invalid(CodeInvalidReference, path)
 		}
@@ -602,8 +645,19 @@ func canonicalOrder(p *TopicPack) {
 	sort.Slice(p.KPIs, func(i, j int) bool { return p.KPIs[i].ID < p.KPIs[j].ID })
 	for i := range p.KPIs {
 		sort.Slice(p.KPIs[i].Inputs, func(a, b int) bool { return p.KPIs[i].Inputs[a].key() < p.KPIs[i].Inputs[b].key() })
+		if p.KPIs[i].Periods != nil {
+			sort.Slice(p.KPIs[i].Periods.Bindings, func(a, b int) bool {
+				return p.KPIs[i].Periods.Bindings[a].Measure.key() < p.KPIs[i].Periods.Bindings[b].Measure.key()
+			})
+		}
 		sort.Strings(p.KPIs[i].Aliases)
 		sortFilters(p.KPIs[i].Filters)
+	}
+	for i := range p.Joins {
+		canonicalJoinKeys(&p.Joins[i].Left, &p.Joins[i].Right, &p.Joins[i].AdditionalKeys)
+	}
+	for i := range p.RelationshipDecisions {
+		canonicalJoinKeys(&p.RelationshipDecisions[i].Left, &p.RelationshipDecisions[i].Right, &p.RelationshipDecisions[i].AdditionalKeys)
 	}
 	sort.Slice(p.Joins, func(i, j int) bool { return p.Joins[i].ID < p.Joins[j].ID })
 	sort.Slice(p.RelationshipDecisions, func(i, j int) bool { return p.RelationshipDecisions[i].ID < p.RelationshipDecisions[j].ID })
@@ -626,6 +680,8 @@ func sortFilters(values []SemanticFilter) {
 }
 
 func clonePack(p TopicPack) TopicPack {
+	p.GroupDomain = cloneGroupDomain(p.GroupDomain)
+	p.GroupedPopulation = cloneGroupedPopulation(p.GroupedPopulation)
 	p.Datasets = append([]Dataset(nil), p.Datasets...)
 	for i := range p.Datasets {
 		p.Datasets[i].Columns = append([]Column(nil), p.Datasets[i].Columns...)
@@ -635,6 +691,7 @@ func clonePack(p TopicPack) TopicPack {
 	}
 	p.Measures = append([]Measure(nil), p.Measures...)
 	for i := range p.Measures {
+		p.Measures[i].Completeness = cloneCompleteness(p.Measures[i].Completeness)
 		p.Measures[i].Aliases = append([]string(nil), p.Measures[i].Aliases...)
 		p.Measures[i].Filters = cloneFilters(p.Measures[i].Filters)
 	}
@@ -654,12 +711,19 @@ func clonePack(p TopicPack) TopicPack {
 	}
 	p.KPIs = append([]KPI(nil), p.KPIs...)
 	for i := range p.KPIs {
+		p.KPIs[i].Periods = cloneMetricPeriods(p.KPIs[i].Periods)
 		p.KPIs[i].Inputs = append([]Reference(nil), p.KPIs[i].Inputs...)
 		p.KPIs[i].Aliases = append([]string(nil), p.KPIs[i].Aliases...)
 		p.KPIs[i].Filters = cloneFilters(p.KPIs[i].Filters)
 	}
 	p.Joins = append([]Join(nil), p.Joins...)
+	for i := range p.Joins {
+		p.Joins[i].AdditionalKeys = append([]JoinKeyPair(nil), p.Joins[i].AdditionalKeys...)
+	}
 	p.RelationshipDecisions = append([]RelationshipDecision(nil), p.RelationshipDecisions...)
+	for i := range p.RelationshipDecisions {
+		p.RelationshipDecisions[i].AdditionalKeys = append([]JoinKeyPair(nil), p.RelationshipDecisions[i].AdditionalKeys...)
+	}
 	p.CanonicalEntities = append([]CanonicalEntity(nil), p.CanonicalEntities...)
 	p.Unresolved = append([]UnresolvedSemantic(nil), p.Unresolved...)
 	for i := range p.CanonicalEntities {

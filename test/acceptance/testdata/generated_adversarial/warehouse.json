@@ -1,0 +1,318 @@
+{
+  "schema_version": 1,
+  "timezone": "America/New_York",
+  "orders": [
+    {
+      "division_id": "alpha",
+      "order_id": 101,
+      "customer_id": 1,
+      "ordered_at": "2025-12-31T23:30:00-05:00",
+      "misleading_net_total_usd": "120.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "order_id": 102,
+      "customer_id": 1,
+      "ordered_at": "2026-01-01T00:30:00-05:00",
+      "misleading_net_total_usd": "200.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "order_id": 103,
+      "customer_id": 2,
+      "ordered_at": "2026-03-08T01:59:59-05:00",
+      "misleading_net_total_usd": "90.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "order_id": 104,
+      "customer_id": 2,
+      "ordered_at": "2026-03-08T03:00:00-04:00",
+      "misleading_net_total_usd": "150.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "order_id": 105,
+      "customer_id": 3,
+      "ordered_at": "2026-11-01T01:30:00-04:00",
+      "misleading_net_total_usd": "80.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "order_id": 106,
+      "customer_id": 3,
+      "ordered_at": "2026-11-01T01:30:00-05:00",
+      "misleading_net_total_usd": "60.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "order_id": 107,
+      "customer_id": 1,
+      "ordered_at": "2026-04-15T12:00:00-04:00",
+      "misleading_net_total_usd": "500.00",
+      "status_code": "C"
+    },
+    {
+      "division_id": "alpha",
+      "order_id": 108,
+      "customer_id": 1,
+      "ordered_at": "2026-05-10T12:00:00-04:00",
+      "misleading_net_total_usd": "70.00",
+      "status_code": null
+    },
+    {
+      "division_id": "alpha",
+      "order_id": 109,
+      "customer_id": 2,
+      "ordered_at": "2026-06-01T09:00:00-04:00",
+      "misleading_net_total_usd": null,
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "order_id": 110,
+      "customer_id": 2,
+      "ordered_at": "2026-12-31T23:30:00-05:00",
+      "misleading_net_total_usd": "40.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "order_id": 111,
+      "customer_id": 3,
+      "ordered_at": "2027-01-01T00:30:00-05:00",
+      "misleading_net_total_usd": "1000.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "beta",
+      "order_id": 102,
+      "customer_id": 1,
+      "ordered_at": "2026-01-15T12:00:00-05:00",
+      "misleading_net_total_usd": "300.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "beta",
+      "order_id": 103,
+      "customer_id": 2,
+      "ordered_at": "2026-03-08T03:00:00-04:00",
+      "misleading_net_total_usd": "50.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "beta",
+      "order_id": 104,
+      "customer_id": 2,
+      "ordered_at": "2026-08-15T12:00:00-04:00",
+      "misleading_net_total_usd": "25.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "beta",
+      "order_id": 105,
+      "customer_id": 3,
+      "ordered_at": "2026-10-10T12:00:00-04:00",
+      "misleading_net_total_usd": "0.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "beta",
+      "order_id": 106,
+      "customer_id": 1,
+      "ordered_at": "2026-02-12T12:00:00-05:00",
+      "misleading_net_total_usd": "20.00",
+      "status_code": "C"
+    },
+    {
+      "division_id": "beta",
+      "order_id": 107,
+      "customer_id": 2,
+      "ordered_at": "2026-09-10T12:00:00-04:00",
+      "misleading_net_total_usd": "125.00",
+      "status_code": "X"
+    }
+  ],
+  "refunds": [
+    {
+      "division_id": "alpha",
+      "refund_id": 1,
+      "order_id": 102,
+      "refunded_at": "2026-01-20T12:00:00-05:00",
+      "amount_usd": "20.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "refund_id": 2,
+      "order_id": 102,
+      "refunded_at": "2026-02-02T12:00:00-05:00",
+      "amount_usd": "30.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "refund_id": 3,
+      "order_id": 102,
+      "refunded_at": "2026-02-03T12:00:00-05:00",
+      "amount_usd": "999.00",
+      "status_code": "V"
+    },
+    {
+      "division_id": "alpha",
+      "refund_id": 4,
+      "order_id": 103,
+      "refunded_at": "2026-03-12T12:00:00-04:00",
+      "amount_usd": "10.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "refund_id": 5,
+      "order_id": 101,
+      "refunded_at": "2026-01-03T12:00:00-05:00",
+      "amount_usd": "15.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "refund_id": 6,
+      "order_id": 110,
+      "refunded_at": "2027-01-03T12:00:00-05:00",
+      "amount_usd": "7.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "refund_id": 7,
+      "order_id": 107,
+      "refunded_at": "2026-04-20T12:00:00-04:00",
+      "amount_usd": "5.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "refund_id": 8,
+      "order_id": 105,
+      "refunded_at": "2026-11-05T12:00:00-05:00",
+      "amount_usd": null,
+      "status_code": "P"
+    },
+    {
+      "division_id": "alpha",
+      "refund_id": 9,
+      "order_id": 111,
+      "refunded_at": "2027-01-03T12:00:00-05:00",
+      "amount_usd": "250.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "beta",
+      "refund_id": 1,
+      "order_id": 102,
+      "refunded_at": "2026-01-30T12:00:00-05:00",
+      "amount_usd": "25.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "beta",
+      "refund_id": 2,
+      "order_id": 103,
+      "refunded_at": "2026-03-12T12:00:00-04:00",
+      "amount_usd": "40.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "beta",
+      "refund_id": 3,
+      "order_id": 104,
+      "refunded_at": "2026-08-30T12:00:00-04:00",
+      "amount_usd": "50.00",
+      "status_code": "P"
+    },
+    {
+      "division_id": "beta",
+      "refund_id": 4,
+      "order_id": 106,
+      "refunded_at": "2026-02-15T12:00:00-05:00",
+      "amount_usd": "100.00",
+      "status_code": "P"
+    }
+  ],
+  "customers": [
+    {
+      "division_id": "alpha",
+      "customer_id": 1,
+      "segment": "consumer"
+    },
+    {
+      "division_id": "alpha",
+      "customer_id": 2,
+      "segment": "business"
+    },
+    {
+      "division_id": "alpha",
+      "customer_id": 3,
+      "segment": null
+    },
+    {
+      "division_id": "beta",
+      "customer_id": 1,
+      "segment": "consumer"
+    },
+    {
+      "division_id": "beta",
+      "customer_id": 2,
+      "segment": "business"
+    },
+    {
+      "division_id": "beta",
+      "customer_id": 3,
+      "segment": "business"
+    }
+  ],
+  "order_lines": [
+    {
+      "division_id": "alpha",
+      "line_id": 1,
+      "order_id": 102,
+      "category": "goods",
+      "line_total_usd": "120.00"
+    },
+    {
+      "division_id": "alpha",
+      "line_id": 2,
+      "order_id": 102,
+      "category": "service",
+      "line_total_usd": "80.00"
+    },
+    {
+      "division_id": "alpha",
+      "line_id": 3,
+      "order_id": 103,
+      "category": "goods",
+      "line_total_usd": "90.00"
+    },
+    {
+      "division_id": "beta",
+      "line_id": 1,
+      "order_id": 102,
+      "category": "goods",
+      "line_total_usd": "170.00"
+    },
+    {
+      "division_id": "beta",
+      "line_id": 2,
+      "order_id": 102,
+      "category": "service",
+      "line_total_usd": "130.00"
+    }
+  ],
+  "private_note_canary": "ROW_CONTENT_MUST_NOT_ENTER_AUTHORING_PROMPT_7b22"
+}

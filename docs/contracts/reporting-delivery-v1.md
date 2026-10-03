@@ -191,7 +191,8 @@ schedule-write reach before the transaction changes anything.
 
 Deletion scrubs live definition payloads and external import mappings, erases retained composition payloads,
 fences root and `nested_parent` operations, erases their nested frozen values and
-exact root-owned dynamic query rows, expires their bounded receipts, retires matching report/saved-question schedules,
+exact registered root-owned dynamic queries and explicitly marked unreviewed
+saved copies, expires their bounded receipts, retires matching report/saved-question schedules,
 and retains schedule history plus a deletion tombstone. Stale execution cannot
 complete after the tombstone. Active owned read-attempt control journals remain
 with durable cancellation intent for physical cancellation and reconciliation;
@@ -199,7 +200,10 @@ they retain no result values and late success is recorded as cancelled. Shared b
 deletion does not infer ownership or cascade to reports; report deletion preserves
 dashboard history while current page projection omits the deleted report. Identical
 replay returns the tombstone and changed intent conflicts. Backups, replicas and
-WAL are outside the live-data erasure result.
+WAL are outside the live-data erasure result. Independently authored reports
+retain borrowed-reference identity and expose unavailable widget IDs after the
+private origin is erased; their old retained values and renditions are unavailable.
+Captured and independently reviewed blocks are not private session copies.
 
 Document catalog summaries carry bounded block/topic/schedule relationships and
 descriptive creator/last-editor presentations. Actor IDs remain protected audit
@@ -242,3 +246,17 @@ coordinate, occurrence delivery and budget state. Existing migrations 001–030 
 unchanged. Apply the normal service migration path; do not edit applied migration
 checksums or manually manufacture a successful occurrence. Required build/runtime
 fixtures and the current package coverage gates remain in the ordinary CI.
+
+Learning-retention qualification: deletion receipts include erased/quarantined
+example counts and `learning_retention=shared_or_unproven_payloads_require_review`.
+Sole-owned unreviewed examples with complete contribution lineage are erased.
+Shared or legacy lineage-incomplete payloads may remain protected but are excluded
+from automatic serving until reviewed. Independently reviewed examples retain
+an independent lifecycle. A successful document deletion is not a claim that
+all historical/shared learning payload ownership has been reconstructed.
+
+The `query_retention=legacy_expired_origins_unproven` receipt qualification also
+covers pre-074 query ownership whose composition checkpoints had already expired
+and whose operation key had moved. Such missing historical ownership cannot be
+reconstructed safely; success/zero erased-query counts do not claim otherwise.
+New registry ownership survives ordinary composition expiry.

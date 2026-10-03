@@ -333,7 +333,7 @@ func (s *Service) observedFor(ctx context.Context, e identity.Envelope, id, acti
 			if err != nil {
 				return err
 			}
-			binding, err := s.probe(ctx, connection, id, record.Source.Revision, nil)
+			binding, err := s.probe(withStoredKeyPolicy(ctx, record.Binding), connection, id, record.Source.Revision, nil)
 			if err != nil {
 				return err
 			}
@@ -456,7 +456,7 @@ func (s *Service) Explain(ctx context.Context, e identity.Envelope, candidate re
 			case "sqlserver":
 				return s.explainSQLServer(ctx, e, candidate, connection, record.Binding)
 			}
-			_, err = s.probe(ctx, connection, id, record.Source.Revision, func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
+			_, err = s.probe(withStoredKeyPolicy(ctx, record.Binding), connection, id, record.Source.Revision, func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
 				statement, parameters, err := candidate.SQL(e, b)
 				if err != nil {
 					return err
@@ -478,10 +478,13 @@ func safe(err error) error {
 	if err == nil {
 		return nil
 	}
-	for _, known := range []error{readexec.ErrType, readexec.ErrCancelled, readexec.ErrTimeout, readexec.ErrUncertain, readexec.ErrReplay, readexec.ErrQuery, context.Canceled, context.DeadlineExceeded, readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, store.ErrInvalid, store.ErrNotFound, store.ErrConflict, store.ErrUnavailable, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound} {
+	for _, known := range []error{readexec.ErrType, readexec.ErrCancelled, readexec.ErrTimeout, readexec.ErrUncertain, readexec.ErrReplay, context.Canceled, context.DeadlineExceeded, readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, store.ErrInvalid, store.ErrNotFound, store.ErrConflict, store.ErrUnavailable, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound} {
 		if errors.Is(err, known) {
 			return known
 		}
+	}
+	if code := readexec.QueryRejectionCode(err); code != "" {
+		return readexec.QueryRejection(code)
 	}
 	return store.ErrUnavailable
 }

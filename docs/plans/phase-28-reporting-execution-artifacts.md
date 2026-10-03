@@ -114,3 +114,19 @@ two accepted packs, same-pack reuse, changed/rejected selections and signed
 context denial. With no selected pack, explicit partial mode retains deterministic
 outputs and a failed model-free narrative without cross-run reuse. Phase 25 still
 owns final measured stress and release evidence.
+
+## D-092 statistical narrative continuation
+
+AC04 retains its original identity and gains an explicit opt-in contract for
+reviewed single-series trend, extrema and exact population variance. The
+provider selects locally calculated evidence IDs; no free-form numeric or causal
+claims are added. Value/time/companion sensitivity, original source-row citations,
+NULL exclusions, bounded-prefix/truncation qualifiers and PostgreSQL independent
+recomputation are mandatory. Legacy policies and JSON bytes stay supported.
+
+Qualification names: `TestStatisticalNarrativeRetainedLifecycle`,
+`TestStatisticalNarrativeCompanionEgress`, the `TestStatisticalNarrative*` core and
+wire suites, and `TestNarrativeHTMLPreservesInertCaveats`. Source fixtures use real
+profiled and reviewed temporal fields and recorded providers. They do not qualify
+live models or the separately blocked isolated renderer deployment. No new phase,
+acceptance count, execution authority or resource-policy fallback is introduced.

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 
 	readexec "github.com/hurtener/chartworks/internal/exec"
@@ -51,6 +52,30 @@ func (d *DB) ReviewTopic(ctx context.Context, e identity.Envelope, id string, in
 		if draft.Metadata.Digest != in.Digest {
 			return store.ErrConflict
 		}
+		// New generated completions have a whole-candidate advisory. Manual and
+		// legacy drafts retain explicit human review without fabricating a report.
+		var authoringDigest string
+		var complete bool
+		var qualityRaw []byte
+		qualityErr := tx.QueryRow(ctx, `SELECT authoring_digest,complete,quality_review FROM chartworks.topic_generation_checkpoints WHERE tenant_id=$1 AND topic_id=$2 AND actor_id=$3 AND session_id=$4 AND draft_revision=$5`, e.Tenant(), id, e.User(), e.Session(), in.DraftRevision).Scan(&authoringDigest, &complete, &qualityRaw)
+		if qualityErr != nil && !errors.Is(qualityErr, pgx.ErrNoRows) {
+			return qualityErr
+		}
+		if qualityErr == nil && authoringDigest != "" && in.Decision == "approve" {
+			model, compileErr := semantics.Compile(draft.Pack)
+			if compileErr != nil {
+				return compileErr
+			}
+			var quality drafts.QualityReview
+			if !complete || json.Unmarshal(qualityRaw, &quality) != nil || !quality.ValidFor(model) {
+				return store.ErrConflict
+			}
+		}
+		if in.Decision == "approve" {
+			if err = generatedTopicQualityFence(ctx, tx, e, draft); err != nil {
+				return err
+			}
+		}
 		var count int
 		if err = tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.topic_reviews WHERE tenant_id=$1 AND topic_id=$2`, e.Tenant(), id).Scan(&count); err != nil {
 			return err
@@ -88,6 +113,9 @@ func reviewedTopicTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id, re
 	}
 	if review.Digest != draft.Metadata.Digest {
 		return topics.Review{}, drafts.Version{}, store.ErrConflict
+	}
+	if err = generatedTopicQualityFence(ctx, tx, e, draft); err != nil {
+		return topics.Review{}, drafts.Version{}, err
 	}
 	return review, draft, nil
 }

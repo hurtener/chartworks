@@ -34,6 +34,7 @@ func Registry() (*api.Registry, error) {
 		{"/v1/migrations/cutovers", "migration.cutover", "migration_cutover_commit", "migrationCutover", "Activate one cohort route at an exact schedule occurrence boundary", reflect.TypeFor[migration.CutoverRequest](), reflect.TypeFor[migration.Cutover]()},
 		{"/v1/migrations/rollbacks", "migration.cutover", "migration_cutover_commit", "migrationRollback", "Restore the prior cohort route and record irreversible external effects", reflect.TypeFor[migration.RollbackRequest](), reflect.TypeFor[migration.Cutover]()},
 		{"/v1/migrations/erasures", "migration.erase", "migration_erase_commit", "migrationErase", "Erase bounded online migration records under current signed authority", reflect.TypeFor[migration.EraseRequest](), reflect.TypeFor[migration.EraseResult]()},
+		{"/v1/migrations/retention-drills", "migration.erase", "migration_erase_commit", "migrationRetentionDrill", "Preview or apply exact expired imported-descendant output and rendition erasure", reflect.TypeFor[migration.RetentionDrillRequest](), reflect.TypeFor[migration.RetentionDrillResult]()},
 	}
 	defs := make([]api.Definition, 0, len(rows))
 	for _, r := range rows {
@@ -119,6 +120,12 @@ func Handler(verifier *auth.Verifier, service *migration.Service, next http.Hand
 			err = decode(w, r, d, &in)
 			if err == nil {
 				out, err = service.Erase(r.Context(), e, in)
+			}
+		case "migrationRetentionDrill":
+			var in migration.RetentionDrillRequest
+			err = decode(w, r, d, &in)
+			if err == nil {
+				out, err = service.RetentionDrill(r.Context(), e, in)
 			}
 		default:
 			err = migration.ErrInvalid

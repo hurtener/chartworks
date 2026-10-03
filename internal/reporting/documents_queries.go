@@ -44,7 +44,7 @@ func savedQuestion(q QueryWidget) nlqexec.SavedQuestion {
 }
 
 func validQuerySelections(q QueryWidget) bool {
-	return nlqexec.ValidateSavedQuestion(savedQuestion(q)) == nil
+	return q.Variant == nil && nlqexec.ValidateSavedQuestion(savedQuestion(q)) == nil
 }
 
 func queryOrigin(e nlqexec.SavedEvidence) QueryOrigin {

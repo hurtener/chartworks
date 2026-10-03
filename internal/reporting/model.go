@@ -6,6 +6,7 @@ package reporting
 import (
 	"context"
 	"errors"
+	"github.com/hurtener/chartworks/internal/nlqexec"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/charts"
@@ -184,55 +185,58 @@ type Resolved struct {
 // Narrative is a bounded saved definition only. Phase 28 owns actual generation
 // through Bifrost. No tools, executable templates, URLs or HTML can be supplied.
 type Narrative struct {
-	PolicyVersion   string   `json:"policy_version,omitempty" jsonschema:"enum=bounded-narrative-v2"`
-	MaxClaims       int      `json:"max_claims,omitempty" jsonschema:"minimum=1,maximum=32"`
-	Type            string   `json:"type" jsonschema:"enum=summary,enum=comparison,enum=explanation"`
-	Instructions    string   `json:"instructions"`
-	Fields          []string `json:"fields"`
-	RedactedFields  []string `json:"redacted_fields"`
-	Reduction       string   `json:"reduction" jsonschema:"enum=first_rows,enum=aggregate_evidence"`
-	MaxRows         int      `json:"max_rows"`
-	MaxBytes        int      `json:"max_bytes"`
-	MaxCharacters   int      `json:"max_characters"`
-	MaxCalls        int      `json:"max_calls"`
-	MaxTokens       int      `json:"max_tokens"`
-	TimeoutMillis   int      `json:"timeout_ms"`
-	PromptVersion   string   `json:"prompt_version"`
-	ModelVersion    string   `json:"model_version"`
-	SchemaVersion   string   `json:"schema_version"`
-	Locale          string   `json:"locale"`
-	Tone            string   `json:"tone" jsonschema:"enum=neutral,enum=concise,enum=technical"`
-	RequireEvidence bool     `json:"require_evidence"`
-	RequireCaveats  bool     `json:"require_caveats"`
+	PolicyVersion   string               `json:"policy_version,omitempty" jsonschema:"enum=bounded-narrative-v2,enum=bounded-narrative-v3"`
+	MaxClaims       int                  `json:"max_claims,omitempty" jsonschema:"minimum=1,maximum=32"`
+	Type            string               `json:"type" jsonschema:"enum=summary,enum=comparison,enum=explanation"`
+	Instructions    string               `json:"instructions"`
+	Fields          []string             `json:"fields"`
+	RedactedFields  []string             `json:"redacted_fields"`
+	Reduction       string               `json:"reduction" jsonschema:"enum=first_rows,enum=aggregate_evidence,enum=statistical_evidence"`
+	MaxRows         int                  `json:"max_rows"`
+	MaxBytes        int                  `json:"max_bytes"`
+	MaxCharacters   int                  `json:"max_characters"`
+	MaxCalls        int                  `json:"max_calls"`
+	MaxTokens       int                  `json:"max_tokens"`
+	TimeoutMillis   int                  `json:"timeout_ms"`
+	PromptVersion   string               `json:"prompt_version"`
+	ModelVersion    string               `json:"model_version"`
+	SchemaVersion   string               `json:"schema_version"`
+	Locale          string               `json:"locale"`
+	Tone            string               `json:"tone" jsonschema:"enum=neutral,enum=concise,enum=technical"`
+	RequireEvidence bool                 `json:"require_evidence"`
+	RequireCaveats  bool                 `json:"require_caveats"`
+	Statistics      []NarrativeStatistic `json:"statistics,omitempty"`
 }
 
 // Output is a closed tagged union. A chart/KPI/table has exactly one saved phase
 // 20 mapping; a narrative has exactly one bounded narrative specification.
 type Output struct {
-	Intent    *OutputIntent   `json:"intent,omitempty"`
-	ID        string          `json:"id"`
-	Kind      string          `json:"kind" jsonschema:"enum=chart,enum=kpi,enum=table,enum=narrative"`
-	Mapping   *charts.Mapping `json:"mapping,omitempty"`
-	Narrative *Narrative      `json:"narrative,omitempty"`
+	AmountCompleteness []AmountOutputBinding `json:"amount_completeness,omitempty"`
+	Intent             *OutputIntent         `json:"intent,omitempty"`
+	ID                 string                `json:"id"`
+	Kind               string                `json:"kind" jsonschema:"enum=chart,enum=kpi,enum=table,enum=narrative"`
+	Mapping            *charts.Mapping       `json:"mapping,omitempty"`
+	Narrative          *Narrative            `json:"narrative,omitempty"`
 }
 
 // Definition is private authoring/persistence input. Never return this type from
 // a normal block read: SQL has its own separately authorized projection.
 type Definition struct {
-	QueryLimits    *QueryLimits        `json:"query_limits,omitempty"`
-	ResultPolicy   []ResultFieldPolicy `json:"result_policy,omitempty"`
-	SchemaVersion  int                 `json:"schema_version" jsonschema:"enum=1,enum=2"`
-	Metadata       []Localized         `json:"metadata"`
-	Source         string              `json:"source"`
-	Context        string              `json:"context"`
-	Topics         []TopicPin          `json:"topics"`
-	Rules          []RulePin           `json:"rules,omitempty"`
-	Template       *TemplatePin        `json:"template,omitempty"`
-	Templates      []TemplateSelection `json:"templates,omitempty"`
-	SQL            string              `json:"sql"`
-	Parameters     []Parameter         `json:"parameters"`
-	ExpectedSchema []exec.Field        `json:"expected_schema"`
-	Outputs        []Output            `json:"outputs"`
+	AmountCompleteness []AmountDeclaration `json:"amount_completeness,omitempty"`
+	QueryLimits        *QueryLimits        `json:"query_limits,omitempty"`
+	ResultPolicy       []ResultFieldPolicy `json:"result_policy,omitempty"`
+	SchemaVersion      int                 `json:"schema_version" jsonschema:"enum=1,enum=2"`
+	Metadata           []Localized         `json:"metadata"`
+	Source             string              `json:"source"`
+	Context            string              `json:"context"`
+	Topics             []TopicPin          `json:"topics"`
+	Rules              []RulePin           `json:"rules,omitempty"`
+	Template           *TemplatePin        `json:"template,omitempty"`
+	Templates          []TemplateSelection `json:"templates,omitempty"`
+	SQL                string              `json:"sql"`
+	Parameters         []Parameter         `json:"parameters"`
+	ExpectedSchema     []exec.Field        `json:"expected_schema"`
+	Outputs            []Output            `json:"outputs"`
 }
 
 // RulePin binds one immutable reviewed ruleset to the exact semantic topic
@@ -247,6 +251,7 @@ type RulePin struct {
 
 // Provenance records the server-derived origin of an authored revision.
 type Provenance struct {
+	CaptureDigest    string                    `json:"capture_digest,omitempty"`
 	Kind             string                    `json:"kind"`
 	ParentRevision   int64                     `json:"parent_revision,omitempty"`
 	Query            string                    `json:"query,omitempty"`
@@ -397,27 +402,28 @@ type Trust struct {
 // View deliberately has no Definition, SQL or private capture provenance field.
 // JSON reflection cannot accidentally expose them when a new field is added.
 type View struct {
-	SchemaVersion   int                    `json:"schema_version"`
-	QueryLimits     *QueryLimits           `json:"query_limits,omitempty"`
-	ResultPolicy    []EffectiveFieldPolicy `json:"result_policy"`
-	State           State                  `json:"state"`
-	Revision        int64                  `json:"revision"`
-	RevisionID      string                 `json:"revision_id"`
-	Digest          string                 `json:"digest"`
-	ExecutionDigest string                 `json:"execution_digest"`
-	Metadata        []Localized            `json:"metadata"`
-	Source          string                 `json:"source"`
-	Context         string                 `json:"context"`
-	Topics          []TopicPin             `json:"topics"`
-	Rules           []RulePin              `json:"rules,omitempty"`
-	Parameters      []Parameter            `json:"parameters"`
-	ExpectedSchema  []exec.Field           `json:"expected_schema"`
-	Outputs         []Output               `json:"outputs"`
-	Actor           string                 `json:"actor"`
-	CreatedAt       time.Time              `json:"created_at"`
-	Private         bool                   `json:"private"`
-	Trust           Trust                  `json:"trust"`
-	Evidence        *Evidence              `json:"validation,omitempty"`
+	AmountCompleteness []AmountDeclaration    `json:"amount_completeness,omitempty"`
+	SchemaVersion      int                    `json:"schema_version"`
+	QueryLimits        *QueryLimits           `json:"query_limits,omitempty"`
+	ResultPolicy       []EffectiveFieldPolicy `json:"result_policy"`
+	State              State                  `json:"state"`
+	Revision           int64                  `json:"revision"`
+	RevisionID         string                 `json:"revision_id"`
+	Digest             string                 `json:"digest"`
+	ExecutionDigest    string                 `json:"execution_digest"`
+	Metadata           []Localized            `json:"metadata"`
+	Source             string                 `json:"source"`
+	Context            string                 `json:"context"`
+	Topics             []TopicPin             `json:"topics"`
+	Rules              []RulePin              `json:"rules,omitempty"`
+	Parameters         []Parameter            `json:"parameters"`
+	ExpectedSchema     []exec.Field           `json:"expected_schema"`
+	Outputs            []Output               `json:"outputs"`
+	Actor              string                 `json:"actor"`
+	CreatedAt          time.Time              `json:"created_at"`
+	Private            bool                   `json:"private"`
+	Trust              Trust                  `json:"trust"`
+	Evidence           *Evidence              `json:"validation,omitempty"`
 }
 
 // SQLView is the separately authorized SQL-bearing revision projection.
@@ -553,16 +559,17 @@ type CaptureRequest struct {
 // Capture is supplied by the existing query service after its own session and
 // current-reach checks. A capture always creates an unvalidated private draft.
 type Capture struct {
-	SQL        string
-	Parameters []exec.Parameter
-	Schema     []exec.Field
-	Source     string
-	Context    string
-	Topics     []TopicPin
-	Rules      []RulePin
-	Template   *TemplatePin
-	Templates  []TemplateSelection
-	Question   string
+	AmountCompleteness []nlqexec.CapturedAmountCompleteness
+	SQL                string
+	Parameters         []exec.Parameter
+	Schema             []exec.Field
+	Source             string
+	Context            string
+	Topics             []TopicPin
+	Rules              []RulePin
+	Template           *TemplatePin
+	Templates          []TemplateSelection
+	Question           string
 }
 
 // ListRequest bounds a permission-filtered scan and controls private-draft inclusion.

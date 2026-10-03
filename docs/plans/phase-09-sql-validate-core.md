@@ -57,3 +57,13 @@ qualification boundaries. Its [adversarial review](../reviews/phase-09-10-advers
 records the actual cursor, attempt, cancellation and exact-result regressions.
 Earlier statements assigning execution to phase 10 are now realized by that
 consumer; other-engine and retained reporting deliverables remain separately owned.
+
+
+## SQL recovery: closed native-query diagnostics
+
+[Query-repair diagnostics v1](../contracts/query-repair-diagnostics-v1.md) adds
+content-free SQL rejection reasons at EXPLAIN/read boundaries and migration 060
+for their durable attempt codes. Raw driver error bodies never cross the source
+revision fence. Native validity, authority, uncertain/cancelled outcomes and the
+existing bounded correction consumer remain separate; no automatic retry is
+added to the read core. Exact new-source qualification is tracked in PR #62.

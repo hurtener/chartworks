@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "52" || len(manifest) != 52 {
+	if err != nil || SchemaVersion() != "78" || len(manifest) != 78 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -60,6 +60,32 @@ func TestSafeErrors(t *testing.T) {
 		{48, "migrations/049_nlq_parent_lineage.sql", "parent_digest"},
 		{49, "migrations/050_migration_cutover.sql", "migration_batches"},
 		{51, "migrations/052_nlq_reviewed_scope.sql", "nlq_relation_scope_immutable"},
+		{52, "migrations/053_nlq_analytical.sql", "nlq_analytical_immutable"},
+		{53, "migrations/054_nlq_analytical_grain.sql", "analytical-metrics-v2"},
+		{54, "migrations/055_nlq_analytical_calendar.sql", "analytical-metrics-v3"},
+		{55, "migrations/056_nlq_query_population.sql", "owned-query-predicates-v1"},
+		{56, "migrations/057_nlq_example_parameters.sql", "nlq_example_parameters_immutable"},
+		{57, "migrations/058_read_query_error.sql", "'query_error'"},
+		{58, "migrations/059_nlq_grouping_continuity.sql", "analytical-metrics-v5"},
+		{59, "migrations/060_read_query_diagnostics.sql", "read_query_diagnostic_outcome"},
+		{60, "migrations/061_nlq_generation_pending.sql", "nlq_generation_pending_immutable"},
+		{61, "migrations/062_nlq_analytical_intent.sql", "analytical-metrics-v6"},
+		{62, "migrations/063_nlq_grouped_populations.sql", "analytical-metrics-v7"},
+		{63, "migrations/064_nlq_example_parameter_domains.sql", "example-parameters-v2"},
+		{64, "migrations/065_nlq_grouped_programs.sql", "analytical-metrics-v8"},
+		{65, "migrations/066_nlq_intent_review.sql", "nlq_intent_review_immutable"},
+		{66, "migrations/067_topic_authoring_quality.sql", "topic_authoring_quality_complete"},
+		{67, "migrations/068_generation_example_retrieval.sql", "nlq_examples_generation_origin"},
+		{68, "migrations/069_topic_feedback_proposals.sql", "topic_feedback_proposals"},
+		{69, "migrations/070_topic_authoring_vocabulary.sql", "vocabulary"},
+		{70, "migrations/071_example_requalification.sql", "nlq_example_requalification_shape"},
+		{71, "migrations/072_nlq_scoped_populations.sql", "analytical-metrics-v9"},
+		{72, "migrations/073_nlq_plan_submission.sql", "nlq_plan_submission_immutable"},
+		{73, "migrations/074_nlq_query_retention.sql", "nlq_query_origins"},
+		{74, "migrations/075_png_renditions.sql", "render_renditions_format_check"},
+		{75, "migrations/076_saved_query_derivation.sql", "nlq_saved_derivation_shape"},
+		{76, "migrations/077_nlq_grouped_owned_populations.sql", "analytical-metrics-v10"},
+		{77, "migrations/078_nlq_group_selection.sql", "analytical-metrics-v11"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {

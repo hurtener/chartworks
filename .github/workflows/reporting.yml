@@ -4,14 +4,18 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: reporting-final-${{ github.sha }}
+  group: reporting-final-${{ github.workflow }}-${{ github.sha }}
   cancel-in-progress: true
 jobs:
   contracts:
-    runs-on: ubuntu-24.04
+    # A configured label must select an already provisioned trusted Linux runner.
+    # The hosted default still fails the mandatory isolation gate if unsupported.
+    runs-on: ${{ vars.CHARTWORKS_RENDER_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 30
     env:
       CGO_ENABLED: '1'
+      # Operator-provisioned only; this workflow never remounts or delegates cgroups.
+      CHARTWORKS_TEST_RENDER_CGROUP_ROOT: ${{ vars.CHARTWORKS_RENDER_CGROUP_ROOT }}
       GOFLAGS: '-p=2'
       CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
       CHARTWORKS_BRUIN_BIN: /tmp/chartworks-bruin/bruin
@@ -32,7 +36,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Bind native parser build identity
+        run: bash scripts/native-build-env.sh
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
@@ -47,15 +54,13 @@ jobs:
           node --check web/report-viewer/app.js
           node --check web/report-viewer/component.test.mjs
           go mod verify
-      - name: Reserve disk for native and race builds
-        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       - uses: actions/cache/restore@v4
         id: native
         with:
           path: |
             /tmp/chartworks-bruin/bruin
-            /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
-          key: chartworks-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+            /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/lib*.a
+          key: chartworks-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f-signatures-${{ hashFiles('internal/exec/signatureparser/rustffi/**', 'scripts/native-patches/**', 'scripts/build-bruin.sh', 'scripts/native-build-env.sh', 'scripts/apply-bruin-read-patch.sh') }}
       - name: Build pinned native dependencies
         if: steps.native.outputs.cache-hit != 'true'
         run: bash scripts/build-bruin.sh
@@ -82,11 +87,75 @@ jobs:
           set -o pipefail
           go test -race -count=1 -timeout=5m ./test/acceptance -run '^TestCW02RichCharts$' 2>&1 | tee /tmp/reporting-cw02.log
           go test -race -count=1 -cover ./internal/charts ./web/report-viewer 2>&1 | tee /tmp/reporting-charts.log
+      - name: Retained disclosure, PNG and ownership lifecycles
+        if: always()
+        run: |
+          set -o pipefail
+          node --test web/report-viewer/display_intent.test.mjs web/report-viewer/amount_completeness.test.mjs
+          go test -race -count=1 -json -timeout=12m ./test/acceptance -run '^(TestCapturedAmountCompletenessLifecycle|TestPNGRenditionRetainedTransportsAndExpiry|TestRetentionOriginalOperationAudit|TestRetentionConcurrentMutationFences|TestRetentionLateResultAndRendition|TestRetentionLegacyCheckpointAndExactGroupOwnership|TestRetentionLearningContributionCustody|TestRetentionExpiredLegacyOwnershipLimit|TestSQLRecoveryExampleRequalificationAcceptance|TestReportingCompositionData|TestSavedDerivationReviewedOrigins|TestStatisticalNarrativeRetainedLifecycle|TestStatisticalNarrativeCompanionEgress)$' 2>&1 | tee /tmp/reporting-continuation.log
+          python3 - <<'PYVERIFY'
+          import json, pathlib
+          required = set(['TestCapturedAmountCompletenessLifecycle', 'TestPNGRenditionRetainedTransportsAndExpiry', 'TestRetentionOriginalOperationAudit', 'TestRetentionConcurrentMutationFences', 'TestRetentionLateResultAndRendition', 'TestRetentionLegacyCheckpointAndExactGroupOwnership', 'TestRetentionLearningContributionCustody', 'TestRetentionExpiredLegacyOwnershipLimit', 'TestSQLRecoveryExampleRequalificationAcceptance', 'TestReportingCompositionData', 'TestSavedDerivationReviewedOrigins', 'TestStatisticalNarrativeRetainedLifecycle', 'TestStatisticalNarrativeCompanionEgress'])
+          events=[]
+          for line in pathlib.Path('/tmp/reporting-continuation.log').read_text().splitlines():
+              try: events.append(json.loads(line))
+              except ValueError: pass
+          passed={e.get('Test') for e in events if e.get('Action')=='pass'}
+          assert required <= passed, sorted(required-passed)
+          assert not [e for e in events if e.get('Action') in ('fail','skip')]
+          PYVERIFY
+      - name: Kernel charged-memory renderer contract
+        if: always()
+        run: |
+          set -o pipefail
+          go test -race -tags renderer_integration -count=1 -json -timeout=10m ./internal/rendering -run '^TestRendererKernel(MemoryContract|StableCatalog)$' 2>&1 | tee /tmp/reporting-kernel-memory.log
+          python3 - <<'PYTEST'
+          import json
+          events=[]
+          for line in open('/tmp/reporting-kernel-memory.log'):
+              try: events.append(json.loads(line))
+              except json.JSONDecodeError: pass
+          assert not any(e.get('Action') in ('fail','skip') for e in events)
+          required={'TestRendererKernelMemoryContract','TestRendererKernelStableCatalog'} | {'TestRendererKernelMemoryContract/'+case for case in ('non-page-aligned-budget','revoked-controls','independent-jobs','worker-limits','tamper','address','anonymous','descendants','file','pipes','sleep')}
+          assert required <= {e.get('Test') for e in events if e.get('Action')=='pass'}
+          PYTEST
+      - name: Captured variants, durable deletion and isolated rendering
+        if: always()
+        run: |
+          set -o pipefail
+          go test -race -count=1 -json -timeout=12m ./test/acceptance -run '^(TestCapturedQueryVariantReportLifecycle|TestCW11ReportingLifecycleAndCatalog|TestCW11DeletionErasesOwnedDynamicQueries|TestCW11CatalogDoesNotLeakPrivateDraftEditor|TestDocumentDeletionEmptyScheduleReplayWire|TestPhase27|TestPhase32)$' 2>&1 | tee /tmp/reporting-recovery.log
+          go test -race -count=1 -json ./internal/reporting -run '^TestCapturedQueryVariant' 2>&1 | tee /tmp/reporting-variant-units.log
+          python3 - <<'PYVERIFY'
+          import json, pathlib
+          required = {'TestCapturedQueryVariantReportLifecycle', 'TestDocumentDeletionEmptyScheduleReplayWire', 'TestPhase27', 'TestPhase32', 'TestCapturedQueryVariantPinsAndLowering', 'TestCapturedQueryVariantSchedulePins', 'TestCW11ReportingLifecycleAndCatalog', 'TestCW11DeletionErasesOwnedDynamicQueries', 'TestCW11CatalogDoesNotLeakPrivateDraftEditor'}
+          registry=json.loads(pathlib.Path('docs/plans/phase-registry.json').read_text())['phases']
+          for phase in ['27','32']:
+              required.update(f'TestPhase{phase}/AC{i:02d}' for i in range(1,registry[phase]['acceptance_count']+1))
+          events=[]
+          for name in ['reporting-recovery.log','reporting-variant-units.log']:
+              for line in pathlib.Path('/tmp',name).read_text().splitlines():
+                  try: events.append(json.loads(line))
+                  except ValueError: pass
+          passed={e.get('Test') for e in events if e.get('Action')=='pass'}
+          assert required <= passed, sorted(required-passed)
+          assert not [e for e in events if e.get('Action') in ('fail','skip')]
+          PYVERIFY
       - name: Error, configuration, queue, API, migration and SDK regressions
         if: always()
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=10m ./internal/config ./internal/calendars ./internal/jobs ./internal/gateway ./internal/reporting ./internal/reportingapi ./internal/store/postgres ./internal/workapi ./internal/mcpserver ./web/report-viewer ./sdk/chartworks 2>&1 | tee /tmp/reporting-units.log
+          go test -race -count=1 -json -timeout=10m ./internal/nlqexec ./internal/charts ./internal/config ./internal/calendars ./internal/jobs ./internal/gateway ./internal/reporting ./internal/reportingapi ./internal/rendering/... ./internal/store/postgres ./internal/workapi ./internal/mcpserver ./web/report-viewer ./sdk/chartworks 2>&1 | tee /tmp/reporting-units.log
+          python3 - <<'PYVERIFY'
+          import json, pathlib
+          required=set(['TestContainmentRetainedControlsSurviveModeChanges', 'TestContainmentPageGranularBudget', 'TestContainmentMountAdmission', 'TestContainmentRejectsUnenforcedRoots', 'TestContainmentControlFilesAreClosedAndBounded', 'TestContainmentCleanupFailureIsDistinct', 'TestContainmentIndependentBudgets', 'TestRenderingChargedMemoryContract', 'TestRendererRequiresChargedMemoryEnforcement', 'TestRendererCleanupFailureStopsAdmission', 'TestWorkerRejectsMissingMemoryContract', 'TestReviewedAmountDeclarationBindings', 'TestReviewedAmountResultDisclosure', 'TestReviewedAmountRetainedIntegrity', 'TestAmountDisclosurePagingUsesSourceRows', 'TestAmountDisclosureHonorsReviewedTableVisibility', 'TestAmountDisclosureAllStaticFormats', 'TestAmountDisclosureRejectsForgeryAndOmission', 'TestEmptyCSVKeepsCoverageEnvelopeWithoutInventingRows', 'TestTableSourceRowsPreserveSortedTiesAndNulls', 'TestSourceRowsKeepOmittedChartPointIdentity', 'TestPNGRasterCoversCatalogAndThemes', 'TestPNGRasterBudgetsAndCancellation', 'TestPNGRichKPIAndTableTotals', 'TestDrawingScenePreservesExistingSVG', 'TestDrawingSceneRejectsOpenOrOversizedPrimitives', 'TestPNGWireRejectsCorruptionAndBudgetEscape', 'TestPNGSealedProjectionAndRawDigest', 'TestPNGWireBoundsDecodedScanlines', 'TestPNGManagedRetainedLifecycle', 'TestPNGDisclosureSurvivesBinaryProjection', 'TestPNGReturnsValidatedBinaryUnderBrowserBinding', 'TestReportingPNGEnvelopeRoundTrip', 'TestPNGRasterPreservesResultMeaning', 'TestPNGEmptyPageDoesNotInventRowRange', 'TestBinaryTransportRejectsUntrustedResponsesAndRequests', 'FuzzPNGClosedByteContract', 'TestPNGRasterRejectsMalformedRetainedProjection', 'TestPNGRasterRejectsUnrepresentableDisclosure', 'TestPNGRasterKPIKeepsTitleAndRejectsClippedRoles', 'TestSavedDerivationCreationPreservesDirectEvidence', 'TestSavedDerivationCreationRejectsAlteredPayload', 'TestSavedDerivationMeaningPreservesExecutionRepair', 'TestSavedDerivationTraversalIsBoundedAndMetadataOnly', 'TestSavedDerivationResolvedOriginDoesNotRenewExpiredAnswerForm', 'TestSavedDerivationCorrectionRequiresFreshNativeProof', 'TestStatisticalNarrativeExactRetainedEvidence', 'TestStatisticalNarrativeTemporalAndSequenceContract', 'TestStatisticalNarrativeClosedClaimsAndPolicy', 'TestStatisticalNarrativeBoundsNullsAndCompleteness', 'TestStatisticalNarrativeEgressAndAmountCompanions', 'TestStatisticalNarrativeExactNumericAndLegacyBytes', 'TestStatisticalNarrativeOrderingAndExactBudgets', 'TestStatisticalNarrativeRejectsMalformedDerivedEvidence', 'TestNarrativeHTMLPreservesInertCaveats', 'TestStatisticalNarrativeSDKPreservesTypedCoordinates', 'TestStatisticalNarrativeTransportClosedSchema'])
+          events=[]
+          for line in pathlib.Path('/tmp/reporting-units.log').read_text().splitlines():
+              try: events.append(json.loads(line))
+              except ValueError: pass
+          passed={e.get('Test') for e in events if e.get('Action')=='pass'}
+          assert required <= passed, sorted(required-passed)
+          assert not [e for e in events if e.get('Action')=='fail']
+          PYVERIFY
       - name: Planning, formatting and actual build
         if: always()
         run: |

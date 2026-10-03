@@ -56,6 +56,7 @@ jobs:
             ./internal/identity \
             ./internal/access \
             ./internal/calendars \
+            ./internal/nlq \
             ./internal/api \
             ./internal/httpmount
           # The foundation package has mandatory real-PostgreSQL tests. Compile
@@ -90,7 +91,8 @@ jobs:
           test -z "$(git ls-files '*.go' | xargs gofmt -l)"
           node --check web/report-viewer/app.js
           node --check web/report-viewer/component.test.mjs
-          python3 -m compileall -q scripts
+          python3 -B scripts/ci/test_renderer_source.py
+          PYTHONPYCACHEPREFIX="$RUNNER_TEMP/python-cache" python3 -m compileall -q scripts
       - name: Focused static analysis
         run: >-
           go vet
@@ -98,6 +100,7 @@ jobs:
           ./internal/identity
           ./internal/access
           ./internal/calendars
+          ./internal/nlq
           ./internal/foundation
           ./internal/api
           ./internal/httpmount

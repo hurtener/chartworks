@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/config"
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
@@ -176,7 +179,7 @@ func enhancementResponse(t *testing.T, result any) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return "raw:" + string(wire)
+	return "chat_raw:" + string(wire)
 }
 
 func testPhase15ResumableEnhancement(t *testing.T) {
@@ -192,11 +195,44 @@ func testPhase15ResumableEnhancement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	for _, missing := range []bool{false, true} {
+		disabledGateway := newGatewayFixture(t, func(g *config.Gateway) {
+			if missing {
+				delete(g.Roles, "topic_review")
+			} else {
+				role := g.Roles["topic_review"]
+				role.Enabled = false
+				g.Roles["topic_review"] = role
+			}
+		})
+		disabledService, createErr := drafts.NewWithEngine(f.db, f.s, f.service, disabledGateway.engine)
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if _, disabledErr := disabledService.Enhance(ctx, e, pack.Topic, drafts.EnhanceRequest{Expected: first.Metadata.Revision, Version: "disabled", Cursor: 0, Limit: 1, Change: "Disabled review"}); !errors.Is(disabledErr, gateway.ErrDisabled) || disabledGateway.requests.Load() != 0 {
+			t.Fatal("review policy did not stop generation before model work", missing, disabledErr)
+		}
+	}
 	if _, _, err = f.db.TopicGenerationCheckpoint(ctx, e, pack.Topic, 0); !errors.Is(err, store.ErrInvalid) {
 		t.Fatal("zero checkpoint revision accepted", err)
 	}
 	if _, err = client.EnhanceTopicDraft(ctx, pack.Topic, sdk.EnhanceTopicRequest{Expected: first.Metadata.Revision, Version: "skip", Cursor: 1, Limit: 1, Change: "Skip initial column"}); err == nil || gatewayFixture.requests.Load() != 0 {
 		t.Fatal("initial generation cursor skipped", err)
+	}
+
+	for _, deniedKind := range []string{"cw.dataset.query:", "cw.execution_context.use:"} {
+		scopes := []string{}
+		for _, scope := range topicScopes(e.Tenant()) {
+			if !strings.HasPrefix(scope, deniedKind) {
+				scopes = append(scopes, scope)
+			}
+		}
+		scopes = append(scopes, deniedKind+"other")
+		restricted := f.token.envelope(t, e.Tenant(), e.User(), scopes...)
+		if _, deniedErr := service.Enhance(ctx, restricted, pack.Topic, drafts.EnhanceRequest{Expected: first.Metadata.Revision, Version: "denied", Cursor: 0, Limit: 1, Change: "Denied context"}); deniedErr == nil || gatewayFixture.requests.Load() != 0 {
+			t.Fatal("unauthorized authoring reached model", deniedKind, deniedErr)
+		}
 	}
 	columns := []semantics.Reference{{Kind: semantics.KindColumn, Dataset: pack.Datasets[0].ID, ID: "amount"}, {Kind: semantics.KindColumn, Dataset: pack.Datasets[0].ID, ID: "id"}}
 	gatewayFixture.mode.Store(enhancementResponse(t, map[string]any{"dataset": columns[0].Dataset, "column": columns[0].ID, "kind": "unresolved", "reason": "Aggregation needs review"}))
@@ -215,10 +251,12 @@ func testPhase15ResumableEnhancement(t *testing.T) {
 	if _, err = client.EnhanceTopicDraft(ctx, pack.Topic, sdk.EnhanceTopicRequest{Expected: step1.Draft.Metadata.Revision, Version: "rewind", Cursor: 0, Limit: 1, Change: "Rewind generation cursor"}); err == nil || gatewayFixture.requests.Load() != 1 {
 		t.Fatal("generation cursor rewind reached gateway", err)
 	}
-	gatewayFixture.mode.Store(enhancementResponse(t, map[string]any{"dataset": columns[1].Dataset, "column": columns[1].ID, "kind": "dimension", "name": "Identifier", "role": "identifier"}))
+	gatewayFixture.mu.Lock()
+	gatewayFixture.chatSequence = []string{enhancementResponse(t, map[string]any{"dataset": columns[1].Dataset, "column": columns[1].ID, "kind": "dimension", "name": "Identifier", "role": "identifier", "description": "Stable record identifier", "aliases": []string{}, "semantic_role": "fact_key", "temporal": nil}), "topic_quality_echo"}
+	gatewayFixture.mu.Unlock()
 	step2, err := client.EnhanceTopicDraft(ctx, pack.Topic, sdk.EnhanceTopicRequest{Expected: step1.Draft.Metadata.Revision, Version: "v3", Cursor: step1.NextCursor, Limit: 1, Change: "Resume bounded enhancement"})
 	if err != nil || !step2.Complete || step2.NextCursor != 2 || len(step2.Draft.Pack.Unresolved) != 1 {
-		t.Fatal("resumed generation", step2.NextCursor, err)
+		t.Fatalf("resumed generation cursor=%d err=%#v requests=%d", step2.NextCursor, err, gatewayFixture.requests.Load())
 	}
 	if _, err = client.EnhanceTopicDraft(ctx, pack.Topic, sdk.EnhanceTopicRequest{Expected: first.Metadata.Revision, Version: "stale", Cursor: 1, Limit: 1, Change: "Stale resume"}); err == nil {
 		t.Fatal("stale generation checkpoint accepted")
@@ -227,8 +265,26 @@ func testPhase15ResumableEnhancement(t *testing.T) {
 	if err = metadata.QueryRow(ctx, `SELECT count(*) FROM chartworks.topic_generation_checkpoints WHERE tenant_id=$1 AND topic_id=$2`, e.Tenant(), pack.Topic).Scan(&checkpoints); err != nil || checkpoints != 2 {
 		t.Fatal("durable checkpoints", checkpoints, err)
 	}
-	if gatewayFixture.requests.Load() != 2 {
+	if gatewayFixture.requests.Load() != 3 {
 		t.Fatalf("unexpected gateway requests: %d", gatewayFixture.requests.Load())
+	}
+	model, compileErr := semantics.Compile(step2.Draft.Pack)
+	if compileErr != nil || step2.Quality == nil || !step2.Quality.ValidFor(model) || step2.Quality.Status != "needs_review" {
+		t.Fatal("whole-candidate advisory missing", step2.Quality, compileErr)
+	}
+	reloaded, reloadErr := client.TopicDraftVersion(ctx, pack.Topic, step2.Draft.Metadata.Revision)
+	if reloadErr != nil || reloaded.Quality == nil || reloaded.Quality.CandidateDigest != step2.Draft.Metadata.Digest {
+		t.Fatal("review advisory lost on reload", reloadErr)
+	}
+	checkpoint, exists, checkpointErr := f.db.TopicGenerationCheckpoint(ctx, e, pack.Topic, step2.Draft.Metadata.Revision)
+	if checkpointErr != nil || !exists || checkpoint.Quality == nil || !checkpoint.Quality.ValidFor(model) || checkpoint.AuthoringDigest == "" {
+		t.Fatal("advisory not retained with exact generation", checkpoint, checkpointErr)
+	}
+	if _, err = f.db.ReviewTopic(ctx, e, pack.Topic, semantictopics.ReviewRequest{DraftRevision: step1.Draft.Metadata.Revision, Digest: step1.Draft.Metadata.Digest, Decision: "approve", Note: "Incomplete generation"}); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("incomplete generated candidate approved", err)
+	}
+	if _, err = f.db.ReviewTopic(ctx, e, pack.Topic, semantictopics.ReviewRequest{DraftRevision: step2.Draft.Metadata.Revision, Digest: step2.Draft.Metadata.Digest, Decision: "approve", Note: "Human adjudicated unresolved advisory"}); err != nil {
+		t.Fatal("explicit human review failed", err)
 	}
 	projected := semantictopics.Project(step2.Draft.Pack)
 	if len(projected.Unresolved) != 1 || projected.Unresolved[0].ID != unresolvedID || len(projected.Dimensions) == 0 || projected.Dimensions[0].ID != semantics.GeneratedEntityID(semantics.EnhancementDimension, columns[1].Dataset, columns[1].ID) {

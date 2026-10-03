@@ -53,6 +53,9 @@ func (d *DB) BeginRead(ctx context.Context, s store.Scope, a readexec.Attempt, m
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := queryRetentionFence(ctx, tx, s.Tenant()); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,7214061010))`, s.Tenant()); err != nil {
 			return err
 		}
@@ -117,6 +120,9 @@ func (d *DB) DispatchRead(ctx context.Context, s store.Scope, id string, q reade
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := queryRetentionFence(ctx, tx, s.Tenant()); err != nil {
+			return err
+		}
 		remote, _ := json.Marshal(q)
 		from, to := "accepted", "dispatching"
 		var previous []byte
@@ -179,6 +185,9 @@ func (d *DB) CancelRead(ctx context.Context, s store.Scope, id string) error {
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := queryRetentionFence(ctx, tx, s.Tenant()); err != nil {
+			return err
+		}
 		tag, err := tx.Exec(ctx, `UPDATE chartworks.read_attempts SET cancel_requested=true WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND (finished_at IS NULL OR status='uncertain')`, s.Tenant(), s.Actor(), id)
 		if err != nil {
 			return err
@@ -207,6 +216,9 @@ func (d *DB) FinishRead(ctx context.Context, s store.Scope, a readexec.Attempt, 
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := queryRetentionFence(ctx, tx, s.Tenant()); err != nil {
+			return err
+		}
 		tag, err := tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=CASE WHEN cancel_requested AND $4 NOT IN ('uncertain','interrupted') THEN 'cancelled' ELSE $4 END,remote_state=$5,finished_at=$6,rows_returned=CASE WHEN cancel_requested THEN 0 ELSE $7 END,bytes_returned=CASE WHEN cancel_requested THEN 0 ELSE $8 END,code=CASE WHEN cancel_requested AND $4 NOT IN ('uncertain','interrupted') THEN 'cancelled' ELSE $9 END,source_duration_ns=$13 WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND manifest_hash=$10 AND (finished_at IS NULL OR status='uncertain') AND (NOT $11 OR status='uncertain' OR deadline + $12::bigint * interval '1 microsecond'<clock_timestamp())`, s.Tenant(), s.Actor(), a.ID, a.Status, a.RemoteState, a.Finished, a.Rows, a.Bytes, a.Code, readexec.Hash(a.Manifest), reconcile, a.Manifest.Limits.CancelGrace.Microseconds(), a.SourceDurationNS)
 		if err != nil {
 			return err

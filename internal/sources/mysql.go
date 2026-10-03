@@ -121,6 +121,9 @@ func inspectMySQLContext(ctx context.Context, session bruinmysql.ReadSession, c 
 	})
 	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "mysql"}
 	for _, relation := range relations {
+		if err := lockMySQLRelation(ctx, session, relation); err != nil {
+			return readexec.Binding{}, err
+		}
 		rows, err := session.Query(ctx, &query.Query{Query: "SELECT TABLE_TYPE FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME=?", Args: []any{relation.Schema, relation.Name}})
 		if err != nil {
 			return readexec.Binding{}, err
@@ -137,9 +140,20 @@ func inspectMySQLContext(ctx context.Context, session bruinmysql.ReadSession, c 
 		if err != nil {
 			return readexec.Binding{}, err
 		}
+		keys, err := discoverMySQLUniqueKeys(ctx, session, relation, columns)
+		if err != nil {
+			return readexec.Binding{}, err
+		}
+		if legacy, _ := ctx.Value(legacyUniqueKeyPolicy{}).(bool); legacy {
+			keys = nil
+		}
 		relationID := "ds:" + readexec.Hash([]string{id, relation.Schema, relation.Name})[:32]
-		out.Relations = append(out.Relations, readexec.Relation{ID: relationID, Schema: relation.Schema, Name: relation.Name, Columns: columns})
-		evidence = append(evidence, []any{relation.Schema, relation.Name, table, nativeEvidence})
+		out.Relations = append(out.Relations, readexec.Relation{ID: relationID, Schema: relation.Schema, Name: relation.Name, Columns: columns, UniqueKeys: keys})
+		item := []any{relation.Schema, relation.Name, table, nativeEvidence}
+		if len(keys) > 0 {
+			item = append(item, keys)
+		}
+		evidence = append(evidence, item)
 	}
 	out.Contract = "source-contract:" + readexec.Hash([]any{c.Version, out.Relations})[:32]
 	out.Fingerprint = readexec.Hash(evidence)
@@ -242,7 +256,7 @@ func (s *Service) explainMySQL(ctx context.Context, e identity.Envelope, candida
 		return err
 	}
 	verify := func(ctx context.Context, session bruinmysql.ReadSession) error {
-		actual, err := inspectMySQLContext(ctx, session, c, expected.Source, expected.Revision, location)
+		actual, err := inspectMySQLContext(withStoredKeyPolicy(ctx, expected), session, c, expected.Source, expected.Revision, location)
 		if err != nil {
 			return err
 		}
@@ -331,7 +345,7 @@ func (s *Service) executeMySQL(ctx context.Context, e identity.Envelope, p reade
 		return out, err
 	}
 	verify := func(ctx context.Context, session bruinmysql.ReadSession) error {
-		actual, err := inspectMySQLContext(ctx, session, c, record.Source.ID, record.Source.Revision, location)
+		actual, err := inspectMySQLContext(withStoredKeyPolicy(ctx, record.Binding), session, c, record.Source.ID, record.Source.Revision, location)
 		if err != nil {
 			return err
 		}
@@ -479,7 +493,7 @@ func mysqlResultValue(field readexec.Field, value any) ([]byte, error) {
 }
 
 func (s *Service) controlMySQL(ctx context.Context, e identity.Envelope, control readexec.Control, record Record, c config.SourceConnection, cancel bool) (string, error) {
-	actual, err := s.probe(ctx, c, record.Source.ID, record.Source.Revision, nil)
+	actual, err := s.probe(withStoredKeyPolicy(ctx, record.Binding), c, record.Source.ID, record.Source.Revision, nil)
 	if err != nil {
 		return "unknown", err
 	}

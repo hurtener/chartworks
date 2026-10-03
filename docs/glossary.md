@@ -47,7 +47,7 @@ Current implementation vocabulary, 2026-09-04. RFCs and active plans govern; his
 | Run / logical operation | Accepted request with a sealed revision/parameter/window/context manifest and one or more attempts. |
 | Attempt / fence | Leased execution and stale-owner commit protection. Neither guarantees physical exactly-once remote work. |
 | Artifact | Retained immutable result/evidence until retention removes payloads; opening it does not run SQL or models. |
-| Rendition | Rendered representation of an artifact under a recorded renderer/theme/viewport version, inheriting privacy/expiry. |
+| Rendition | Rendered representation of an artifact under a recorded renderer/theme/viewport version, inheriting privacy/expiry. PNG is a bounded single-output image with canonical base64 transport; its digest describes decoded bytes. |
 | Preview | Private draft/review execution; remains private after later report publication. |
 | Idempotency | Same accepted key/request resolves to the same logical operation, not a universal remote exactly-once promise. |
 | Migration manifest | Credential-free versioned graph of external references, mappings, field loss dispositions, retention and feature evidence. It carries no current authority. |

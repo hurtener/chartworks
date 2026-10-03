@@ -13,6 +13,7 @@ import (
 	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/nlq/generationdecision"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -24,6 +25,7 @@ var ErrRegistration = errors.New("mcp: invalid service registration")
 // operation may have persisted or incurred cost; callers must inspect receipts
 // rather than retrying a mutation blindly. Receipt is supplied only by its owner.
 type Fault struct {
+	Generation    *generationdecision.Problem     `json:"generation,omitempty"`
 	Clarification *semantics.ClarificationProblem `json:"clarification,omitempty"`
 	Code          string                          `json:"code"`
 	Outcome       string                          `json:"outcome"`
@@ -56,8 +58,12 @@ func effectFor(effect string) (effects, bool) {
 		return effects{persists: true, idempotent: true}, true
 	case "current_topic_reuse_or_private_draft_write":
 		return effects{persists: true}, true
-	case "bounded_validated_distinct_source_read", "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "nlq_example_import", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration":
+	case "bounded_validated_distinct_source_read", "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "nlq_example_import", "nlq_example_requalification_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration":
 		return effects{openWorld: true, persists: true, paid: true}, true
+	case "model_and_proposal_commit":
+		return effects{openWorld: true, persists: true, paid: true}, true
+	case "atomic_proposal_and_draft_commit":
+		return effects{openWorld: true, persists: true, idempotent: true}, true
 	case "evaluation_live_or_fixture_run":
 		return effects{openWorld: true, persists: true, paid: true}, true
 	case "nlq_example_state_commit", "evaluation_suite_draft_commit", "evaluation_runtime_pack_draft_commit", "evaluation_runtime_pack_review_commit", "evaluation_suite_review_commit", "evaluation_cancel_request", "evaluation_input_commit", "evaluation_recovery_commit", "evaluation_feedback_export", "evaluation_split_review_commit", "evaluation_proposal_commit", "evaluation_proposal_review_commit", "evaluation_pack_cas_commit":

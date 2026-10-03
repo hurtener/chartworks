@@ -10,6 +10,7 @@ import (
 // BusinessParameterBinding is value-free effect evidence. Parameter indexes are
 // one-based positions in the exact final parameter vector, not option IDs.
 type BusinessParameterBinding struct {
+	Population  string `json:"population,omitempty"`
 	Resolution  string `json:"resolution"`
 	Dataset     string `json:"dataset"`
 	Column      string `json:"column"`
@@ -23,12 +24,13 @@ type BusinessParameterBinding struct {
 // BusinessBindingReceipt is provenance, not execution authority. The final read
 // receipt is attached only after the existing validator issues an opaque Plan.
 type BusinessBindingReceipt struct {
-	SchemaVersion int                        `json:"schema_version"`
-	SourceBinding string                     `json:"source_binding"`
-	Constraints   string                     `json:"constraints"`
-	Statement     string                     `json:"statement"`
-	Bindings      []BusinessParameterBinding `json:"bindings"`
-	Validation    *Receipt                   `json:"validation,omitempty"`
+	PopulationPolicy string                     `json:"population_policy,omitempty"`
+	SchemaVersion    int                        `json:"schema_version"`
+	SourceBinding    string                     `json:"source_binding"`
+	Constraints      string                     `json:"constraints"`
+	Statement        string                     `json:"statement"`
+	Bindings         []BusinessParameterBinding `json:"bindings"`
+	Validation       *Receipt                   `json:"validation,omitempty"`
 }
 
 // BusinessBoundQuery carries protected SQL and parameters pending ordinary read validation.

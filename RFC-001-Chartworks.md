@@ -122,7 +122,7 @@ Provider-neutral metadata, recipes, bindings, format hints, alternatives and sel
 
 Frozen blocks reuse approved queries/saved outputs, with no interpretation, retrieval, routing, SQL generation/correction or chart selection. Chart/KPI/table outputs are deterministic over the result. Explicit bounded narratives are post-query remote calls with no query/write tools and retained exact output. RFC-002 governs reporting lifecycle and artifacts.
 
-A shared read viewer serves MCP Apps and BFF-backed iframes. Go renders tables/KPIs/text; an isolated optional ECharts SVG worker supplies genuine chart SSR. Neither is a builder application or new execution service. Opening/rerendering an artifact makes zero warehouse/model calls, including when providers are unavailable.
+A shared read viewer serves MCP Apps and BFF-backed iframes. Go renders tables/KPIs/text; a feature-gated isolated Go worker supplies genuine chart SVG and bounded single-output PNG. Neither is a builder application or new execution service. Opening/rerendering an artifact makes zero warehouse/model calls, including when providers are unavailable.
 
 ## 11. Surfaces
 
@@ -190,7 +190,7 @@ D-044–D-052 in `docs/decisions/2026-09-04-execution-baseline.md` replace old d
 
 No Chartworks identity policy service, host compatibility investigation, builder application, local inference, alternate production model client, unrestricted custom schedule jobs, event/condition stubs, script widgets, general multi-warehouse federation or full BI document-layout engine. Required scheduling is functional cron/interval/manual with real targets; optional notifications use Pengui integration receipts.
 
-L2 reviewed engineering/drift proposals remain planned. L3 auto-apply and a new internal analyst are explicit post-cutover extensions, not reporting blockers. Existing cross-topic/replay/learning/hybrid-report behavior is not swept into those deferrals. PDF/PNG/paginated documents are not implied by required HTML/SVG rendering.
+L2 reviewed engineering/drift proposals remain planned. L3 auto-apply and a new internal analyst are explicit post-cutover extensions, not reporting blockers. Existing cross-topic/replay/learning/hybrid-report behavior is not swept into those deferrals. Bounded single-output PNG follows D-091; full-report PNG, PDF and paginated documents are not implied by HTML/SVG rendering.
 
 ## Phase 03/04 authority implementation
 
@@ -212,3 +212,9 @@ Read execution now extends the merged phase-09 validator on the existing source/
 The shipped implementation adds bounded CSV/XLSX/Parquet ingestion into the managed PostgreSQL workspace and versioned deterministic profiling through the existing validator, executor, operation ledger, source registry and optional Bifrost `profile_summary` role. The executable HTTP and SDK surface is recorded in the [engineering operation manifest](docs/contracts/chartworks-engineering-operations.json); mutation registration follows `uploads.enabled` and `profiling.enabled`, while retained reads and cancellation remain available.
 
 This does not qualify MySQL, SQL Server, BigQuery, Snowflake or Databricks, publish semantics, or claim live model/deployment evidence. The [phase evidence ledger](docs/reviews/phase-11-12-current-evidence.md) separates accepted local runtime evidence from the pending final cloud rerun.
+
+Renderer memory enforcement follows [D-093](docs/decisions/2026-10-01-renderer-charged-memory.md): a preconfigured cgroup v2
+charged-memory boundary of at most 1 GiB and a separate fixed 3 GiB virtual-address
+ceiling. Missing controller or namespace enforcement fails closed; the application
+does not provision the host or substitute in-process rendering. Deployment
+qualification remains separate from pure functional tests.

@@ -1,6 +1,7 @@
 package acceptance
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -113,6 +114,11 @@ func TestCW11ReportingLifecycleAndCatalog(t *testing.T) {
 	if err != nil || !replayed.DeletedAt.Equal(deleted.DeletedAt) {
 		t.Fatal("idempotent replay", replayed, err)
 	}
+	firstWire, _ := json.Marshal(deleted)
+	replayWire, _ := json.Marshal(replayed)
+	if string(firstWire) != string(replayWire) {
+		t.Fatal("deletion replay changed wire receipt")
+	}
 	changed := request
 	changed.Key = "cw11-delete-changed"
 	if _, err := f.domain.documents.Delete(ctx, deleter, "report", state.ID, changed); !errors.Is(err, store.ErrConflict) {
@@ -219,6 +225,10 @@ func TestCW11DeletionErasesOwnedDynamicQueries(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw := support.Raw(t, f.f.f.dsn)
+	var exactOperation string
+	if err := raw.QueryRow(t.Context(), `SELECT 'composition:'||operation_id||':'||group_id FROM chartworks.composition_run_groups WHERE tenant_id=$1 AND operation_id=$2 AND kind='query'`, f.execute.Tenant(), run.ID).Scan(&exactOperation); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := raw.Exec(t.Context(), `INSERT INTO chartworks.nlq_sessions
  (tenant_id,actor_id,session_id,context_id,topics,locale) VALUES($1,$2,$3,$4,'["synthetic-topic"]','en')`,
 		f.execute.Tenant(), f.execute.User(), f.execute.Session(), f.base.Context); err != nil {
@@ -229,10 +239,10 @@ func TestCW11DeletionErasesOwnedDynamicQueries(t *testing.T) {
   context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
  VALUES($1,$2,$3,'11111111111111111111111111111111',$4,'synthetic-topic','["synthetic-topic"]','[{"id":"synthetic-topic","version":1}]','[]','[]','{}',
   $5,'en','What are the retained values?','{}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`,
-		f.execute.Tenant(), f.execute.User(), f.execute.Session(), "composition:"+run.ID+":dynamic", f.base.Context); err != nil {
+		f.execute.Tenant(), f.execute.User(), f.execute.Session(), exactOperation, f.base.Context); err != nil {
 		t.Fatal("seed owned query", err)
 	}
-	dynamicOperation := "composition:" + run.ID + ":dynamic"
+	dynamicOperation := exactOperation
 	if _, err := raw.Exec(t.Context(), `INSERT INTO chartworks.read_attempts
  (tenant_id,actor_id,attempt_id,operation_id,attempt_number,source_id,context_id,manifest,manifest_hash,status,remote_query,remote_state,cancel_requested,created_at,deadline)
 	SELECT tenant_id,actor_id,'33333333333333333333333333333333',$2,1,source_id,context_id,manifest,manifest_hash,
@@ -298,4 +308,23 @@ func TestCW11CatalogDoesNotLeakPrivateDraftEditor(t *testing.T) {
 		}
 	}
 	t.Fatal("published report omitted from catalog")
+}
+
+func TestDocumentDeletionEmptyScheduleReplayWire(t *testing.T) {
+	f := newPhase29Execution(t, false)
+	state := f.report(t, "empty-deletion", phase29Text("Disposable report"), false)
+	request := reporting.DocumentDeleteRequest{ExpectedVersion: state.Version, Key: "delete", Reason: "Synthetic retention check"}
+	first, err := f.documents.Delete(t.Context(), f.author, "report", state.ID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.documents.Delete(t.Context(), f.author, "report", state.ID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := json.Marshal(first)
+	b, _ := json.Marshal(second)
+	if string(a) != string(b) {
+		t.Fatal("empty schedule deletion receipt changed across replay")
+	}
 }

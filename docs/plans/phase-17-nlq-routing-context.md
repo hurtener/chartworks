@@ -1,5 +1,24 @@
 # Phase 17 — nlq-routing-context
 
+## SQL recovery status — 2026-09-30
+
+The [AP-00–AP-08 completion tracker](../reviews/sql-recovery-completion.md) records the current
+PR #62 implementation and qualification gaps. The recovery is **in progress**.
+Existing shipped phase labels and historical defect-review results do not
+close this subsequent extension. No required behavior is discarded by this
+tracker correction; prior named acceptance criteria and historical evidence stay.
+
+Current hosted-qualified SQL checkpoint: PR #68
+`a2567f816dce7c52981e2ef9e17af544f7bb6b50`. Both supported Go toolchains passed
+3,450 unit/subtest and 461 acceptance events; the exact bounded live baseline
+and explicitly selected held-out lanes are recorded in
+[generated-topic qualification](../reviews/generated-topic-live-qualification.md).
+Automatic grouping for the three rich held-out grouping questions was still an
+open gap at that head. The separately opt-in grouping-intent continuation below
+requires its own exact-source local, hosted and live qualification. Full S4/S5/S6,
+engine, renderer and Q1/Q2/Q3 release obligations remain open.
+
+
 Status: shipped. Owner: internal/nlq. Hard dependencies: 05, 07, 15, 16. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
 
 Proposed PR #11 delivery; this status becomes effective after every required hosted
@@ -119,3 +138,110 @@ correction/removal. Exact reference and metric edits now cover dimension and
 metric additions, replacements and removals without silently retaining stale
 selections. Every child reroutes against current signed reach and current
 publications. See [conversational continuity v1](../contracts/conversational-continuity-v1.md).
+
+## SQL context recovery — catalog evidence extension
+
+The [recovery ledger](../reviews/sql-context-recovery.md) separates current
+implementation from remaining selection/rule and live-quality work. Retrieved
+measure/KPI/dimension evidence now resolves through exact catalog facet identities
+and expands transitive semantics as atomic context candidates. Explicit metric pins
+remain mandatory; candidate hydration is not automatic selection or authority.
+The same bounded closure supports metric and dimension roots, checks missing/cyclic
+references and retains unique connecting relationships. Existing AC01–AC06 continue
+to apply. `TestSQLRecovery` in `internal/nlqroute` adds free-text English/Spanish,
+origin corruption, dependency completeness and whole-group omission regressions.
+
+
+## SQL recovery: strategy-aware generation packet
+
+The [generation packet v2](../contracts/generation-packet-v2.md) initial AP-02
+slice keeps complete reviewed relation scope for validation and persistence while
+rendering selected single-topic metric dependency columns for the model. Required
+semantics remain atomic. Edits/hints suppress typed examples and skip irrelevant
+learning work; included demonstrations preserve declared rank and have actual-use
+evidence. Optional context yields before required instructions. Runtime system
+additions are byte-checked again before dispatch. Effective model-specific provider-envelope fitting is implemented by AP-02B
+below. Operator configuration and live quality qualification remain open; frozen
+refresh and native authority/SQL validation are unchanged.
+
+## SQL recovery: effective-envelope refitting
+
+AP-02B extends [generation packet v2](../contracts/generation-packet-v2.md).
+The context owner prunes optional groups against the adapter's effective model,
+system/schema/JSON framing and output reserve. Exact operator model-window entries
+are enforced for runtime overrides; no configured window means explicitly unknown
+capacity with byte and operation bounds still enforced. Required semantics and
+full reviewed relation scope remain unchanged, and repair resolves its own role.
+Actual packet-use and estimated per-attempt envelope evidence are distinct from
+reported tokens and live qualification. Retained objects are not reinterpreted.
+
+
+## Retained inferred interpretation (S8)
+
+The [interpretation continuity contract](../contracts/interpretation-continuity-v1.md)
+extends the existing router and Refine consumer with detached reviewed value IDs
+and exact half-open calendar selections. Source/semantic admission and parent
+lineage still precede inheritance. Fresh recognized dimension intent replaces its
+old value; explicit value/time edits support replacement/removal. Replay and saved
+routing retain anchors and selections. General grouping edits, wider language and
+owner qualification are separate requirements. The canonical completion tracker
+records actual tests; implementation text alone is not a passed integration gate.
+
+## S9 grouping continuity checkpoint
+
+[Grouping continuity v1](../contracts/grouping-continuity-v1.md) adds a complete
+logical grouping set to existing requests. The router resolves it from current
+admitted definitions before selection/rules, retains all required dependencies,
+and does not infer stale grouping roots from the old utterance. Pending origin
+and protected route evidence include the set. Full source authority is unchanged.
+
+
+## S9 qualified grouping slice — current disposition
+
+The [completion tracker](../reviews/sql-recovery-completion.md) records runtime `996db06` and exact
+Go 1.26.4/1.27.1 qualification for grouping inheritance/replacement, explicit
+totals/calendar selection and the strict pending-refinement admission fix.
+Executable scope, form origin, private binding and immutable-parent checks remain.
+S9 broader native parameter roles and the remaining S/Q requirements are still
+open; historical checkpoint prose above is not the current completion claim.
+
+
+## S3 confirmed relationship rendering
+
+[Confirmed join projection](../contracts/confirmed-join-projection-v1.md) carries
+current independent join choices from routing into bounded mandatory context.
+The existing physical mapper validates each topic's endpoints and preserves full
+source authority. This closes a render-only gap, not S5 analytical joins. Current
+implementation/qualification status is the [completion tracker](../reviews/sql-recovery-completion.md).
+
+
+### Current SQL recovery checkpoint — S3 qualified, S7 under test
+
+The canonical completion tracker records S3/S9 qualification at c18a5b2 and
+the new closed source-diagnostics implementation. Specific native causes do not
+authorize different SQL semantics, extra attempts, or disclosure of source error
+text. New S7 integration qualification is still pending; all other unchecked S/Q
+items remain open. Historical acceptance and release claims keep their old scope.
+
+
+## Current SQL recovery: S7 qualification and S2 grounded policy
+
+The [canonical completion tracker](../reviews/sql-recovery-completion.md) now records qualified S7 diagnostics
+at 2dd7e9b and the new [bounded grounded concept policy](../contracts/grounded-concept-selection-v1.md) awaiting its
+own runtime qualification. The optional clarify-role choice feeds reviewed
+closure/rules, not SQL authority. Explicit choices and historical replay retain
+their behavior; unknown/ambiguous model choices cannot produce executable plans.
+No interpretation-confidence, live quality or full-recovery completion is inferred
+from these software changes. Historical results above retain their stated scope.
+
+## Grounded grouping-intent continuation
+
+[Grounded grouping intent v1](../contracts/grounded-grouping-intent-v1.md) adds an
+explicit normal-route opt-in for reviewed grouping selection from rich language.
+Its current implementation and required regression roots live in
+`internal/nlqroute/grouping_intent.go`, the route replay/selection consumers and
+`TestSQLRecoveryGroundedGrouping*`. It keeps default/manual costs unchanged,
+binds the complete current admitted catalog and uses typed ambiguity rather than
+question rewriting. Optional protected route JSON requires no migration.
+The ordinary SDK/PG consumer is `TestGeneratedTopicGroundedGroupingIntentRecorded`.
+Recorded evidence does not qualify live language quality or the full phase.

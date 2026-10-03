@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
@@ -521,12 +522,14 @@ func (x *Executor) execute(ctx context.Context, e identity.Envelope, p Plan, o O
 			code = "result_type_unsupported"
 		case errors.Is(runErr, ErrLimit):
 			code = "limit_exceeded"
-		case errors.Is(runErr, ErrQuery):
-			code = "query_error"
 		case errors.Is(runErr, ErrBinding):
 			code = "context_changed"
 		case errors.Is(runErr, ErrUnsupported):
 			code = "unsupported"
+		case errors.Is(runErr, store.ErrUnavailable), errors.Is(runErr, store.ErrConflict), errors.Is(runErr, store.ErrNotFound), errors.Is(runErr, store.ErrInvalid), errors.Is(runErr, access.ErrUnauthenticated), errors.Is(runErr, access.ErrForbidden), errors.Is(runErr, access.ErrNotFound), errors.Is(runErr, ErrUnsafe):
+			code = "source_unavailable"
+		case errors.Is(runErr, ErrQuery):
+			code = QueryRejectionCode(runErr)
 		}
 	}
 	if native.RemoteState == "unknown" {

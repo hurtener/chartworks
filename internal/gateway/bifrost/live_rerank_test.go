@@ -49,7 +49,7 @@ func TestLiveOpenRouterRerank(t *testing.T) {
 			return key, true
 		}
 		return "", false
-	}, bifrost.TransportOptions{})
+	}, bifrost.TransportOptions{EnvironmentProxy: os.Getenv("CHARTWORKS_LIVE_ENV_PROXY") == "1"})
 	if err != nil {
 		t.Fatal("gateway construction failed:", err)
 	}

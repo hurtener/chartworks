@@ -17,106 +17,13 @@ func businessBindingLayout(ctx context.Context, statement string, tokens []busin
 	if binding.Dialect != "postgres" || len(tokens) > 4096 {
 		return bad, businessSQLFailure("unsupported_select_shape")
 	}
-	i := 1
-	names := map[string]bool{}
-	uses := map[string]int{}
-	var scopes []businessSQLLayout
-	for {
-		if err := ctx.Err(); err != nil {
-			return bad, err
-		}
-		if i+4 >= len(tokens) || tokens[i].depth != 0 || tokens[i].kind != 'w' {
-			return bad, businessSQLFailure("unsupported_select_shape")
-		}
-		name, ok := businessName(tokens[i], binding.Dialect)
-		if !ok || names[name] || !tokens[i+1].word("as") || tokens[i+2].text != "(" || tokens[i+2].depth != 0 {
-			return bad, businessSQLFailure("unsupported_select_shape")
-		}
-		for _, relation := range binding.Relations {
-			if strings.EqualFold(name, relation.Name) {
-				return bad, businessSQLFailure("unsupported_select_shape")
-			}
-		}
-		open := i + 2
-		close := open + 1
-		for close < len(tokens) && !(tokens[close].text == ")" && tokens[close].depth == 0) {
-			close++
-		}
-		if close >= len(tokens) || close == open+1 || !tokens[open+1].word("select") || tokens[open+1].depth != 1 {
-			return bad, businessSQLFailure("unsupported_select_shape")
-		}
-		start, end := tokens[open+1].start, tokens[close].start
-		body := statement[start:end]
-		bodyTokens, err := businessScan(ctx, body, false)
-		if err != nil {
-			return bad, err
-		}
-		scope, err := businessLayoutWithVirtual(body, bodyTokens, binding, names)
-		if err != nil {
-			return bad, err
-		}
-		localUses := map[string]bool{}
-		for _, source := range scope.ranges {
-			if source.virtual != "" {
-				dependency := source.virtual
-				if localUses[dependency] {
-					return bad, businessSQLFailure("unsupported_select_shape")
-				}
-				localUses[dependency] = true
-				uses[dependency]++
-			}
-		}
-		names[name] = true
-		scope.where, scope.whereEnd = shiftedClause(scope.where, start), shiftedClause(scope.whereEnd, start)
-		scope.having, scope.havingEnd = shiftedClause(scope.having, start), shiftedClause(scope.havingEnd, start)
-		scope.rowInsert += start
-		scope.aggregateInsert += start
-		scopes = append(scopes, scope)
-		if len(scopes) > 4 {
-			return bad, businessSQLFailure("unsupported_select_shape")
-		}
-		i = close + 1
-		if i < len(tokens) && tokens[i].text == "," && tokens[i].depth == 0 {
-			i++
-			continue
-		}
-		break
+	scoped, err := businessPopulationBodies(ctx, statement, tokens, binding)
+	if err != nil {
+		return bad, err
 	}
-	if i >= len(tokens) || !tokens[i].word("select") || tokens[i].depth != 0 {
-		return bad, businessSQLFailure("unsupported_select_shape")
-	}
-	// The final SELECT may read only the declared CTEs, each once. In
-	// particular, an unused filter-bearing CTE cannot create binding evidence.
-	seen := map[string]bool{}
-	from := false
-	for j := i; j < len(tokens); j++ {
-		t := tokens[j]
-		if j > i && t.word("select") || t.word("with") || t.word("union") || t.word("intersect") || t.word("except") || t.word("recursive") || t.word("into") || t.word("lateral") || t.text == ";" && j != len(tokens)-1 {
-			return bad, businessSQLFailure("unsupported_select_shape")
-		}
-		if t.depth != 0 {
-			continue
-		}
-		if t.word("from") || t.word("join") || t.text == "," && from {
-			if j+1 >= len(tokens) || tokens[j+1].depth != 0 {
-				return bad, businessSQLFailure("unsupported_select_shape")
-			}
-			name, ok := businessName(tokens[j+1], binding.Dialect)
-			if !ok || !names[name] || seen[name] {
-				return bad, businessSQLFailure("unsupported_select_shape")
-			}
-			seen[name] = true
-			uses[name]++
-			from = true
-		}
-		if t.word("where") || t.word("group") || t.word("having") || t.word("order") || t.word("limit") || t.word("offset") || t.word("fetch") {
-			from = false
-		}
-	}
-	for name := range names {
-		if uses[name] < 1 {
-			return bad, businessSQLFailure("unsupported_select_shape")
-		}
+	scopes := make([]businessSQLLayout, 0, len(scoped))
+	for _, body := range scoped {
+		scopes = append(scopes, body.layout)
 	}
 	var target businessSQLLayout
 	matchCount := 0
@@ -146,4 +53,120 @@ func shiftedClause(position, offset int) int {
 		return position
 	}
 	return position + offset
+}
+
+// businessPopulationBodies shares the existing bounded CTE scanner/layout
+// grammar with the scoped binder. It does not infer predicate ownership.
+type businessPopulationBody struct {
+	name       string
+	start, end int
+	layout     businessSQLLayout
+}
+
+func businessPopulationBodies(ctx context.Context, statement string, tokens []businessToken, binding Binding) ([]businessPopulationBody, error) {
+	if len(tokens) == 0 || !tokens[0].word("with") || binding.Dialect != "postgres" || len(tokens) > 4096 {
+		return nil, businessSQLFailure("unsupported_select_shape")
+	}
+	i := 1
+	names := map[string]bool{}
+	uses := map[string]int{}
+	var scopes []businessPopulationBody
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if i+4 >= len(tokens) || tokens[i].depth != 0 || tokens[i].kind != 'w' {
+			return nil, businessSQLFailure("unsupported_select_shape")
+		}
+		name, ok := businessName(tokens[i], binding.Dialect)
+		if !ok || names[name] || !tokens[i+1].word("as") || tokens[i+2].text != "(" || tokens[i+2].depth != 0 {
+			return nil, businessSQLFailure("unsupported_select_shape")
+		}
+		for _, relation := range binding.Relations {
+			if strings.EqualFold(name, relation.Name) {
+				return nil, businessSQLFailure("unsupported_select_shape")
+			}
+		}
+		open := i + 2
+		close := open + 1
+		for close < len(tokens) && !(tokens[close].text == ")" && tokens[close].depth == 0) {
+			close++
+		}
+		if close >= len(tokens) || close == open+1 || !tokens[open+1].word("select") || tokens[open+1].depth != 1 {
+			return nil, businessSQLFailure("unsupported_select_shape")
+		}
+		start, end := tokens[open+1].start, tokens[close].start
+		body := statement[start:end]
+		bodyTokens, err := businessScan(ctx, body, false)
+		if err != nil {
+			return nil, err
+		}
+		scope, err := businessLayoutWithVirtual(body, bodyTokens, binding, names)
+		if err != nil {
+			return nil, err
+		}
+		localUses := map[string]bool{}
+		for _, source := range scope.ranges {
+			if source.virtual != "" {
+				dependency := source.virtual
+				if localUses[dependency] {
+					return nil, businessSQLFailure("unsupported_select_shape")
+				}
+				localUses[dependency] = true
+				uses[dependency]++
+			}
+		}
+		names[name] = true
+		scope.where, scope.whereEnd = shiftedClause(scope.where, start), shiftedClause(scope.whereEnd, start)
+		scope.having, scope.havingEnd = shiftedClause(scope.having, start), shiftedClause(scope.havingEnd, start)
+		scope.rowInsert += start
+		scope.aggregateInsert += start
+		scopes = append(scopes, businessPopulationBody{name: name, start: start, end: end, layout: scope})
+		if len(scopes) > 4 {
+			return nil, businessSQLFailure("unsupported_select_shape")
+		}
+		i = close + 1
+		if i < len(tokens) && tokens[i].text == "," && tokens[i].depth == 0 {
+			i++
+			continue
+		}
+		break
+	}
+	if i >= len(tokens) || !tokens[i].word("select") || tokens[i].depth != 0 {
+		return nil, businessSQLFailure("unsupported_select_shape")
+	}
+	// The final SELECT may read only the declared CTEs, each once. In
+	// particular, an unused filter-bearing CTE cannot create binding evidence.
+	seen := map[string]bool{}
+	from := false
+	for j := i; j < len(tokens); j++ {
+		t := tokens[j]
+		if j > i && t.word("select") || t.word("with") || t.word("union") || t.word("intersect") || t.word("except") || t.word("recursive") || t.word("into") || t.word("lateral") || t.text == ";" && j != len(tokens)-1 {
+			return nil, businessSQLFailure("unsupported_select_shape")
+		}
+		if t.depth != 0 {
+			continue
+		}
+		if t.word("from") || t.word("join") || t.text == "," && from {
+			if j+1 >= len(tokens) || tokens[j+1].depth != 0 {
+				return nil, businessSQLFailure("unsupported_select_shape")
+			}
+			name, ok := businessName(tokens[j+1], binding.Dialect)
+			if !ok || !names[name] || seen[name] {
+				return nil, businessSQLFailure("unsupported_select_shape")
+			}
+			seen[name] = true
+			uses[name]++
+			from = true
+		}
+		if t.word("where") || t.word("group") || t.word("having") || t.word("order") || t.word("limit") || t.word("offset") || t.word("fetch") {
+			from = false
+		}
+	}
+	for name := range names {
+		if uses[name] < 1 {
+			return nil, businessSQLFailure("unsupported_select_shape")
+		}
+	}
+	return scopes, nil
 }

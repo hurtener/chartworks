@@ -184,26 +184,28 @@ func expireFrozenRows(ctx context.Context, tx pgx.Tx, scope store.Scope, asOf ti
 		return 0, err
 	}
 	for _, id := range ids {
-		if _, err = tx.Exec(ctx, `DELETE FROM chartworks.render_renditions WHERE tenant_id=$1 AND run_id=$2`, scope.Tenant(), id); err != nil {
-			return 0, err
-		}
-		if _, err = tx.Exec(ctx, `UPDATE chartworks.read_attempts SET cancel_requested=true WHERE tenant_id=$1 AND operation_id=$2 AND finished_at IS NULL`, scope.Tenant(), id); err != nil {
-			return 0, err
-		}
-		if _, err = tx.Exec(ctx, `DELETE FROM chartworks.frozen_run_outputs WHERE tenant_id=$1 AND operation_id=$2`, scope.Tenant(), id); err != nil {
-			return 0, err
-		}
-		if _, err = tx.Exec(ctx, `DELETE FROM chartworks.frozen_run_payloads WHERE tenant_id=$1 AND operation_id=$2`, scope.Tenant(), id); err != nil {
-			return 0, err
-		}
-		if _, err = tx.Exec(ctx, `UPDATE chartworks.frozen_runs SET state='expired',code='retention_expired',retained_bytes=0,reserved_bytes=0 WHERE tenant_id=$1 AND operation_id=$2`, scope.Tenant(), id); err != nil {
-			return 0, err
-		}
-		if err = auditJob(ctx, tx, scope, "reporting.artifact_expired", id); err != nil {
+		if err = expireFrozenRunTx(ctx, tx, scope, id); err != nil {
 			return 0, err
 		}
 	}
 	return int64(len(ids)), nil
+}
+
+// expireFrozenRunTx is the owning frozen-artifact erasure path. Callers must
+// first lock and prove the exact run is due under its retained expiry.
+func expireFrozenRunTx(ctx context.Context, tx pgx.Tx, scope store.Scope, id string) error {
+	for _, query := range []string{
+		`DELETE FROM chartworks.render_renditions WHERE tenant_id=$1 AND run_id=$2`,
+		`UPDATE chartworks.read_attempts SET cancel_requested=true WHERE tenant_id=$1 AND operation_id=$2 AND finished_at IS NULL`,
+		`DELETE FROM chartworks.frozen_run_outputs WHERE tenant_id=$1 AND operation_id=$2`,
+		`DELETE FROM chartworks.frozen_run_payloads WHERE tenant_id=$1 AND operation_id=$2`,
+		`UPDATE chartworks.frozen_runs SET state='expired',code='retention_expired',retained_bytes=0,reserved_bytes=0 WHERE tenant_id=$1 AND operation_id=$2`,
+	} {
+		if _, err := tx.Exec(ctx, query, scope.Tenant(), id); err != nil {
+			return err
+		}
+	}
+	return auditJob(ctx, tx, scope, "reporting.artifact_expired", id)
 }
 
 // ExpireFrozenArtifacts explicitly runs bounded tenant retention. It cannot

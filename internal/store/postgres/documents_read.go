@@ -90,6 +90,9 @@ func documentTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, kind, id st
 		return out, err
 	}
 	out.Revision.Raw = append(json.RawMessage(nil), raw...)
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(r.widget_id ORDER BY r.widget_id),ARRAY[]::text[]) FROM chartworks.document_query_refs r JOIN chartworks.nlq_query_origins o USING(tenant_id,actor_id,session_id,query_id) WHERE r.tenant_id=$1 AND r.kind=$2 AND r.document_id=$3 AND r.revision=$4 AND o.erased_at IS NOT NULL`, e.Tenant(), kind, id, out.Revision.Number).Scan(&out.UnavailableQueries); err != nil {
+		return out, err
+	}
 	if json.Unmarshal(origins, &out.Revision.Origins) != nil {
 		return reporting.DocumentSnapshot{}, store.ErrInvalid
 	}

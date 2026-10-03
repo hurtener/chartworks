@@ -13,7 +13,7 @@ import (
 )
 
 func phase32Options() rendering.Options {
-	return rendering.Options{WorkerVersion: "worker-v1", ThemeVersion: "theme-v1", MaxTime: 5 * time.Second, MaxMemoryBytes: 1 << 30, MaxInputBytes: 4 << 20, MaxOutputBytes: 4 << 20, MaxConcurrent: 2, MaxWidgets: 100, Retention: time.Hour, Isolation: "linux_namespaces"}
+	return rendering.Options{WorkerVersion: "worker-v1", ThemeVersion: "theme-v1", MaxTime: 5 * time.Second, MaxMemoryBytes: 1 << 30, MaxInputBytes: 4 << 20, MaxOutputBytes: 4 << 20, MaxConcurrent: 2, MaxWidgets: 100, Retention: time.Hour, Isolation: "linux_namespaces", CgroupRoot: os.Getenv("CHARTWORKS_TEST_RENDER_CGROUP_ROOT")}
 }
 func phase32RepoRoot(t *testing.T) string {
 	t.Helper()
@@ -62,7 +62,7 @@ func main(){_,_=os.Stdout.Write(make([]byte,4096))}`
 	case "clean":
 		source = `package main
 import("os";"github.com/hurtener/chartworks/internal/rendering")
-func main(){if os.Getenv("SECRET_CANARY")!=""{os.Exit(7)};if rendering.WorkerMain(os.Stdin,os.Stdout,4<<20,4<<20,1<<30)!=nil{os.Exit(1)}}`
+func main(){if os.Getenv("SECRET_CANARY")!="" || os.Getenv("GOMAXPROCS")!="1"{os.Exit(7)};if rendering.WorkerMain(os.Stdin,os.Stdout,4<<20,4<<20,1<<30)!=nil{os.Exit(1)}}`
 	default:
 		t.Fatal("unknown probe")
 	}

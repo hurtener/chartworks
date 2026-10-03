@@ -386,3 +386,24 @@ func (s *Service) Erase(ctx context.Context, e identity.Envelope, in EraseReques
 	}
 	return s.repo.Erase(ctx, e, in.Batch, in.Limit)
 }
+
+// RetentionDrill uses the owning retained-output and rendition expiry paths for
+// exact descendants of this imported batch. A preview has no side effects.
+func (s *Service) RetentionDrill(ctx context.Context, e identity.Envelope, in RetentionDrillRequest) (RetentionDrillResult, error) {
+	if err := require(e, "migration.erase", "erase"); err != nil {
+		return RetentionDrillResult{}, err
+	}
+	if err := access.Require(e, "reporting.retention", access.Tenant(e, "erase")); err != nil {
+		return RetentionDrillResult{}, err
+	}
+	if !identity.Identifier(in.Batch) || in.Expected < 1 || in.Limit < 1 || in.Limit > 100 {
+		return RetentionDrillResult{}, ErrInvalid
+	}
+	owner, ok := s.repo.(interface {
+		DrillRetained(context.Context, identity.Envelope, RetentionDrillRequest) (RetentionDrillResult, error)
+	})
+	if !ok {
+		return RetentionDrillResult{}, ErrUnsupported
+	}
+	return owner.DrillRetained(ctx, e, in)
+}

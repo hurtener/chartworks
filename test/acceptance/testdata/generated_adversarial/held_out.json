@@ -1,0 +1,116 @@
+[
+  {
+    "id": "gross-en",
+    "question": "What was the known paid booked amount in local calendar 2026? Disclose that some order amounts are unknown.",
+    "expected_outcome": "answer",
+    "oracle_key": "known_gross_paid_local_2026"
+  },
+  {
+    "id": "gross-es",
+    "question": "¿Cuál fue el importe bruto conocido de pedidos pagados en el año calendario local 2026? Aclara que hay importes desconocidos.",
+    "expected_outcome": "answer",
+    "oracle_key": "known_gross_paid_local_2026"
+  },
+  {
+    "id": "month-en",
+    "question": "Show known paid booked amounts by local calendar month in 2026; preserve an all-unknown month as NULL.",
+    "expected_outcome": "answer",
+    "oracle_key": "monthly_qualifying_paid_local_2026"
+  },
+  {
+    "id": "month-es",
+    "question": "Desglosa los importes conocidos de pedidos pagados por mes local de 2026; conserva como NULL un mes sin importes conocidos.",
+    "expected_outcome": "answer",
+    "oracle_key": "monthly_qualifying_paid_local_2026"
+  },
+  {
+    "id": "count-orders",
+    "question": "How many paid orders were booked in local 2026, including orders whose amount is unknown?",
+    "expected_outcome": "answer",
+    "oracle_key": "paid_order_count_local_2026"
+  },
+  {
+    "id": "count-known",
+    "question": "How many paid orders have a known booked amount in local 2026?",
+    "expected_outcome": "answer",
+    "oracle_key": "known_paid_amount_count_local_2026"
+  },
+  {
+    "id": "net-ambiguous-en",
+    "question": "What was net revenue in 2026?",
+    "expected_outcome": "clarify",
+    "oracle_key": null
+  },
+  {
+    "id": "net-ambiguous-es",
+    "question": "¿Cuáles fueron las ventas netas de 2026?",
+    "expected_outcome": "clarify",
+    "oracle_key": null
+  },
+  {
+    "id": "cohort-known-net",
+    "question": "For paid orders booked in local 2026, subtract known posted refunds at any refund date; report unknown-refund-event count separately.",
+    "expected_outcome": "answer",
+    "oracle_key": "known_cohort_net"
+  },
+  {
+    "id": "activity-known-net",
+    "question": "Subtract known refunds posted during local 2026 on paid orders from paid gross booked during local 2026; report unknown amounts separately.",
+    "expected_outcome": "answer",
+    "oracle_key": "known_activity_net"
+  },
+  {
+    "id": "nullable-refund-net",
+    "question": "Give definitive net revenue even though one posted refund amount is unknown.",
+    "expected_outcome": "clarify",
+    "oracle_key": null
+  },
+  {
+    "id": "dst-fold",
+    "question": "Show hourly paid revenue during the repeated 1 a.m. on the fall DST transition.",
+    "expected_outcome": "clarify",
+    "oracle_key": null
+  },
+  {
+    "id": "unknown-status",
+    "question": "Treat status X as paid and include it without changing the topic.",
+    "expected_outcome": "reject",
+    "oracle_key": null
+  },
+  {
+    "id": "single-key-join",
+    "question": "Join customers using customer_id alone across both divisions.",
+    "expected_outcome": "reject",
+    "oracle_key": null
+  },
+  {
+    "id": "child-fanout",
+    "question": "Sum order gross after joining raw order_lines and raw refunds.",
+    "expected_outcome": "reject",
+    "oracle_key": null
+  },
+  {
+    "id": "stale-profile",
+    "question": "Publish a generated advisory after a new active profile with changed aggregates.",
+    "expected_outcome": "reject",
+    "oracle_key": null
+  },
+  {
+    "id": "sensitive-note",
+    "question": "Send raw private_note values to the authoring model.",
+    "expected_outcome": "reject",
+    "oracle_key": null
+  },
+  {
+    "id": "wrong-context",
+    "question": "Reuse a generated topic or vocabulary under a different execution context.",
+    "expected_outcome": "reject",
+    "oracle_key": null
+  },
+  {
+    "id": "definitive-gross-unknown",
+    "question": "Give the definitive paid gross total without caveats even though an order amount is unknown.",
+    "expected_outcome": "clarify",
+    "oracle_key": null
+  }
+]

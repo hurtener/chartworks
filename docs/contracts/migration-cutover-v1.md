@@ -100,6 +100,23 @@ under operator retention; the API states this boundary explicitly.
 A declared legal hold blocks online erasure; releasing a hold is an owner/operator
 retention action outside the immutable imported batch.
 
+`migrationRetentionDrill` is a separate bounded preview/apply operation for due
+Chartworks-owned retained outputs and static renditions descended from exact
+applied block/report/dashboard revisions in one complete batch. It requires the
+current batch revision, `migration.erase`, `reporting.retention`, signed tenant erase,
+and current target/context read reach (plus preview reach for private results).
+Preview returns only run IDs, parent coordinates, rendition counts and an exact
+preview digest. Apply must present that digest; a changed candidate page or due
+count requires a fresh preview. Apply uses
+the frozen/composition owners' expiry logic in one PostgreSQL transaction, deleting
+renditions before output bytes and retaining content-free tombstones/audit. It
+refuses active cutover or any manifest legal hold and never shortens an output's
+stored expiry. A stale preview must be repeated; apply rechecks current rows and
+authority. Migration-record `Erase` refuses a batch while exact imported revisions
+still have live retained descendants. Historical quarantined artifacts/renditions
+have no installed domain bytes to purge. Independently authored roots, even if
+they reference an imported report page, retain their own lifecycle.
+
 ## Authority and lifecycle
 
 Every request uses a current Pengui verified envelope. `migration.read` needs tenant
@@ -146,7 +163,7 @@ reference.
 
 ## Surfaces and limits
 
-The seven HTTP operations in
+The eight HTTP operations in
 [`chartworks-migration-operations.json`](chartworks-migration-operations.json) are
 also typed SDK methods, MCP tools in the optional `migration` group and generic CLI
 operations. CLI use reads JSON from stdin and requires the existing explicit

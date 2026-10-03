@@ -1,0 +1,15 @@
+diff --git a/pkg/sqlparser/rustffi/src/compat.rs b/pkg/sqlparser/rustffi/src/compat.rs
+index 8d118b3d20a6be4aae8f5e27c7302e9a65c49c26..15fa0f4df5aa35f807e0bfb556f58f61f33187e1 100644
+--- a/pkg/sqlparser/rustffi/src/compat.rs
++++ b/pkg/sqlparser/rustffi/src/compat.rs
+@@ -2006,8 +2006,8 @@ pub fn inspect_read(query: &str, dialect: DialectType, max_nodes: usize, max_dep
+         return json!({"error": "read syntax bounds exceeded"});
+     }
+     let allowed = [
+-        "select", "union", "intersect", "except", "subquery", "alias", "cast", "case",
+-        "and", "or", "add", "sub", "mul", "div", "mod", "eq", "neq", "lt", "lte", "gt", "gte",
++        "select", "union", "intersect", "except", "subquery", "alias", "cast", "case", "paren", "at_time_zone",
++        "and", "or", "add", "sub", "mul", "div", "mod", "eq", "null_safe_eq", "neq", "lt", "lte", "gt", "gte",
+         "like", "ilike", "not", "neg", "in", "between", "is_null", "is_true", "is_false", "is", "exists",
+         "from", "join", "joined_table", "where", "group_by", "having", "order_by", "limit", "offset", "with", "cte", "ordered",
+         "window", "over", "within_group", "data_type", "array", "struct", "tuple", "interval",

@@ -80,7 +80,19 @@ func clarificationContext(e identity.Envelope, admitted []admittedTopic) string 
 func scopedClarificationInputs(in RouteRequest, admitted []admittedTopic) (map[string]semantics.ClarificationInput, error) {
 	inputs := map[string]semantics.ClarificationInput{}
 	for _, item := range admitted {
-		inputs[item.id] = semantics.ClarificationInput{Locale: string(in.Locale), Question: in.Question, References: append([]semantics.Reference(nil), in.References...)}
+		input := semantics.ClarificationInput{Locale: string(in.Locale), Question: in.Question, References: append([]semantics.Reference(nil), in.References...)}
+		if item.selection != nil {
+			input.References = selectedRuleReferences(item)
+			input.Selection = &semantics.ClarificationReferenceSelection{References: []semantics.Reference{}}
+			for _, root := range selectedRoots(item.selection) {
+				// Required dependencies and previous resolutions are not independent
+				// user choices. They still activate rules through References above.
+				if root.Reason != "clarification" && root.Reason != "required_rule" {
+					input.Selection.References = append(input.Selection.References, root.Reference)
+				}
+			}
+		}
+		inputs[item.id] = input
 	}
 	for _, answer := range semantics.CloneClarificationAnswers(in.Answers) {
 		input, ok := inputs[answer.Topic]
@@ -145,7 +157,7 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 			return &Clarification{Reason: "clarification_" + string(evaluation.Outcome), Outcome: evaluation.Outcome, Questions: evaluation.Slots, Errors: evaluation.Errors}
 		}
 		missing = missing || evaluation.Outcome == semantics.ClarificationMissing
-		needsBinding := false
+		needsBinding := evaluation.MayRequireSourceBinding()
 		for _, state := range evaluation.Slots {
 			if state.Effect != nil && (state.Outcome != semantics.ClarificationNotApplicable || state.Reason == "optional_omitted") {
 				needsBinding = true
@@ -336,7 +348,20 @@ func businessConstraint(item admittedTopic, resolution semantics.ClarificationRe
 }
 
 func (r RouteResult) resolutionProof() string {
-	return readexec.Hash([]any{r.AnswerContext, r.SourceBindingDigest, r.Resolutions, r.Interpretation, r.business})
+	parts := []any{r.AnswerContext, r.SourceBindingDigest, r.Resolutions, r.Interpretation, r.business, r.Selection}
+	if len(r.metricPeriods) > 0 {
+		parts = append(parts, r.metricPeriods)
+	}
+	if r.Request.Grouping != nil {
+		parts = append(parts, CloneGrouping(r.Request.Grouping))
+	}
+	if r.Concepts != nil {
+		parts = append(parts, r.Concepts)
+	}
+	if r.GroupingIntent != nil {
+		parts = append(parts, r.GroupingIntent)
+	}
+	return readexec.Hash(parts)
 }
 
 // ResolvedBusinessConstraints is available only from the in-process sealed
@@ -448,6 +473,10 @@ func selectedClarificationMetrics(ids []string, resolutions []semantics.Clarific
 // ReplayClarifications reevaluates stored canonical answers with current bearer
 // reach and publication/source pins, without embedding, generation or execution.
 func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope, previous RouteResult) ([]readexec.BusinessConstraint, string, error) {
+	return s.replayClarifications(ctx, e, previous, nil)
+}
+
+func (s *Service) replayClarifications(ctx context.Context, e identity.Envelope, previous RouteResult, applications *[]MetricPeriodApplication) ([]readexec.BusinessConstraint, string, error) {
 	in := cloneRouteRequest(previous.Request)
 	ids, err := normalizeRequest(in)
 	if err != nil {
@@ -459,7 +488,7 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 		if err != nil {
 			return nil, "", err
 		}
-		item := admittedTopic{id: id, publication: contract.Publication}
+		item := admittedTopic{id: id, publication: contract.Publication, relations: contract.Relations}
 		item.rules, item.hasRules, err = s.readRules(ctx, e, id, contract.Publication.State.Version, contract.Publication.Digest)
 		if err != nil {
 			return nil, "", err
@@ -469,7 +498,40 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 	if !contextMatches(admitted, in.Context) {
 		return nil, "", readexec.ErrBinding
 	}
-	current := RouteResult{Outcome: previous.Outcome}
+	current := RouteResult{Outcome: previous.Outcome, conceptReplay: true, groupingIntentReplay: true}
+	if previous.Concepts != nil {
+		value := previous.Concepts.clone()
+		current.Concepts = &value
+	}
+	if (in.GroupingIntentPolicy != "") != (previous.GroupingIntent != nil) {
+		return nil, "", readexec.ErrBinding
+	}
+	if previous.GroupingIntent != nil {
+		value := previous.GroupingIntent.clone()
+		current.GroupingIntent = &value
+		// Replay the original unspecified input through the deterministic
+		// temporal stage, then restore only the verified learned choice.
+		in.Grouping = nil
+	}
+	groupingRoots := previous.Selection != nil && previous.Selection.GroupingIntent != ""
+	modelRoots := false
+	if previous.Selection != nil {
+		for _, topic := range previous.Selection.Topics {
+			for _, root := range topic.Roots {
+				modelRoots = modelRoots || root.Reason == "grounded_model"
+				groupingRoots = groupingRoots || root.Reason == "grounded_grouping"
+			}
+		}
+	}
+	if groupingRoots && (in.GroupingIntentPolicy != GroundedGroupingIntentPolicy || previous.GroupingIntent == nil) {
+		return nil, "", readexec.ErrBinding
+	}
+	if modelRoots && (in.ConceptPolicy != GroundedConceptPolicy || previous.Concepts == nil) {
+		return nil, "", readexec.ErrBinding
+	}
+	if in.ConceptPolicy == "" && previous.Concepts != nil {
+		return nil, "", readexec.ErrBinding
+	}
 	interpretation, constraints, err := s.interpret(ctx, e, &in, admitted)
 	if err != nil {
 		return nil, "", err
@@ -479,8 +541,53 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 	if interpretation != nil {
 		current.SourceBindingDigest = interpretation.BindingDigest
 	}
-	if err := s.prepareClarifications(ctx, e, in, admitted, &current); err != nil {
+	if err := s.selectGroupingIntent(ctx, e, &in, admitted, &current); err != nil {
 		return nil, "", err
+	}
+	if readexec.Hash(in.Grouping) != readexec.Hash(previous.Request.Grouping) || readexec.Hash(current.GroupingIntent) != readexec.Hash(previous.GroupingIntent) {
+		return nil, "", readexec.ErrBinding
+	}
+	current.Request = cloneRouteRequest(in)
+	if current.GroupingIntent != nil && current.GroupingIntent.Choice.Decision != "select" {
+		// This terminal producer outcome precedes semantic/rule resolution.
+		// Replaying it verifies only the same non-executable pending choice;
+		// it must not run the later stages or manufacture an answer-context pin.
+		if previous.Context != nil || previous.Selection != nil || previous.Concepts != nil || len(previous.Resolutions) != 0 || previous.AnswerContext != "" || readexec.Hash(previous.Clarification) != readexec.Hash(current.Clarification) || readexec.Hash(previous.Interpretation) != readexec.Hash(current.Interpretation) || previous.SourceBindingDigest != current.SourceBindingDigest {
+			return nil, "", readexec.ErrBinding
+		}
+		return nil, current.SourceBindingDigest, nil
+	}
+	if (previous.Concepts != nil || previous.GroupingIntent != nil && previous.GroupingIntent.Choice.Decision == "select") && previous.Selection == nil {
+		return nil, "", readexec.ErrBinding
+	}
+	if previous.Selection != nil {
+		if previous.Selection.Version != semanticSelectionVersion {
+			return nil, "", readexec.ErrBinding
+		}
+		_, missing, templateErr := canonicalTemplates(in.Templates, admitted)
+		if templateErr != nil || missing != "" {
+			return nil, "", readexec.ErrBinding
+		}
+		if err := s.resolveSemanticSelection(ctx, e, in, admitted, &current); err != nil {
+			return nil, "", err
+		}
+		if readexec.Hash(previous.Concepts) != readexec.Hash(current.Concepts) || readexec.Hash(previous.Selection) != readexec.Hash(current.Selection) {
+			return nil, "", readexec.ErrBinding
+		}
+	} else {
+		if len(in.OmittedRoots) != 0 {
+			return nil, "", readexec.ErrBinding
+		}
+		if previous.Context != nil && previous.Context.Constraints != nil {
+			for _, c := range append(append([]nlq.MandatoryConstraint(nil), previous.Context.Constraints.Required...), previous.Context.Constraints.Excluded...) {
+				if c.Kind == "selected_semantics" || c.Kind == "semantic_dependency" || c.Kind == "omitted_semantic_root" {
+					return nil, "", readexec.ErrBinding
+				}
+			}
+		}
+		if err := s.prepareClarifications(ctx, e, in, admitted, &current); err != nil {
+			return nil, "", err
+		}
 	}
 	if current.Clarification != nil && previous.Clarification == nil {
 		return nil, "", current.Clarification
@@ -491,6 +598,12 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 	freshInterpretation, _ := json.Marshal(current.Interpretation)
 	if string(old) != string(fresh) || string(oldInterpretation) != string(freshInterpretation) || previous.AnswerContext != current.AnswerContext || previous.SourceBindingDigest != current.SourceBindingDigest {
 		return nil, "", clarificationFailure(in.Locale, "answers", "stale_answer_resolution")
+	}
+	if err := bindMetricPeriodApplications(&current, admitted); err != nil {
+		return nil, "", err
+	}
+	if applications != nil {
+		*applications = current.metricPeriods
 	}
 	return append([]readexec.BusinessConstraint(nil), current.business...), current.SourceBindingDigest, nil
 }

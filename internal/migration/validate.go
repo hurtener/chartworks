@@ -233,8 +233,8 @@ func containsForbiddenAt(kind Kind, path []string, v any) bool {
 	case map[string]any:
 		for key, value := range x {
 			n := normalizedKey(key)
-			modelRole := n == "role" && allowedModelRolePath(kind, path)
-			if !modelRole && forbiddenKey(n) || containsForbiddenAt(kind, append(path, n), value) {
+			domainRole := n == "role" && (allowedModelRolePath(kind, path) || allowedChartRolePath(kind, path))
+			if !domainRole && forbiddenKey(n) || containsForbiddenAt(kind, append(path, n), value) {
 				return true
 			}
 		}
@@ -279,6 +279,12 @@ func allowedModelRolePath(kind Kind, path []string) bool {
 		return false
 	}
 	return kind == KindRuntimePack && (path[0] == "pack" || path[0] == "config") || kind == KindEvalSuite && path[0] == "packs"
+}
+
+// Chart column role is a closed output-spec field, not identity authority.
+// The owning block decoder validates its value after manifest hygiene.
+func allowedChartRolePath(kind Kind, path []string) bool {
+	return kind == KindBlock && len(path) == 4 && path[0] == "definition" && path[1] == "outputs" && path[2] == "mapping" && path[3] == "columns"
 }
 
 func ordered(m Manifest) ([]Object, error) {

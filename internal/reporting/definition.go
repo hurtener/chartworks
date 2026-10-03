@@ -119,7 +119,11 @@ func ExecutionDigest(d Definition) string {
 	if d.SchemaVersion == SchemaVersion {
 		return base
 	}
-	return digest([]any{"block-execution-policy-v2", base, d.QueryLimits, d.ResultPolicy})
+	base = digest([]any{"block-execution-policy-v2", base, d.QueryLimits, d.ResultPolicy})
+	if len(d.AmountCompleteness) > 0 {
+		base = digest([]any{ReviewedAmountCompletenessPolicy, base, d.AmountCompleteness})
+	}
+	return base
 }
 
 // templateSelections validates and canonicalizes template provenance against
@@ -232,6 +236,9 @@ func validateDefinition(ctx context.Context, d Definition, limits config.Reporti
 		}
 		policyFields[policy.Field] = true
 	}
+	if err := validateAmountDeclarations(d); err != nil {
+		return err
+	}
 	outputIDs := map[string]bool{}
 	orders := map[int]bool{}
 	for _, o := range d.Outputs {
@@ -256,6 +263,11 @@ func validateDefinition(ctx context.Context, d Definition, limits config.Reporti
 		outputIDs[o.ID] = true
 		if err := validateOutput(ctx, o, fields, limits); err != nil {
 			return err
+		}
+		if o.Narrative != nil && o.Narrative.PolicyVersion == StatisticalNarrativePolicyVersion {
+			if err := validateStatisticalCoordinates(*o.Narrative, d.ExpectedSchema); err != nil {
+				return err
+			}
 		}
 	}
 	return ctx.Err()
@@ -313,8 +325,20 @@ func validateOutput(ctx context.Context, o Output, fields map[string]exec.Field,
 }
 
 func validateNarrative(n Narrative, fields map[string]exec.Field) error {
-	if !slices.Contains([]string{"summary", "comparison", "explanation"}, n.Type) || strings.TrimSpace(n.Instructions) == "" || !text(n.Instructions, 4096) || len(n.Fields) == 0 || len(n.Fields) > 128 || len(n.RedactedFields) > 128 || !slices.Contains([]string{"first_rows", "aggregate_evidence"}, n.Reduction) || n.MaxClaims < 0 || n.MaxClaims > 32 || n.MaxRows < 1 || n.MaxRows > 1000 || n.MaxBytes < 128 || n.MaxBytes > 65536 || n.MaxCharacters < 1 || n.MaxCharacters > 16384 || n.MaxCalls < 1 || n.MaxCalls > 4 || n.MaxTokens < 64 || n.MaxTokens > 32768 || n.TimeoutMillis < 100 || n.TimeoutMillis > 60000 || !identity.Identifier(n.PromptVersion) || !identity.Identifier(n.ModelVersion) || !identity.Identifier(n.SchemaVersion) || !locale(n.Locale) || !slices.Contains([]string{"neutral", "concise", "technical"}, n.Tone) || !n.RequireEvidence || !n.RequireCaveats {
+	if !slices.Contains([]string{"summary", "comparison", "explanation"}, n.Type) || strings.TrimSpace(n.Instructions) == "" || !text(n.Instructions, 4096) || len(n.Fields) == 0 || len(n.Fields) > 128 || len(n.RedactedFields) > 128 || !slices.Contains([]string{"first_rows", "aggregate_evidence", "statistical_evidence"}, n.Reduction) || n.MaxClaims < 0 || n.MaxClaims > 32 || n.MaxRows < 1 || n.MaxRows > 1000 || n.MaxBytes < 128 || n.MaxBytes > 65536 || n.MaxCharacters < 1 || n.MaxCharacters > 16384 || n.MaxCalls < 1 || n.MaxCalls > 4 || n.MaxTokens < 64 || n.MaxTokens > 32768 || n.TimeoutMillis < 100 || n.TimeoutMillis > 60000 || !identity.Identifier(n.PromptVersion) || !identity.Identifier(n.ModelVersion) || !identity.Identifier(n.SchemaVersion) || !locale(n.Locale) || !slices.Contains([]string{"neutral", "concise", "technical"}, n.Tone) || !n.RequireEvidence || !n.RequireCaveats {
 		return ErrInvalid
+	}
+	if n.PolicyVersion == StatisticalNarrativePolicyVersion {
+		if err := boundedNarrativePolicy(n); err != nil {
+			return err
+		}
+		for _, s := range n.Statistics {
+			if fields[s.Value.Field.Name] != s.Value.Field || s.Time != nil && fields[s.Time.Field.Field.Name] != s.Time.Field.Field {
+				return ErrInvalid
+			}
+		}
+	} else if len(n.Statistics) != 0 || n.Reduction == "statistical_evidence" {
+		return ErrNarrativePolicy
 	}
 	seen := map[string]bool{}
 	for _, names := range [][]string{n.Fields, n.RedactedFields} {

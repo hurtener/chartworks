@@ -630,6 +630,20 @@ func (d *DB) Erase(ctx context.Context, e identity.Envelope, id string, limit in
 		if active > 0 {
 			return store.ErrConflict
 		}
+		// Keep exact imported-revision provenance while live retained descendants
+		// still need their owning retention path. Historical quarantined objects
+		// have no domain rows and therefore do not enter this check.
+		parents, x := appliedParents(ctx, tx, e.Tenant(), id)
+		if x != nil {
+			return x
+		}
+		live, x := liveImportedRuns(ctx, tx, e.Tenant(), parents)
+		if x != nil {
+			return x
+		}
+		if live {
+			return store.ErrConflict
+		}
 		command, x := tx.Exec(ctx, `DELETE FROM chartworks.migration_checkpoints WHERE (tenant_id,batch_id,sequence) IN (SELECT tenant_id,batch_id,sequence FROM chartworks.migration_checkpoints WHERE tenant_id=$1 AND batch_id=$2 ORDER BY sequence LIMIT $3)`, e.Tenant(), id, limit)
 		if x != nil {
 			return x

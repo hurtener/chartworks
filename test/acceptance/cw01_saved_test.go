@@ -64,6 +64,7 @@ func cw01TypedSavedQueryAcceptance(t *testing.T) {
 func cw01SavedReferenceAcceptance(t *testing.T) {
 	t.Helper()
 	f := newCW01Fixture(t)
+	f.model.mode.Store(phase18RawResponse(t, "SELECT id, sum(amount) AS amount FROM analytics.sales GROUP BY id ORDER BY id"))
 	ctx := context.Background()
 	saved := nlqexec.SavedQuestion{Durability: "replayable", Context: f.context, Question: "Show choose sales",
 		Topics:     []nlqexec.SavedTopic{{Topic: f.pack.Topic, Version: f.published.State.Version, Digest: f.published.Digest}},

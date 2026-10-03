@@ -194,7 +194,7 @@ func facetPlan(model semantics.Model, space gateway.EmbeddingSpace) ([]facetGrou
 		}
 	}
 	for _, j := range p.Joins {
-		if err := addEntity("relationship", j.ID, j, []semantics.Reference{j.Left, j.Right}); err != nil {
+		if err := addEntity("relationship", j.ID, j, j.References()); err != nil {
 			return nil, err
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
@@ -37,7 +38,7 @@ type Viewer interface {
 type Request struct {
 	View   reporting.DeliveryViewRequest `json:"view"`
 	Full   bool                          `json:"full,omitempty"`
-	Format string                        `json:"format" jsonschema:"enum=json,enum=csv,enum=html,enum=svg"`
+	Format string                        `json:"format" jsonschema:"enum=json,enum=csv,enum=html,enum=svg,enum=png"`
 	Theme  string                        `json:"theme" jsonschema:"enum=light,enum=dark"`
 	Width  int                           `json:"width"`
 	Height int                           `json:"height"`
@@ -45,38 +46,40 @@ type Request struct {
 
 // Rendition carries bounded static bytes and their retained-input provenance.
 type Rendition struct {
-	ID            string     `json:"id,omitempty"`
-	State         string     `json:"state,omitempty"`
-	Code          string     `json:"code,omitempty"`
-	Version       string     `json:"version"`
-	WorkerVersion string     `json:"worker_version,omitempty"`
-	ThemeVersion  string     `json:"theme_version,omitempty"`
-	Format        string     `json:"format"`
-	MediaType     string     `json:"media_type"`
-	Theme         string     `json:"theme"`
-	Width         int        `json:"width"`
-	Height        int        `json:"height"`
-	SourceDigest  string     `json:"source_digest"`
-	Projection    Projection `json:"projection"`
-	Digest        string     `json:"digest"`
-	Bytes         int        `json:"bytes"`
-	Content       string     `json:"content"`
-	CreatedAt     time.Time  `json:"created_at,omitempty"`
-	ExpiresAt     time.Time  `json:"expires_at,omitempty"`
+	ID              string     `json:"id,omitempty"`
+	State           string     `json:"state,omitempty"`
+	Code            string     `json:"code,omitempty"`
+	Version         string     `json:"version"`
+	WorkerVersion   string     `json:"worker_version,omitempty"`
+	ThemeVersion    string     `json:"theme_version,omitempty"`
+	Format          string     `json:"format"`
+	MediaType       string     `json:"media_type"`
+	Theme           string     `json:"theme"`
+	Width           int        `json:"width"`
+	Height          int        `json:"height"`
+	SourceDigest    string     `json:"source_digest"`
+	Projection      Projection `json:"projection"`
+	Digest          string     `json:"digest"`
+	Bytes           int        `json:"bytes"`
+	Content         string     `json:"content"`
+	ContentEncoding string     `json:"content_encoding,omitempty" jsonschema:"enum=base64"`
+	CreatedAt       time.Time  `json:"created_at,omitempty"`
+	ExpiresAt       time.Time  `json:"expires_at,omitempty"`
 }
 
 // Projection identifies the exact retained window used for this rendition.
 // SourceDigest still identifies the full retained output and must not be used as
 // a digest of a paged table response.
 type Projection struct {
-	Offset       int                 `json:"offset"`
-	Limit        int                 `json:"limit"`
-	Total        int                 `json:"total"`
-	Next         *int                `json:"next,omitempty"`
-	Truncated    bool                `json:"truncated"`
-	Completeness charts.Completeness `json:"completeness"`
-	Warnings     []string            `json:"warnings"`
-	Digest       string              `json:"digest"`
+	AmountCoverage []AmountCoverage    `json:"amount_coverage,omitempty"`
+	Offset         int                 `json:"offset"`
+	Limit          int                 `json:"limit"`
+	Total          int                 `json:"total"`
+	Next           *int                `json:"next,omitempty"`
+	Truncated      bool                `json:"truncated"`
+	Completeness   charts.Completeness `json:"completeness"`
+	Warnings       []string            `json:"warnings"`
+	Digest         string              `json:"digest"`
 }
 
 // Service renders retained values and owns no source, model or network client.
@@ -104,10 +107,10 @@ func (s *Service) Export(ctx context.Context, e identity.Envelope, in Request) (
 	if !e.Has("reporting.export") || !e.Has("reporting.read") {
 		return Rendition{}, access.ErrForbidden
 	}
-	if !oneOf(in.Format, "json", "csv", "html", "svg") || !oneOf(in.Theme, "light", "dark") || in.Width < 320 || in.Width > 4096 || in.Height < 200 || in.Height > 4096 || in.View.Limit < 0 || in.View.Limit > 1000 {
+	if !oneOf(in.Format, "json", "csv", "html", "svg", "png") || !oneOf(in.Theme, "light", "dark") || in.Width < 320 || in.Width > 4096 || in.Height < 200 || in.Height > 4096 || in.View.Limit < 0 || in.View.Limit > 1000 {
 		return Rendition{}, ErrInvalid
 	}
-	if (in.Format == "html" || in.Format == "svg") && s.processor == nil {
+	if (in.Format == "html" || in.Format == "svg" || in.Format == "png") && s.processor == nil {
 		return Rendition{}, ErrInvalid
 	}
 	if s.processor != nil {
@@ -135,7 +138,7 @@ func (s *Service) Export(ctx context.Context, e identity.Envelope, in Request) (
 }
 
 func (s *Service) render(ctx context.Context, in Request, view reporting.DeliveryViewResult) (Rendition, error) {
-	if s.processor != nil && (in.Format == "html" || in.Format == "svg") {
+	if s.processor != nil && (in.Format == "html" || in.Format == "svg" || in.Format == "png") {
 		work := SealedWork{Version: WorkerProtocolVersion, Request: in, View: view}
 		work.Digest = sealedDigest(work)
 		out, err := s.processor.Process(ctx, work)
@@ -147,10 +150,20 @@ func (s *Service) render(ctx context.Context, in Request, view reporting.Deliver
 		}
 		return out, nil
 	}
-	return renderSealed(in, view, s.maxBytes)
+	return renderSealedContext(ctx, in, view, s.maxBytes)
 }
 
 func renderSealed(in Request, view reporting.DeliveryViewResult, maxBytes int) (Rendition, error) {
+	return renderSealedContext(context.Background(), in, view, maxBytes)
+}
+
+func renderSealedContext(ctx context.Context, in Request, view reporting.DeliveryViewResult, maxBytes int) (Rendition, error) {
+	if ctx == nil || view.Output == nil {
+		return Rendition{}, ErrInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return Rendition{}, err
+	}
 	timezone := view.Timezone
 	if timezone == "" {
 		timezone = "UTC"
@@ -174,11 +187,29 @@ func renderSealed(in Request, view reporting.DeliveryViewResult, maxBytes int) (
 		}{view.Output, view.PageBounds, view.Locale, timezone})
 		media = "application/json"
 	case "csv":
-		content, err = renderCSV(view.Output, timezone)
+		content, err = renderCSVWithAmountDisclosure(view.Output, view.PageBounds, timezone)
 		media = "text/csv; charset=utf-8"
 	case "html":
 		content, err = renderHTML(view.Output, view.PageBounds, in.Theme, in.Width, in.Height, timezone)
 		media = "text/html; charset=utf-8"
+	case "png":
+		if in.Full {
+			return Rendition{}, ErrInvalid
+		}
+		var scene *drawingScene
+		var disclosure []string
+		disclosure, err = AmountDisclosureLines(view.Output.AmountCompleteness)
+		if err != nil {
+			return Rendition{}, err
+		}
+		if view.Output.Table != nil {
+			disclosure = append(disclosure, rasterPageScope(projection, len(view.Output.Table.Rows)))
+		}
+		scene, err = outputDrawing(ctx, view.Output, in.Theme, in.Width, in.Height, timezone, disclosure)
+		if err == nil {
+			content, err = rasterScene(ctx, scene, in.Width, in.Height, maxBytes)
+		}
+		media = "image/png"
 	case "svg":
 		content, err = renderSVG(view.Output, in.Theme, in.Width, in.Height, timezone)
 		media = "image/svg+xml"
@@ -190,11 +221,23 @@ func renderSealed(in Request, view reporting.DeliveryViewResult, maxBytes int) (
 		return Rendition{}, reporting.ErrBudget
 	}
 	sum := sha256.Sum256(content)
-	return Rendition{State: "succeeded", Version: Version, Format: in.Format, MediaType: media, Theme: in.Theme, Width: in.Width, Height: in.Height, SourceDigest: view.Output.RetainedDigest, Projection: projection, Digest: hex.EncodeToString(sum[:]), Bytes: len(content), Content: string(content)}, nil
+	wireContent, encoding := string(content), ""
+	if in.Format == "png" {
+		wireContent, encoding = base64.StdEncoding.EncodeToString(content), "base64"
+		if len(wireContent) > maxBytes {
+			return Rendition{}, reporting.ErrBudget
+		}
+	}
+	return Rendition{State: "succeeded", Version: Version, Format: in.Format, MediaType: media, Theme: in.Theme, Width: in.Width, Height: in.Height, SourceDigest: view.Output.RetainedDigest, Projection: projection, Digest: hex.EncodeToString(sum[:]), Bytes: len(content), Content: wireContent, ContentEncoding: encoding}, nil
 }
 
 func projectionFor(view reporting.DeliveryViewResult, timezone string) (Projection, error) {
 	p := Projection{}
+	coverage, err := amountCoverage(view.Output.AmountCompleteness)
+	if err != nil {
+		return Projection{}, err
+	}
+	p.AmountCoverage = coverage
 	if view.Output.Table != nil {
 		b := view.PageBounds
 		end := b.Offset + len(view.Output.Table.Rows)
@@ -325,8 +368,26 @@ func renderHTML(out *reporting.ViewerOutput, page reporting.ViewerPage, theme st
 		b.WriteString("<p>")
 		b.WriteString(html.EscapeString(out.Narrative.Text))
 		b.WriteString("</p>")
+		// Retained qualifiers are part of the narrative, including statistical
+		// scope and missing-value limits. Export must not silently omit them.
+		if len(out.Narrative.Caveats) > 0 {
+			b.WriteString(`<ul data-narrative-caveats="true">`)
+			for _, caveat := range out.Narrative.Caveats {
+				b.WriteString("<li>")
+				b.WriteString(html.EscapeString(caveat))
+				b.WriteString("</li>")
+			}
+			b.WriteString("</ul>")
+		}
 	default:
 		return nil, ErrInvalid
+	}
+	lines, err := AmountDisclosureLines(out.AmountCompleteness)
+	if err != nil {
+		return nil, err
+	}
+	for _, line := range lines {
+		fmt.Fprintf(&b, "<p data-amount-completeness=\"true\">%s</p>", html.EscapeString(line))
 	}
 	b.WriteString("</main></body></html>")
 	return []byte(b.String()), nil
@@ -394,18 +455,48 @@ func formatValue(value charts.Value, column charts.Column, timezone string) stri
 }
 
 func renderSVG(out *reporting.ViewerOutput, theme string, width, height int, timezone string) ([]byte, error) {
-	if out.Table != nil {
-		return []byte(renderTableSVG(out, theme, width, height, timezone)), nil
-	}
-	if out.Chart == nil {
-		return nil, ErrInvalid
-	}
-	body, err := renderChartSVG(out.Chart, theme, width, height, timezone)
+	disclosure, err := AmountDisclosureLines(out.AmountCompleteness)
 	if err != nil {
 		return nil, err
 	}
+	lines := wrapDisclosureLines(disclosure, width)
+	plotHeight := height
+	if len(lines) > 0 {
+		plotHeight = height - len(lines)*16 - 8
+		if plotHeight < 120 {
+			return nil, reporting.ErrBudget
+		}
+	}
+	var body string
+	if out.Table != nil {
+		body = renderTableSVG(out, theme, width, plotHeight, timezone)
+	} else {
+		if out.Chart == nil {
+			return nil, ErrInvalid
+		}
+		var err error
+		body, err = renderChartSVG(out.Chart, theme, width, plotHeight, timezone)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(lines) > 0 {
+		body = strings.Replace(body, fmt.Sprintf("viewBox=\"0 0 %d %d\"", width, plotHeight), fmt.Sprintf("viewBox=\"0 0 %d %d\"", width, height), 1)
+		background, foreground := "#ffffff", "#17211f"
+		if theme == "dark" {
+			background, foreground = "#17211f", "#f6f1e7"
+		}
+		var footer strings.Builder
+		fmt.Fprintf(&footer, "<g data-amount-completeness=\"true\" style=\"font-family:monospace;font-size:12px\" fill=\"%s\"><rect x=\"0\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"%s\"/>", foreground, plotHeight, width, height-plotHeight, background)
+		for i, line := range lines {
+			fmt.Fprintf(&footer, "<text x=\"8\" y=\"%d\">%s</text>", plotHeight+16*(i+1), html.EscapeString(line))
+		}
+		footer.WriteString("</g>")
+		body = strings.TrimSuffix(body, "</svg>") + footer.String() + "</svg>"
+	}
 	return []byte(body), nil
 }
+
 func renderTableSVG(out *reporting.ViewerOutput, theme string, width, height int, timezone string) string {
 	background, foreground := "#ffffff", "#17211f"
 	if theme == "dark" {

@@ -72,7 +72,7 @@ func (s *Service) ObserveCatalog(ctx context.Context, e identity.Envelope, id, p
 				out.BindingDigest = readexec.Hash(record.Binding)
 				return nil
 			}
-			binding, err := s.probePostgres(ctx, connection, id, record.Source.Revision, func(ctx context.Context, tx readTransaction, binding readexec.Binding) error {
+			binding, err := s.probePostgres(withStoredKeyPolicy(ctx, record.Binding), connection, id, record.Source.Revision, func(ctx context.Context, tx readTransaction, binding readexec.Binding) error {
 				if !observedBindingMatches(record.Binding, binding) {
 					return readexec.ErrBinding
 				}

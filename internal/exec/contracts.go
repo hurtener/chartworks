@@ -47,6 +47,9 @@ type Relation struct {
 	Schema  string   `json:"schema"`
 	Name    string   `json:"name"`
 	Columns []Column `json:"columns"`
+	// UniqueKeys are complete, unconditional immediate keys discovered from the
+	// source catalog while holding the same read-context lock as execution.
+	UniqueKeys [][]string `json:"unique_keys,omitempty"`
 }
 
 // Binding is resolved from registered connector configuration and actual database
@@ -86,6 +89,9 @@ func (b Binding) Valid() bool {
 				return false
 			}
 			columns[c.Name] = true
+		}
+		if !validUniqueKeys(r.UniqueKeys, columns) {
+			return false
 		}
 	}
 	return true
@@ -129,6 +135,7 @@ func (b Binding) Clone() Binding {
 	b.Relations = append([]Relation(nil), b.Relations...)
 	for i := range b.Relations {
 		b.Relations[i].Columns = append([]Column(nil), b.Relations[i].Columns...)
+		b.Relations[i].UniqueKeys = cloneUniqueKeys(b.Relations[i].UniqueKeys)
 	}
 	return b
 }

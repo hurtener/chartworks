@@ -11,7 +11,13 @@ import (
 const NarrativePolicyVersion = "bounded-narrative-v2"
 
 func boundedNarrativePolicy(n Narrative) error {
-	if n.PolicyVersion != NarrativePolicyVersion || n.Instructions != "evidence_only" || n.SchemaVersion != "grounded-narrative-v1" || !narrativeLocale(n.Locale) || n.MaxClaims < 1 || n.MaxClaims > 32 || !n.RequireEvidence || !n.RequireCaveats || !slices.Contains([]string{"summary", "comparison", "explanation"}, n.Type) || !slices.Contains([]string{"neutral", "concise", "technical"}, n.Tone) {
+	if n.PolicyVersion != NarrativePolicyVersion && n.PolicyVersion != StatisticalNarrativePolicyVersion || n.Instructions != "evidence_only" || !narrativeSchemaSupported(n) || !narrativeLocale(n.Locale) || n.MaxClaims < 1 || n.MaxClaims > 32 || !n.RequireEvidence || !n.RequireCaveats || !slices.Contains([]string{"summary", "comparison", "explanation"}, n.Type) || !slices.Contains([]string{"neutral", "concise", "technical"}, n.Tone) {
+		return ErrNarrativePolicy
+	}
+	if n.PolicyVersion == StatisticalNarrativePolicyVersion {
+		return statisticalNarrativePolicy(n)
+	}
+	if len(n.Statistics) != 0 || n.Reduction == "statistical_evidence" {
 		return ErrNarrativePolicy
 	}
 	// Aggregation retains one sum/count per field, not paired observations of
@@ -23,6 +29,16 @@ func boundedNarrativePolicy(n Narrative) error {
 }
 
 func narrativeClaimKinds(n Narrative) []string {
+	if n.PolicyVersion == StatisticalNarrativePolicyVersion {
+		switch n.Type {
+		case "summary":
+			return []string{"extrema", "population_variance"}
+		case "comparison":
+			return []string{"trend"}
+		default:
+			return []string{"trend", "extrema", "population_variance"}
+		}
+	}
 	if n.PolicyVersion == NarrativePolicyVersion {
 		switch n.Type {
 		case "summary":
@@ -64,11 +80,21 @@ func narrativeClaimSchema(n Narrative) (string, error) {
 			return "", err
 		}
 	}
+	if n.PolicyVersion == StatisticalNarrativePolicyVersion {
+		return statisticalClaimSchema(n), nil
+	}
 	schema := strings.Replace(narrativeSchema, `"maxItems":32`, fmt.Sprintf(`"maxItems":%d`, maxClaims(n)), 1)
 	if kinds := narrativeClaimKinds(n); len(kinds) == 1 {
 		schema = strings.Replace(schema, `"enum":["value","difference"]`, fmt.Sprintf(`"enum":[%q]`, kinds[0]), 1)
 	}
 	return schema, nil
+}
+
+func narrativeSchemaSupported(n Narrative) bool {
+	if n.PolicyVersion == StatisticalNarrativePolicyVersion {
+		return n.SchemaVersion == StatisticalNarrativeSchemaVersion
+	}
+	return n.SchemaVersion == "grounded-narrative-v1"
 }
 
 // Tone is a deterministic template, not provider-generated prose. Quoted field

@@ -81,7 +81,7 @@ absent when its routing service is unavailable. The `evaluation` group adds four
 Phase 24 suite/runtime-pack author/review, input, run/read/cancel/recover, feedback
 split, optimization and pack-selection bindings. A fully installed reporting group
 adds eleven delivery/filter/run/static-rendition bindings, and migration adds the
-seven bindings below. Disabled or unavailable services never advertise bindings.
+eight bindings below. Disabled or unavailable services never advertise bindings.
 
 Phase34 adds the optional `migration` group:
 
@@ -94,6 +94,7 @@ Phase34 adds the optional `migration` group:
 | migration | `migration_cutover` | `migrationCutover` | `migration.cutover` |
 | migration | `migration_rollback` | `migrationRollback` | `migration.cutover` |
 | migration | `migration_erase` | `migrationErase` | `migration.erase` |
+| migration | `migration_retention_drill` | `migrationRetentionDrill` | `migration.erase` |
 
 These bindings use the same typed service and
 [neutral migration contract](migration-cutover-v1.md) as HTTP/SDK/CLI. Tool

@@ -113,7 +113,7 @@ func TestWarehouseParameterFallbackIsClosed(t *testing.T) {
 		{"sqlserver", "SELECT id FROM analytics.sales WHERE name LIKE @p1 ESCAPE '!' AND id>@p2", 2},
 		{"bigquery", "SELECT id FROM `warehouse.analytics.sales` WHERE name LIKE @p1 ESCAPE '!'", 1},
 		{"snowflake", "SELECT id FROM warehouse.analytics.sales WHERE name LIKE ? ESCAPE '!'", 1},
-		{"databricks", "SELECT id FROM warehouse.analytics.sales WHERE name LIKE ? ESCAPE '!'", 1},
+		{"databricks", "SELECT id FROM warehouse.analytics.sales WHERE name LIKE :p1 ESCAPE '!'", 1},
 	} {
 		got, err := warehouseParameterCount(t.Context(), test.statement, test.dialect)
 		if err != nil || got != test.want {

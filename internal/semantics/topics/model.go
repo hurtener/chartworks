@@ -36,24 +36,26 @@ type Dataset struct {
 
 // Definition is an immutable public semantic topic payload.
 type Definition struct {
-	SchemaVersion         int                              `json:"schema_version"`
-	Topic                 string                           `json:"topic"`
-	Version               string                           `json:"version"`
-	Name                  string                           `json:"name"`
-	Description           string                           `json:"description"`
-	Datasets              []Dataset                        `json:"datasets"`
-	Measures              []semantics.Measure              `json:"measures"`
-	Dimensions            []semantics.Dimension            `json:"dimensions"`
-	KPIs                  []semantics.KPI                  `json:"kpis"`
-	Joins                 []semantics.Join                 `json:"joins"`
-	RelationshipDecisions []semantics.RelationshipDecision `json:"relationship_decisions,omitempty"`
-	CanonicalEntities     []semantics.CanonicalEntity      `json:"canonical_entities"`
-	Unresolved            []semantics.UnresolvedSemantic   `json:"unresolved,omitempty"`
+	GroupDomain           *semantics.GroupDomainPolicy       `json:"group_domain,omitempty"`
+	GroupedPopulation     *semantics.GroupedPopulationPolicy `json:"grouped_population,omitempty"`
+	SchemaVersion         int                                `json:"schema_version"`
+	Topic                 string                             `json:"topic"`
+	Version               string                             `json:"version"`
+	Name                  string                             `json:"name"`
+	Description           string                             `json:"description"`
+	Datasets              []Dataset                          `json:"datasets"`
+	Measures              []semantics.Measure                `json:"measures"`
+	Dimensions            []semantics.Dimension              `json:"dimensions"`
+	KPIs                  []semantics.KPI                    `json:"kpis"`
+	Joins                 []semantics.Join                   `json:"joins"`
+	RelationshipDecisions []semantics.RelationshipDecision   `json:"relationship_decisions,omitempty"`
+	CanonicalEntities     []semantics.CanonicalEntity        `json:"canonical_entities"`
+	Unresolved            []semantics.UnresolvedSemantic     `json:"unresolved,omitempty"`
 }
 
 // Project removes private profile provenance from a compiled pack.
 func Project(p semantics.TopicPack) Definition {
-	out := Definition{SchemaVersion: p.SchemaVersion, Topic: p.Topic, Version: p.Version, Name: p.Name, Description: p.Description, Measures: p.Measures, Dimensions: p.Dimensions, KPIs: p.KPIs, Joins: p.Joins, RelationshipDecisions: p.RelationshipDecisions, CanonicalEntities: p.CanonicalEntities, Unresolved: p.Unresolved}
+	out := Definition{GroupDomain: p.GroupDomain, GroupedPopulation: p.GroupedPopulation, SchemaVersion: p.SchemaVersion, Topic: p.Topic, Version: p.Version, Name: p.Name, Description: p.Description, Measures: p.Measures, Dimensions: p.Dimensions, KPIs: p.KPIs, Joins: p.Joins, RelationshipDecisions: p.RelationshipDecisions, CanonicalEntities: p.CanonicalEntities, Unresolved: p.Unresolved}
 	for _, d := range p.Datasets {
 		out.Datasets = append(out.Datasets, Dataset{d.ID, d.Name, Binding{d.Source.Source, d.Source.Context, d.ID, d.Source.SourceRevision}, d.Columns})
 	}

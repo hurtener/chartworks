@@ -89,6 +89,9 @@ func validComposition(m CompositionManifest) bool {
 		}
 		switch g.Kind {
 		case "block":
+			if g.Variant != nil && (!validVariantReference(g.Variant) || g.Variant.Block != g.Block || g.Variant.Revision != g.Revision || g.Variant.Digest != g.Definition || g.Policy != "published") {
+				return false
+			}
 			if g.QueryLimits != nil {
 				caps, err := resolveQueryLimits(m.ArtifactLimits, 3, g.QueryLimits)
 				if err != nil || caps != *g.QueryLimits {
@@ -99,6 +102,9 @@ func validComposition(m CompositionManifest) bool {
 				return false
 			}
 		case "query":
+			if g.Variant != nil {
+				return false
+			}
 			if g.QueryLimits != nil || g.Query == nil || g.Origin == nil || !validQueryOrigin(*g.Origin, *g.Query) || g.Block != "" || g.Revision != 0 || g.Trust != nil || len(g.Outputs) != 0 || len(g.Arguments) != 0 || g.Narrative || !m.Limits.LiveQueries || g.Query.Durability == "session_bound" && (!m.Limits.SessionBound || !m.Private || g.Origin.Actor != m.Actor || g.Origin.Session != m.Session) {
 				return false
 			}
@@ -145,6 +151,9 @@ func validComposition(m CompositionManifest) bool {
 			}
 			g, exists := groups[w.Group]
 			if !exists || g.Kind != w.Definition.Kind {
+				return false
+			}
+			if digest(w.Variant) != digest(g.Variant) {
 				return false
 			}
 			used[g.ID] = true

@@ -1,5 +1,22 @@
 # Phase 34 — migration-parity-cutover
 
+## SQL recovery status — 2026-09-30
+
+The [AP-00–AP-08 completion tracker](../reviews/sql-recovery-completion.md) records the current
+PR #62 implementation and qualification gaps. The recovery is **in progress**.
+Existing shipped phase labels and historical defect-review results do not
+close this subsequent extension. No required behavior is discarded by this
+tracker correction; prior named acceptance criteria and historical evidence stay.
+
+Current hosted-qualified checkpoint: `c755ad3`. The subsequent runtime tree
+`0ce69bd875deb82df3d3276cbd1c060f815ebfbd` passed integrated local qualification,
+including finite S10/S11 domain/signature completion. Its final published head
+still needs hosted checks. S4/S5/S6 and the explicitly documented legacy predicate
+approval/resume path remain implementation work; Q1/Q2/Q3 are separate gates.
+The canonical tracker controls current scope; historical evidence below does not
+qualify later source.
+
+
 Status: in_progress. Owner: internal/migration, internal/migrationapi, test/acceptance. Hard dependencies: 14, 16, 18, 19, 23, 24, 26, 27, 28, 29, 30, 31, 32, 33.
 
 ## Authority and design
@@ -49,7 +66,7 @@ Implement `TestPhase34/AC01` through `TestPhase34/AC08`; test import replay/CAS,
 
 The in-progress runtime is owned by `internal/migration`, `internal/migrationapi`,
 `internal/store/postgres/migration.go`, migration 050 and the typed SDK. It exposes
-seven registered HTTP/CLI operations and seven optional MCP bindings. The
+eight registered HTTP/CLI operations and eight optional MCP bindings. The
 [v1 contract](../contracts/migration-cutover-v1.md),
 [operation manifest](../contracts/chartworks-migration-operations.json) and
 [operator runbook](../runbooks/migration-cutover.md) define the manifest, authority,
@@ -59,7 +76,7 @@ loss ledger, quarantine, retention and schedule handoff behavior.
 per-apply current-authority/retention/owner revalidation, cross-revision reservation
 and checkpoint fencing, current source validation at cutover, all 63 feature dispositions,
 live owner evidence resolution, PostgreSQL replay/CAS, bounded migration-record
-erasure and the
+erasure, exact-origin preview/apply of due retained outputs and renditions, and the
 worker-consumed occurrence cutover/rollback fence. Phases 24 and 33 are integrated. Evaluation
 suites and server-owned runtime packs import through the Phase 24 public service as
 drafts and reconcile exact retry conflicts without importing acceptance or selection.
@@ -70,7 +87,7 @@ their creation transaction until an exact two-route cutover. Owner comparison
 results are resolved from distinct held-out feature cases in accepted live Phase 24
 reports, with source revision and engine binding, rather than manifest status text.
 Phase 34 remains `in_progress` until its complete private owner comparison,
-dependent-object retention/erasure and operational cutover/rollback evidence
+private owner inventory/comparison, backup/WAL retention and operational cutover/rollback evidence
 passes. Its closure supplies a prerequisite to Phase 25; Phase 25 alone owns
 the final release gates.
 
@@ -110,3 +127,33 @@ therefore survives the existing versioned import/export path. Phase 34 must map
 its exact block/topic/dataset/column coordinates, quarantine unresolved bindings
 and prove source-revision/current-authority revalidation; it must not replace the
 binding with profile samples or a label-derived physical column.
+
+
+## S9 qualified grouping slice — current disposition
+
+The [completion tracker](../reviews/sql-recovery-completion.md) records runtime `996db06` and exact
+Go 1.26.4/1.27.1 qualification for grouping inheritance/replacement, explicit
+totals/calendar selection and the strict pending-refinement admission fix.
+Executable scope, form origin, private binding and immutable-parent checks remain.
+S9 broader native parameter roles and the remaining S/Q requirements are still
+open; historical checkpoint prose above is not the current completion claim.
+
+
+### Current SQL recovery checkpoint — S3 qualified, S7 under test
+
+The canonical completion tracker records S3/S9 qualification at c18a5b2 and
+the new closed source-diagnostics implementation. Specific native causes do not
+authorize different SQL semantics, extra attempts, or disclosure of source error
+text. New S7 integration qualification is still pending; all other unchecked S/Q
+items remain open. Historical acceptance and release claims keep their old scope.
+
+
+## Current SQL recovery: S7 qualification and S2 grounded policy
+
+The [canonical completion tracker](../reviews/sql-recovery-completion.md) now records qualified S7 diagnostics
+at 2dd7e9b and the new [bounded grounded concept policy](../contracts/grounded-concept-selection-v1.md) awaiting its
+own runtime qualification. The optional clarify-role choice feeds reviewed
+closure/rules, not SQL authority. Explicit choices and historical replay retain
+their behavior; unknown/ambiguous model choices cannot produce executable plans.
+No interpretation-confidence, live quality or full-recovery completion is inferred
+from these software changes. Historical results above retain their stated scope.

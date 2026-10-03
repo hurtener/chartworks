@@ -16,7 +16,7 @@ import (
 )
 
 // WorkerProtocolVersion pins the closed parent/worker wire contract.
-const WorkerProtocolVersion = "chartworks-render-worker-v1"
+const WorkerProtocolVersion = "chartworks-render-worker-v2"
 
 var (
 	// ErrBusy reports bounded worker admission exhaustion.
@@ -38,10 +38,11 @@ type Options struct {
 	MaxWidgets                                   int
 	Retention                                    time.Duration
 	Isolation                                    string
+	CgroupRoot                                   string
 }
 
 func (o Options) valid() bool {
-	return o.WorkerVersion != "" && o.ThemeVersion != "" && o.MaxTime >= 100*time.Millisecond && o.MaxTime <= time.Minute && o.MaxMemoryBytes >= 32<<20 && o.MaxMemoryBytes <= 2<<30 && o.MaxInputBytes >= 1024 && o.MaxInputBytes <= 64<<20 && o.MaxOutputBytes >= 1024 && o.MaxOutputBytes <= 64<<20 && o.MaxConcurrent >= 1 && o.MaxConcurrent <= 16 && o.MaxWidgets >= 1 && o.MaxWidgets <= 1000 && o.Retention >= time.Minute && o.Retention <= 90*24*time.Hour && (o.Isolation == "linux_namespaces" || o.Isolation == "development")
+	return o.WorkerVersion != "" && o.ThemeVersion != "" && o.MaxTime >= 100*time.Millisecond && o.MaxTime <= time.Minute && o.MaxMemoryBytes >= 32<<20 && o.MaxMemoryBytes <= 1<<30 && o.MaxInputBytes >= 1024 && o.MaxInputBytes <= 64<<20 && o.MaxOutputBytes >= 1024 && o.MaxOutputBytes <= 64<<20 && o.MaxConcurrent >= 1 && o.MaxConcurrent <= 16 && o.MaxWidgets >= 1 && o.MaxWidgets <= 1000 && o.Retention >= time.Minute && o.Retention <= 90*24*time.Hour && (o.Isolation == "linux_namespaces" || o.Isolation == "development")
 }
 
 // SealedWork is the complete credential-free worker input.

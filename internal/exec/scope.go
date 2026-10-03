@@ -72,6 +72,7 @@ func narrowBinding(b Binding, scope []RelationScope) (Binding, error) {
 				return Binding{}, ErrBinding
 			}
 		}
+		selected.UniqueKeys = restrictUniqueKeys(selected.UniqueKeys, columns)
 		sort.Slice(selected.Columns, func(i, j int) bool { return selected.Columns[i].Name < selected.Columns[j].Name })
 		out.Relations = append(out.Relations, *selected)
 	}

@@ -167,7 +167,7 @@ func newTestService(t *testing.T, rules RuleReader) (*Service, *testEngine, *[]s
 	engine := &testEngine{descriptor: descriptor, events: &events}
 	publication := testPublication()
 	reader := &testTopics{contract: topics.Contract{Publication: publication}, events: &events}
-	index := &testIndex{events: &events, hit: vindex.Hit{ID: "facet", Kind: "measure", SourceID: "source", Text: "revenue measure", Generation: "generation", Version: "v1", SourceGeneration: "source-generation", Distance: 0.2}}
+	index := &testIndex{events: &events, hit: vindex.Hit{ID: "facet", Kind: "topic", SourceID: "source", Text: "topic overview", Generation: "generation", Version: "v1", SourceGeneration: "source-generation", Distance: 0.2}}
 	service, err := New(reader, rules, index, engine)
 	if err != nil {
 		t.Fatal(err)
@@ -394,14 +394,14 @@ func TestMetricClosureRequiresUniqueConfirmedConnectingSubgraph(t *testing.T) {
 	}
 }
 
-func TestRouteRejectsUnevaluatedConstraintInputsBeforeGateway(t *testing.T) {
+func TestRouteRejectsUnknownSelectionReferencesBeforeGateway(t *testing.T) {
 	service, engine, _ := newTestService(t, testRules{err: store.ErrNotFound})
 	_, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{
 		Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?",
-		References: []semantics.Reference{{Kind: semantics.KindDataset, ID: "dataset"}},
+		References: []semantics.Reference{{Kind: semantics.KindDataset, ID: "unknown_dataset"}},
 	})
 	if !errors.Is(err, ErrInvalid) || engine.embeds != 0 {
-		t.Fatalf("unevaluated reference was not rejected before gateway: err=%v embeds=%d", err, engine.embeds)
+		t.Fatalf("unknown reference was not rejected before gateway: err=%v embeds=%d", err, engine.embeds)
 	}
 }
 

@@ -58,9 +58,9 @@ func topicArgs(e identity.Envelope, id string, a drafts.Access) ([]any, error) {
 	return []any{e.Tenant(), id, e.User(), e.Session(), s.All(), s.IDs(), d.All(), d.IDs(), c.All(), c.IDs()}, nil
 }
 func scanTopic(row pgx.Row) (out drafts.Version, err error) {
-	var body []byte
+	var body, quality []byte
 	m := &out.Metadata
-	err = row.Scan(&m.Topic, &m.Revision, &m.Version, &m.Digest, &m.Actor, &m.Session, &m.Created, &m.Change, &body)
+	err = row.Scan(&m.Topic, &m.Revision, &m.Version, &m.Digest, &m.Actor, &m.Session, &m.Created, &m.Change, &body, &quality)
 	if err != nil {
 		return out, err
 	}
@@ -72,6 +72,11 @@ func scanTopic(row pgx.Row) (out drafts.Version, err error) {
 		return drafts.Version{}, store.ErrInvalid
 	}
 	out.Pack = model.Pack()
+	if len(quality) > 0 {
+		if json.Unmarshal(quality, &out.Quality) != nil || out.Quality == nil || !out.Quality.ValidFor(model) {
+			return drafts.Version{}, store.ErrInvalid
+		}
+	}
 	return out, nil
 }
 func topicTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, revision int64, a drafts.Access) (drafts.Version, error) {
@@ -80,7 +85,7 @@ func topicTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, rev
 		return drafts.Version{}, err
 	}
 	args = append(args, revision)
-	return scanTopic(tx.QueryRow(ctx, `SELECT `+topicMetadata+`,v.manifest`+topicFrom+topicEligibility+` AND v.revision=CASE WHEN $11::bigint=0 THEN h.current_revision ELSE $11 END`, args...))
+	return scanTopic(tx.QueryRow(ctx, `SELECT `+topicMetadata+`,v.manifest,(SELECT g.quality_review FROM chartworks.topic_generation_checkpoints g WHERE (g.tenant_id,g.topic_id,g.actor_id,g.session_id,g.draft_revision)=(h.tenant_id,h.topic_id,h.actor_id,h.session_id,v.revision))`+topicFrom+topicEligibility+` AND v.revision=CASE WHEN $11::bigint=0 THEN h.current_revision ELSE $11 END`, args...))
 }
 
 // ReadTopicDraft returns the current or an exact scoped immutable draft revision.
@@ -112,11 +117,19 @@ func (d *DB) TopicGenerationCheckpoint(ctx context.Context, e identity.Envelope,
 	}
 	defer cancel()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		if _, err := topicTx(ctx, tx, e, id, revision, drafts.Write); err != nil {
+		version, readErr := topicTx(ctx, tx, e, id, revision, drafts.Write)
+		if readErr != nil {
+			return readErr
+		}
+		model, compileErr := semantics.Compile(version.Pack)
+		if compileErr != nil {
+			return compileErr
+		}
+		if err := drafts.RequirePack(e, version.Pack, drafts.Write); err != nil {
 			return err
 		}
-		var raw []byte
-		err := tx.QueryRow(ctx, `SELECT cursor,complete,receipt FROM chartworks.topic_generation_checkpoints WHERE tenant_id=$1 AND topic_id=$2 AND actor_id=$3 AND session_id=$4 AND draft_revision=$5`, e.Tenant(), id, e.User(), e.Session(), revision).Scan(&out.Cursor, &out.Complete, &raw)
+		var raw, quality, vocabulary []byte
+		err := tx.QueryRow(ctx, `SELECT cursor,complete,receipt,authoring_digest,quality_review,vocabulary FROM chartworks.topic_generation_checkpoints WHERE tenant_id=$1 AND topic_id=$2 AND actor_id=$3 AND session_id=$4 AND draft_revision=$5`, e.Tenant(), id, e.User(), e.Session(), revision).Scan(&out.Cursor, &out.Complete, &raw, &out.AuthoringDigest, &quality, &vocabulary)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -124,6 +137,20 @@ func (d *DB) TopicGenerationCheckpoint(ctx context.Context, e identity.Envelope,
 			return err
 		}
 		if json.Unmarshal(raw, &out.Receipt) != nil || out.Cursor < 1 || out.Cursor > 8192 || len(out.Receipt.Calls) == 0 {
+			return store.ErrInvalid
+		}
+		if json.Unmarshal(vocabulary, &out.Vocabulary) != nil {
+			return store.ErrInvalid
+		}
+		if _, vocabErr := drafts.AdmitAuthoringVocabulary(model, out.Vocabulary); vocabErr != nil {
+			return vocabErr
+		}
+		if len(quality) > 0 {
+			if json.Unmarshal(quality, &out.Quality) != nil || out.Quality == nil || !out.Quality.ValidFor(model) {
+				return store.ErrInvalid
+			}
+		}
+		if out.AuthoringDigest != "" && out.Complete && out.Quality == nil {
 			return store.ErrInvalid
 		}
 		exists = true
@@ -197,6 +224,10 @@ func (d *DB) SaveTopicDraft(ctx context.Context, e identity.Envelope, prepared d
 	if err != nil {
 		return out, err
 	}
+	feedback, applyingFeedback, err := prepared.FeedbackApplication(e)
+	if err != nil {
+		return out, err
+	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		// One tenant lock also makes the fixed registration cap race-safe. Draft
 		// editing is metadata-only; warehouse I/O has already finished above.
@@ -226,6 +257,11 @@ func (d *DB) SaveTopicDraft(ctx context.Context, e identity.Envelope, prepared d
 			}
 			if count >= 256 {
 				return readexec.ErrLimit
+			}
+		}
+		if applyingFeedback {
+			if err = fenceTopicFeedbackApplication(ctx, tx, e, feedback, pack.Topic, model.Digest(), expected); err != nil {
+				return err
 			}
 		}
 		// Stable order is shared with source rotation/erasure fences; every pinned
@@ -282,7 +318,24 @@ func (d *DB) SaveTopicDraft(ctx context.Context, e identity.Envelope, prepared d
 			if marshalErr != nil || generation.Cursor < 1 || generation.Cursor > 8192 {
 				return store.ErrInvalid
 			}
-			if _, err = tx.Exec(ctx, `INSERT INTO chartworks.topic_generation_checkpoints(tenant_id,topic_id,actor_id,session_id,draft_revision,cursor,complete,receipt) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, e.Tenant(), pack.Topic, e.User(), e.Session(), expected+1, generation.Cursor, generation.Complete, receipt); err != nil {
+			var quality []byte
+			if generation.Quality != nil {
+				if !generation.Quality.ValidFor(model) {
+					return store.ErrInvalid
+				}
+				quality, marshalErr = json.Marshal(generation.Quality)
+				if marshalErr != nil {
+					return store.ErrInvalid
+				}
+			}
+			if generation.AuthoringDigest != "" && generation.Complete && generation.Quality == nil {
+				return store.ErrInvalid
+			}
+			vocabulary, vocabularyErr := json.Marshal(append([]drafts.AuthoringValue{}, generation.Vocabulary...))
+			if vocabularyErr != nil {
+				return store.ErrInvalid
+			}
+			if _, err = tx.Exec(ctx, `INSERT INTO chartworks.topic_generation_checkpoints(tenant_id,topic_id,actor_id,session_id,draft_revision,cursor,complete,receipt,authoring_digest,quality_review,vocabulary) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, e.Tenant(), pack.Topic, e.User(), e.Session(), expected+1, generation.Cursor, generation.Complete, receipt, generation.AuthoringDigest, quality, vocabulary); err != nil {
 				return err
 			}
 		}
@@ -292,6 +345,11 @@ func (d *DB) SaveTopicDraft(ctx context.Context, e identity.Envelope, prepared d
 		}
 		if err = auditJob(ctx, tx, scope, "topic.drafted", pack.Topic); err != nil {
 			return err
+		}
+		if applyingFeedback {
+			if err = markTopicFeedbackApplication(ctx, tx, e, feedback, expected+1); err != nil {
+				return err
+			}
 		}
 		out, err = topicTx(ctx, tx, e, pack.Topic, expected+1, drafts.Write)
 		return err

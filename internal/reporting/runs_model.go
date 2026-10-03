@@ -185,7 +185,7 @@ func RequireRunManifest(e identity.Envelope, m RunManifest) error {
 // NarrativeClaim is a model-selected, mechanically checked statement. The model
 // cannot supply arbitrary factual prose, SQL, tools or a caller-selected URL.
 type NarrativeClaim struct {
-	Kind     string   `json:"kind" jsonschema:"enum=value,enum=difference"`
+	Kind     string   `json:"kind" jsonschema:"enum=value,enum=difference,enum=trend,enum=extrema,enum=population_variance"`
 	Evidence []string `json:"evidence"`
 }
 
@@ -196,11 +196,12 @@ type NarrativeAnswer struct {
 
 // NarrativeEvidence is the bounded, already-redacted evidence actually supplied.
 type NarrativeEvidence struct {
-	ID    string `json:"id"`
-	Field string `json:"field"`
-	Type  string `json:"type"`
-	Value string `json:"value"`
-	Row   int    `json:"row"`
+	ID        string                      `json:"id"`
+	Field     string                      `json:"field"`
+	Type      string                      `json:"type"`
+	Value     string                      `json:"value"`
+	Row       int                         `json:"row"`
+	Statistic *NarrativeStatisticEvidence `json:"statistic,omitempty"`
 }
 
 // NarrativeResult retains exact text and actual provider/model usage. Rendering
@@ -224,18 +225,19 @@ type NarrativeResult struct {
 // RetainedOutput is one independently checkpointed fan-out of the same logical
 // normalized result. A failed narrative is explicit, not an empty successful one.
 type RetainedOutput struct {
-	ResultPolicy   []EffectiveFieldPolicy `json:"result_policy,omitempty"`
-	Intent         *OutputIntent          `json:"intent,omitempty"`
-	EvidencePolicy []EffectiveFieldPolicy `json:"evidence_policy,omitempty"`
-	ID             string                 `json:"id"`
-	Kind           string                 `json:"kind"`
-	State          string                 `json:"state"`
-	Code           string                 `json:"code,omitempty"`
-	Digest         string                 `json:"digest"`
-	Chart          *charts.Output         `json:"chart,omitempty"`
-	Narrative      *NarrativeResult       `json:"narrative,omitempty"`
-	ReservedCalls  int                    `json:"reserved_calls"`
-	ReservedTokens int                    `json:"reserved_tokens"`
+	AmountCompleteness []AmountDisclosure     `json:"amount_completeness,omitempty"`
+	ResultPolicy       []EffectiveFieldPolicy `json:"result_policy,omitempty"`
+	Intent             *OutputIntent          `json:"intent,omitempty"`
+	EvidencePolicy     []EffectiveFieldPolicy `json:"evidence_policy,omitempty"`
+	ID                 string                 `json:"id"`
+	Kind               string                 `json:"kind"`
+	State              string                 `json:"state"`
+	Code               string                 `json:"code,omitempty"`
+	Digest             string                 `json:"digest"`
+	Chart              *charts.Output         `json:"chart,omitempty"`
+	Narrative          *NarrativeResult       `json:"narrative,omitempty"`
+	ReservedCalls      int                    `json:"reserved_calls"`
+	ReservedTokens     int                    `json:"reserved_tokens"`
 }
 
 // OutputSummary excludes values and narrative text from list/summary responses.

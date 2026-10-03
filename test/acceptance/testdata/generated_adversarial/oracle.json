@@ -1,0 +1,33 @@
+{
+  "basis": "Independent Python Decimal arithmetic over fixture records; not model SQL and never authoring input",
+  "known_gross_paid_local_2026": "995.00",
+  "definitive_gross_paid_local_2026": null,
+  "definitive_total_status": "requires clarification or explicit partial-total disclosure because one paid order amount is unknown",
+  "paid_order_count_local_2026": 11,
+  "known_paid_amount_count_local_2026": 10,
+  "monthly_qualifying_paid_local_2026": {
+    "2026-01": "500.00",
+    "2026-03": "290.00",
+    "2026-06": null,
+    "2026-08": "25.00",
+    "2026-10": "0.00",
+    "2026-11": "140.00",
+    "2026-12": "40.00"
+  },
+  "posted_known_refunds_for_2026_paid_order_cohort_all_event_dates": "182.00",
+  "posted_known_refunds_on_paid_orders_by_2026_refund_activity": "190.00",
+  "known_cohort_net": "813.00",
+  "known_activity_net": "805.00",
+  "unknown_amount_paid_orders": 1,
+  "unknown_posted_refund_events_in_2026_paid_cohort": 1,
+  "unknown_posted_refund_events_on_paid_orders_by_2026_activity": 1,
+  "monthly_unknown_paid_amounts_local_2026": {
+    "2026-01": 0,
+    "2026-03": 0,
+    "2026-11": 0,
+    "2026-06": 1,
+    "2026-12": 0,
+    "2026-08": 0,
+    "2026-10": 0
+  }
+}

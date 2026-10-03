@@ -139,18 +139,7 @@ func (d *DB) ExpireCompositions(ctx context.Context, e identity.Envelope, limit 
 			return err
 		}
 		for _, id := range ids {
-			for _, query := range []string{
-				`DELETE FROM chartworks.render_renditions WHERE tenant_id=$1 AND run_id=$2`,
-				`DELETE FROM chartworks.composition_run_widgets WHERE tenant_id=$1 AND operation_id=$2`,
-				`DELETE FROM chartworks.composition_run_groups WHERE tenant_id=$1 AND operation_id=$2`,
-				`DELETE FROM chartworks.composition_run_payloads WHERE tenant_id=$1 AND operation_id=$2`,
-				`UPDATE chartworks.composition_runs SET state='expired',code='retention_expired',complete=false,retained_bytes=0,reserved_bytes=0 WHERE tenant_id=$1 AND operation_id=$2`,
-			} {
-				if _, err := tx.Exec(ctx, query, e.Tenant(), id); err != nil {
-					return err
-				}
-			}
-			if err := frozenAudit(ctx, tx, e, "composition.expired", id); err != nil {
+			if err := expireCompositionRunTx(ctx, tx, e, id); err != nil {
 				return err
 			}
 			removed++
@@ -164,4 +153,21 @@ func (d *DB) ExpireCompositions(ctx context.Context, e identity.Envelope, limit 
 		return 0, err
 	}
 	return removed, nil
+}
+
+// expireCompositionRunTx is the owning composition erasure path after an exact
+// locked run has passed its expiry and reach checks.
+func expireCompositionRunTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string) error {
+	for _, query := range []string{
+		`DELETE FROM chartworks.render_renditions WHERE tenant_id=$1 AND run_id=$2`,
+		`DELETE FROM chartworks.composition_run_widgets WHERE tenant_id=$1 AND operation_id=$2`,
+		`DELETE FROM chartworks.composition_run_groups WHERE tenant_id=$1 AND operation_id=$2`,
+		`DELETE FROM chartworks.composition_run_payloads WHERE tenant_id=$1 AND operation_id=$2`,
+		`UPDATE chartworks.composition_runs SET state='expired',code='retention_expired',complete=false,retained_bytes=0,reserved_bytes=0 WHERE tenant_id=$1 AND operation_id=$2`,
+	} {
+		if _, err := tx.Exec(ctx, query, e.Tenant(), id); err != nil {
+			return err
+		}
+	}
+	return frozenAudit(ctx, tx, e, "composition.expired", id)
 }

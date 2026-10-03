@@ -55,7 +55,7 @@ func phase18Token(t *testing.T, fixture *phase17Fixture, user, session string, s
 
 func phase18RawResponse(t *testing.T, sql string) string {
 	t.Helper()
-	content, err := json.Marshal(map[string]any{"sql": sql, "parameters": []any{}, "assumptions": []string{}, "ambiguities": []string{}})
+	content, err := json.Marshal(map[string]any{"decision": "ready", "questions": []string{}, "sql": sql, "parameters": []any{}, "assumptions": []string{}, "ambiguities": []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,9 @@ func TestPhase18(t *testing.T) {
 	query, _ := newPhase18Service(t, fixture)
 	ctx := context.Background()
 	e := phase18Envelope(t, fixture, fixture.f.e.User(), "phase18-session", true)
-	salesSQL := "SELECT id, amount FROM analytics.sales ORDER BY id"
+	// The question selects Revenue: preserve this execution fixture's per-id
+	// rows using the actual reviewed SUM, rather than treating raw rows as a metric.
+	salesSQL := "SELECT id, sum(amount) AS amount FROM analytics.sales GROUP BY id ORDER BY id"
 	// The gateway fixture treats "normal" as inheriting the chat mode; use an
 	// inert recognized-by-default mode so raw chat responses do not corrupt
 	// embedding or rerank wire responses.
@@ -222,7 +224,18 @@ func TestPhase18(t *testing.T) {
 	})
 
 	t.Run("AC04", func(t *testing.T) {
-		zeroSQL := "SELECT id, amount FROM analytics.sales WHERE id = 999 ORDER BY id"
+		// Exercise genuine empty source data. A generated WHERE id=999 would
+		// invent an unreviewed restriction under the v7 population contract.
+		if _, err := fixture.f.admin.Exec(ctx, "CREATE TEMP TABLE phase18_empty_backup AS TABLE analytics.sales; DELETE FROM analytics.sales"); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			fixture.model.mode.Store(phase18RawResponse(t, salesSQL))
+			if _, err := fixture.f.admin.Exec(context.Background(), "INSERT INTO analytics.sales SELECT * FROM phase18_empty_backup; DROP TABLE phase18_empty_backup"); err != nil {
+				t.Error(err)
+			}
+		})
+		zeroSQL := salesSQL
 		fixture.model.mode.Store(phase18RawResponse(t, zeroSQL))
 		planned, err := query.Plan(ctx, e, nlqexec.PlanRequest{QuestionRequest: phase18Question(fixture, nlq.LanguageEnglish, fixture.pack.Topic)})
 		if err != nil {
@@ -504,7 +517,7 @@ func TestPhase18(t *testing.T) {
 		e := phase18Envelope(t, fixture, fixture.f.e.User(), "phase18-rule-evidence", true)
 		fixture.model.embeddingMode.Store("fixed")
 		fixture.model.rerankMode.Store("fixed")
-		fixture.model.mode.Store(phase18RawResponse(t, "SELECT id, amount FROM analytics.sales ORDER BY id"))
+		fixture.model.mode.Store(phase18RawResponse(t, "SELECT id, sum(amount) AS amount FROM analytics.sales GROUP BY id ORDER BY id"))
 		rules, err := rulesets.New(fixture.f.db, fixture.f.db, fixture.f.db)
 		if err != nil {
 			t.Fatal("rules service", err)

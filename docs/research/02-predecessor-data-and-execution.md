@@ -46,8 +46,8 @@ divergences in the table below — spans roughly these groups:
 | Governance | `business_rules`, `business_rule_library_subscriptions`, `business_rule_firings` |
 | Sessions | `sessions`, `session_events` |
 
-Source: `_ref/original_wayfinder/src/<pkg>/stores/sql/metadata/sqlite.py` (CREATE TABLE
-statements, ~50 tables total); mirrored in `_ref/forked_wayfinder_explorer/src/<pkg>/stores/sql/metadata/sqlite.py`.
+Source: the authorized private metadata-schema review (CREATE TABLE
+statements, ~50 tables total); mirrored in an independent private comparison review.
 
 **This table count is itself a cautionary data point.** CLAUDE.md §6 already names "id in
 seven columns across six tables" sprawl as the anti-pattern the Store-schema budget rule
@@ -125,7 +125,7 @@ than branching on adapter type).
   **auto-detection** heuristic (`_detect_header_row`, scans up to 20 rows); an anomaly-row
   detector; and a **cell-value sanitizer** (`sanitize_cell`, default `max_len=200`) that
   truncates oversized cell content before it reaches a chart/LLM context.
-  Source: `_ref/original_wayfinder/src/<pkg>/services/dataset_ingest.py`.
+  Source: the authorized private ingestion-contract review.
 - **Connection pooling**: Databricks keeps a single lazily-created `WorkspaceClient`
   (no pool — one HTTP-based SQL Warehouses API client, reused across calls); Postgres uses
   a real `AsyncConnectionPool` (`open=False`, `autocommit=True` — "this is a read-only

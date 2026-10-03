@@ -30,7 +30,7 @@ Where a supported custom endpoint is necessary, configure it within Bifrost and 
 
 ## Role configuration and lifecycle
 
-The closed role set is `embedding`, `enhance`, `sqlgen`, `sqlfix`, `clarify`, `pipeline_draft`, `profile_summary`, `rerank`, `narrative`, `visual_rank`. Every role resolves its provider, model, endpoint/credential reference, timeout and input/output limits independently. Roles may share one resolved provider client when that full configuration matches; never force embedding or reranking to follow the completion model's provider.
+The closed role set is `embedding`, `enhance`, `topic_review`, `sqlgen`, `sqlfix`, `clarify`, `pipeline_draft`, `profile_summary`, `rerank`, `narrative`, `visual_rank`. Every role resolves its provider, model, endpoint/credential reference, timeout and input/output limits independently. Roles may share one resolved provider client when that full configuration matches; never force embedding or reranking to follow the completion model's provider.
 
 `gateway.driver` is `bifrost` in production. `gateway.bifrost.providers` contains configured provider entries with secret references; `gateway.roles` maps roles to those entries and their model/limits. Optional roles declare `enabled` and an explicit failure policy. Exact input-type/preprocessing options are part of the embedding identity. One canonical config decoder maps the reference excerpt; do not keep competing flat and nested aliases.
 
@@ -77,3 +77,33 @@ The authority/cache key includes tenant, user, session, action, sorted signed sc
 SDK retries are disabled; the adapter owns the only 1–4 attempt ceiling. The fixed-input `/v1/gateway/probes` operator endpoint remains the gateway diagnostic consumer, while the phase-17 NLQ route is the first domain consumer of embedding and optional reranking. Each later semantic or artifact consumer still uses its owning phase contract.
 
 OpenRouter rerank's endpoint origin defaults to `https://openrouter.ai`; an operator-supplied override must be an HTTPS origin without a path. The SDK supplies cancellation, timeout, bounded concurrency and Bearer transport. Chartworks validates the complete raw response before exposing any ranking, preserves sealed IDs and tie order, and records one usage receipt per attempt. The request preserves `cohere/rerank-4-fast`; a live response reported the provider's canonical `rerank-v4.0-fast`, so the receipt keeps requested and reported model fields distinct. Unknown cost remains absent. Run the opt-in `scripts/smoke/openrouter-rerank-live.py` with a private `.env` for paid provider-route evidence; ordinary CI uses recorded SDK responses.
+
+## Complete effective generation admission
+
+The [generation packet contract](generation-packet-v2.md) defines local adapter
+preparation, conservative normalized UTF-8 JSON/protocol/output reservation and
+optional exact `gateway.model_windows` entries. Preparation makes no inference call
+or reservation. The real adapter rechecks at dispatch, retains redacted estimated
+envelope receipts separately from reported usage, and rejects unregistered runtime
+model overrides when window enforcement is enabled. No provider capacity is guessed.
+This extends the existing byte-bound operation reservation; it does not replace
+semantic-tier tokenization or introduce a second inference transport.
+
+### Optional whole-topic review
+
+`topic_review` is an independently routed structured role, disabled unless explicitly
+configured with `enabled: true`. New bounded topic enhancement preflights this role
+before any model work and fails closed when it is unavailable. Its complete-candidate
+advisory uses an independent one-call, 64K-token, 30-second operation allowance and
+its own configured output cap. It is not a fallback to `enhance`. Existing manual
+and legacy draft review/publication remain available without this role. The reference
+configuration leaves it disabled so an upgrade does not silently add model spend.
+
+### Strict provider schema projection
+
+[Strict provider schema transport v1](strict-provider-schemas-v1.md) defines the
+lossless optional-field projection shared by preparation and dispatch, required
+original-domain validation, explicit local-only uniqueness, conservative unsupported
+schema rejection, OpenRouter capability routing and indented envelope accounting.
+Schemas and raw prompts remain private; redacted receipts bind both domain and wire
+schema identities. No live support claim follows from recorded-provider tests.

@@ -24,6 +24,10 @@ type cw01Fixture struct {
 }
 
 func newCW01Fixture(t *testing.T) *cw01Fixture {
+	return newCW01FixtureWithPack(t, nil)
+}
+
+func newCW01FixtureWithPack(t *testing.T, prepare func(*semantics.TopicPack)) *cw01Fixture {
 	t.Helper()
 	f, draftsService, topicService, model, pack := publicationFixture(t)
 	ctx := context.Background()
@@ -44,6 +48,9 @@ func newCW01Fixture(t *testing.T) *cw01Fixture {
 		dataset.Columns = append(dataset.Columns, semantics.Column{ID: column.Name, SourceName: column.Name, Name: column.Name, NativeType: column.NativeType, Category: column.Category, Nullable: column.Nullable})
 	}
 	pack.Datasets[0] = dataset
+	if prepare != nil {
+		prepare(&pack)
+	}
 	e := f.token.envelope(t, f.e.Tenant(), f.e.User(), topicScopes(f.e.Tenant())...)
 	published := phase17PublishTopic(t, draftsService, topicService, e, pack)
 	ruleService, err := rulesets.New(f.db, f.db, f.db)
@@ -146,8 +153,22 @@ func (f *cw01Fixture) plan(t *testing.T, q nlqexec.QuestionRequest, pattern stri
 	q.ClarificationQuery = pending.QueryID
 	q.Answers = []semantics.ClarificationAnswer{f.answer(t, pattern, value)}
 	out, err := f.query.Plan(context.Background(), f.e, nlqexec.PlanRequest{QuestionRequest: q})
-	if err != nil || out.QueryID == "" || out.Bindings == nil {
+	if err != nil || out.QueryID == "" {
 		t.Fatalf("typed plan: %v", err)
+	}
+	// Derive the expected receipt from the reviewed fixture definition, not
+	// the returned plan. A reference choice selects meaning, not a predicate.
+	wantsBinding := false
+	for _, p := range f.definition.Patterns {
+		if p.ID == pattern {
+			wantsBinding = p.Slots[0].Effect != nil
+		}
+	}
+	if (out.Bindings != nil) != wantsBinding {
+		t.Fatalf("typed plan binding: want predicate receipt=%v, got=%v", wantsBinding, out.Bindings != nil)
+	}
+	if wantsBinding && (out.Bindings.Validation == nil || !out.Bindings.Validation.Validated) {
+		t.Fatal("predicate receipt lacks native validation proof")
 	}
 	return out
 }

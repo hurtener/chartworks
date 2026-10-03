@@ -70,13 +70,14 @@ type SavedPlan struct {
 // SavedResult retains the real read receipt and actual gateway usage. A dynamic
 // query never acquires a block certificate from an enclosing report publication.
 type SavedResult struct {
-	Query          string               `json:"query"`
-	QueryDigest    string               `json:"query_digest"`
-	SemanticDigest string               `json:"semantic_digest"`
-	Partition      string               `json:"partition_digest"`
-	Execution      exec.ExecutionReport `json:"execution"`
-	Receipt        gateway.Receipt      `json:"receipt"`
-	EvidenceStale  bool                 `json:"evidence_stale"`
+	AmountCompleteness []AmountCompleteness `json:"amount_completeness,omitempty"`
+	Query              string               `json:"query"`
+	QueryDigest        string               `json:"query_digest"`
+	SemanticDigest     string               `json:"semantic_digest"`
+	Partition          string               `json:"partition_digest"`
+	Execution          exec.ExecutionReport `json:"execution"`
+	Receipt            gateway.Receipt      `json:"receipt"`
+	EvidenceStale      bool                 `json:"evidence_stale"`
 }
 
 func savedQuestionValid(q SavedQuestion) bool {
@@ -257,6 +258,12 @@ func (s *Service) PrepareSaved(ctx context.Context, e identity.Envelope, in Save
 		}
 		parent := original
 		original.ID, original.Parent, original.Operation = id, in.Query, operation
+		// The child has its own saved-operation identity; the parent Plan reservation remains with the parent.
+		original.PlanOperation, original.PlanRequestDigest = "", ""
+		original.SavedCopyParent = parent.ID
+		// This is an explicit saved derivation. Direct submissions remain sealed
+		// on the exact protected parent and are revalidated through that lineage.
+		original.GenerationResolution, original.IntentReview = nil, nil
 		bindParentLineage(&original, &parent)
 		original.Status, original.Result, original.Revision = "planned", nil, 1
 		original.Created, original.Updated, original.ExecutionFixes = time.Now().UTC(), time.Now().UTC(), 0
@@ -356,5 +363,5 @@ func (s *Service) RunSaved(ctx context.Context, e identity.Envelope, in SavedQue
 	if a.Manifest.Operation != plan.Operation || a.Manifest.Session != e.Session() || a.Manifest.Preview != preview || a.Manifest.Receipt.Source != evidence.Source || a.Manifest.Receipt.Context != evidence.Context || a.RemoteState != "stopped" || a.Finished == nil || run.Execution.Result == nil {
 		return SavedResult{}, ErrNoPlan
 	}
-	return SavedResult{Query: plan.Query, QueryDigest: savedQueryDigest(actual), SemanticDigest: evidence.SemanticDigest, Partition: plan.BindingDigest, Execution: run.Execution, Receipt: actual.Receipt, EvidenceStale: run.EvidenceStale}, nil
+	return SavedResult{AmountCompleteness: run.AmountCompleteness, Query: plan.Query, QueryDigest: savedQueryDigest(actual), SemanticDigest: evidence.SemanticDigest, Partition: plan.BindingDigest, Execution: run.Execution, Receipt: actual.Receipt, EvidenceStale: run.EvidenceStale}, nil
 }

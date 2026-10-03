@@ -1,0 +1,47 @@
+{
+  "name": "Composite commerce operations",
+  "description": "The misleading_net_total_usd column is booked gross order value, before refunds. Money is USD. Order, customer, refund and line identifiers are unique only together with division_id. Business dates use America/New_York. Paid means the explicitly admitted order status vocabulary; posted means the independently admitted refund vocabulary. Unknown amounts stay unknown and must not be silently replaced with zero. Order-cohort and refund-activity net are different business definitions; an unspecified net question requires clarification. Customer segment NULL is a real grouping key. Only confirmed complete composite relationships may be used. Raw note values are private and never authoring evidence. Known-amount totals may sum known money only if their incompleteness is disclosed; definitive totals with unknown money require clarification. All-null sums remain NULL and a known zero remains zero.",
+  "vocabulary_labels": [
+    {
+      "table": "orders",
+      "column": "status_code",
+      "label": "paid",
+      "stored_value": "P",
+      "aliases": [
+        "pagado"
+      ]
+    },
+    {
+      "table": "orders",
+      "column": "status_code",
+      "label": "cancelled",
+      "stored_value": "C",
+      "aliases": [
+        "cancelado"
+      ]
+    },
+    {
+      "table": "refunds",
+      "column": "status_code",
+      "label": "posted",
+      "stored_value": "P",
+      "aliases": [
+        "contabilizado"
+      ]
+    },
+    {
+      "table": "refunds",
+      "column": "status_code",
+      "label": "void",
+      "stored_value": "V",
+      "aliases": [
+        "anulado"
+      ]
+    }
+  ],
+  "privacy_annotations": {
+    "orders.status_code": "non_sensitive",
+    "refunds.status_code": "non_sensitive",
+    "orders.private_note": "sensitive"
+  }
+}

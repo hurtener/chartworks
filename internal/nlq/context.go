@@ -570,10 +570,10 @@ func (a *ContextAssembler) usage(input ContextInput, output AssembledContext) ([
 		original string
 		included string
 	}{
-		{LaneHeader, renderHeader(input) + renderRelations(input.Relations), renderHeader(outputInput(output)) + renderRelations(output.Relations)},
+		{LaneHeader, renderHeader(input) + renderPromptRelations(input), renderHeader(outputInput(output)) + renderPromptRelations(outputInput(output))},
 		{LaneEvidence, renderEvidence(input.Evidence), renderEvidence(output.Evidence)},
 		{LaneConstraints, renderConstraints(flattenConstraints(input.Constraints)), renderConstraints(flattenConstraints(output.Constraints))},
-		{LaneMetrics, renderMetrics(input.Metrics), renderMetrics(output.Metrics)},
+		{LaneMetrics, renderScopedMetrics(input), renderScopedMetrics(outputInput(output))},
 		{LaneAdvisory, renderOptional(LaneAdvisory, input.Advisory), renderOptional(LaneAdvisory, output.Advisory)},
 		{LaneExamples, renderOptional(LaneExamples, input.Examples), renderOptional(LaneExamples, output.Examples)},
 	}
@@ -597,7 +597,7 @@ func renderWithCandidate(base string, candidate optionalCandidate) string {
 }
 
 func renderBase(input ContextInput, constraints []MandatoryConstraint) string {
-	return renderHeader(input) + renderRelations(input.Relations) + renderConstraints(constraints) + renderMetrics(input.Metrics)
+	return renderHeader(input) + renderPromptRelations(input) + renderConstraints(constraints) + renderScopedMetrics(input)
 }
 
 func renderRelations(relations []SourceRelation) string {
@@ -784,6 +784,9 @@ func cloneAndValidateInput(input ContextInput) (ContextInput, error) {
 	if err != nil {
 		return ContextInput{}, err
 	}
+	if _, err = metricRendering(out); err != nil {
+		return ContextInput{}, err
+	}
 	out.Advisory, err = cloneOptionalChecked(input.Advisory, seen, "advisory")
 	if err != nil {
 		return ContextInput{}, err
@@ -803,6 +806,9 @@ func cloneAndValidateInput(input ContextInput) (ContextInput, error) {
 			return ContextInput{}, err
 		}
 		out.Constraints = state
+	}
+	if _, _, err := promptRelations(out); err != nil {
+		return ContextInput{}, err
 	}
 	return out, nil
 }

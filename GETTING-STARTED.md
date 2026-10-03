@@ -266,3 +266,13 @@ python3 scripts/run_phase_acceptance.py --phase 31
 A returned catalog artifact does not prove an outbound notification was sent.
 Catalog pull is the implemented baseline; static export/iframe rendering remains
 with phase 32.
+
+## Current isolated-renderer deployment prerequisite
+
+The renderer continuation uses worker protocol v2. Enabling it requires an
+operator-provisioned `rendering.cgroup_root`; see [D-093](docs/decisions/2026-10-01-renderer-charged-memory.md)
+for the exact cgroup v2, namespace, memory, process and CPU admission contract.
+The supervisor does not enable host controllers, remount filesystems, or fall back
+to in-process rendering. Pair the new worker with the new supervisor. Run both
+`renderer_integration` kernel tests and the complete Phase32 acceptance suite on
+the intended deployment; ordinary functional/unit passes alone are insufficient.

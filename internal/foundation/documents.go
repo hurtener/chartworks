@@ -37,7 +37,7 @@ func mountDocuments(limits config.Reporting, renderConfig config.Rendering, db *
 	}
 	var renderer *rendering.Service
 	if renderConfig.Enabled {
-		options := rendering.Options{WorkerVersion: renderConfig.WorkerVersion, ThemeVersion: renderConfig.ThemeVersion, MaxTime: time.Duration(renderConfig.MaxTime), MaxMemoryBytes: renderConfig.MaxMemoryBytes, MaxInputBytes: renderConfig.MaxInputBytes, MaxOutputBytes: renderConfig.MaxOutputBytes, MaxConcurrent: renderConfig.MaxConcurrent, MaxWidgets: renderConfig.MaxWidgets, Retention: time.Duration(renderConfig.Retention), Isolation: renderConfig.Isolation}
+		options := rendering.Options{WorkerVersion: renderConfig.WorkerVersion, ThemeVersion: renderConfig.ThemeVersion, MaxTime: time.Duration(renderConfig.MaxTime), MaxMemoryBytes: renderConfig.MaxMemoryBytes, MaxInputBytes: renderConfig.MaxInputBytes, MaxOutputBytes: renderConfig.MaxOutputBytes, MaxConcurrent: renderConfig.MaxConcurrent, MaxWidgets: renderConfig.MaxWidgets, Retention: time.Duration(renderConfig.Retention), Isolation: renderConfig.Isolation, CgroupRoot: renderConfig.CgroupRoot}
 		worker, workerErr := rendering.NewProcess(renderConfig.WorkerPath, options)
 		if workerErr != nil {
 			return nil, nil, nil, nil, nil, workerErr

@@ -14,6 +14,22 @@ import (
 // Floating references are resolved again, atomically, at actual run admission.
 func (s *Delivery) describeBlockSelectors(ctx context.Context, e identity.Envelope, page *CompositionPageSummary, d DocumentDefinition) error {
 	for index, widget := range d.Widgets {
+		if IsCapturedQueryVariant(widget) {
+			pin := widget.Query.Variant
+			descriptor, err := s.blocks.PrepareQueryVariant(ctx, e, pin.Block, QueryVariantRequest{Revision: pin.Revision, Outputs: pin.Outputs})
+			if err != nil {
+				page.Widgets[index].Code = compositionFailure(err)
+				continue
+			}
+			if digest(descriptor.Query.Variant) != digest(pin) {
+				page.Widgets[index].Code = "stale_validation"
+				continue
+			}
+			widget, err = CapturedVariantBlock(widget)
+			if err != nil {
+				return err
+			}
+		}
 		if widget.Block == nil {
 			continue
 		}

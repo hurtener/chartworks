@@ -130,7 +130,7 @@ func Registry() (*api.Registry, error) {
 				"getTopicDraft":              "Read the current private draft",
 				"mutateTopicEntities":        "Apply atomic entity CRUD to a new private draft revision",
 				"rebindTopicDataset":         "Move a dataset to active profile evidence and rewrite references",
-				"enhanceTopicDraft":          "Advance one bounded resumable semantic generation step",
+				"enhanceTopicDraft":          "Advance bounded semantic generation and review the complete candidate on its final step",
 				"getTopicDraftVersion":       "Read an exact private draft revision",
 				"getTopicDraftHistory":       "List scoped private draft revision metadata",
 				"diffTopicDraft":             "Compare two exact private draft revisions",
