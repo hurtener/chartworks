@@ -19,7 +19,7 @@ Pengui owns authentication, issuer/signing, users/service identities, sharing, e
 
 Harbor/Pengui MCP Apps support is established end to end by the owner. No host compatibility research, qualification transcript, framework adoption checkpoint or mandated protocol migration is required. Chartworks builds and tests its own tools/resources/viewer.
 
-Chartworks owns source and semantic metadata, safe data execution, business publication/certification records, reporting definitions, operations, artifacts and functional scheduling. Pengui owns product UI and identity/access policy; Harbor owns agent orchestration/sessions. Services use public interfaces, never each other's private database. Soundings/Stowage can assist authoring but are not prerequisites for frozen refresh.
+Chartworks owns source and semantic metadata, safe data execution, business publication/certification records, reporting definitions, operations, artifacts and functional scheduling. Pengui owns the product host and identity/access policy; Chartworks owns the optional shared report application described by D-096. Harbor owns agent orchestration/sessions. Services use public interfaces, never each other's private database. Soundings/Stowage can assist authoring but are not prerequisites for frozen refresh.
 
 ## 2. Vocabulary and invariants
 

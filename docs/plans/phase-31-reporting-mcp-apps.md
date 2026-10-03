@@ -25,7 +25,7 @@ The view tool advertises `_meta.ui.resourceUri`, uses the supported Apps HTML MI
 
 ## Non-goals
 
-No host compatibility project, full builder, second authorization protocol, token bridge, local inference or general-purpose mutation tool exposed by default.
+No host compatibility project, unrestricted builder, second authorization protocol, token bridge, local inference or general-purpose mutation tool exposed by default. D-096 adds a separately versioned optional manual application and bounded authoring tools; the existing viewer contract stays read-only.
 
 ## Config and persistence
 

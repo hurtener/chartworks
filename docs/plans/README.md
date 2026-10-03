@@ -167,3 +167,12 @@ is tracked separately from historical reconstruction. Its v13/schema6 family
 accounts for an exact request predicate only when every selected scalar SUM/COUNT
 occurrence already requires it. Qualification remains scoped to the named tests
 and source snapshots; this does not close broader recovery or release gates.
+
+## Optional manual report application continuation
+
+[D-096](../decisions/2026-10-03-manual-report-app.md) extends phases 29 and 31 with
+one shared optional Builder/Consumer app, authorized draft discovery, versioned
+authoring tools and typed agent bootstrap guidance. Phase status remains in
+progress; the existing 224-criterion registry is not a claim that this new
+continuation has shipped. Its integration and verification are recorded in
+[the report application contract](../contracts/report-app-v1.md).

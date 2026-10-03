@@ -4,7 +4,7 @@ Status: implementation design, revised 2026-09-04. RFC-001 controls shared archi
 
 ## 1. Product boundary
 
-Explore a question, turn a useful result into a reviewed reusable definition, execute it predictably, retain the evidence/result and consume it through API, MCP Apps, iframe or static rendering. No standalone builder is required. Harbor/Pengui Apps support is established; no host qualification work is introduced.
+Explore a question, turn a useful result into a reviewed reusable definition, execute it predictably, retain the evidence/result and consume it through API, MCP Apps, iframe or static rendering. No standalone builder is required. D-096 adds an optional manual Builder/Consumer application over the same document and result contracts, shared between MCP Apps and a registered embedded iframe. Harbor/Pengui Apps support is established; no host qualification work is introduced.
 
 Pengui owns identity/access decisions and signs authority. Chartworks verifies JWTs, applies signed scopes/restrictions and enforces business/data-safety invariants. No local issuer, role/grant/service-account registry, bootstrap or embed credential service. Read [the authority contract](docs/contracts/pengui-authority.md).
 

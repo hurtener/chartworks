@@ -4,7 +4,7 @@ Binding for human and automated contributors. This file and CLAUDE.md are byte-i
 
 ## 1. Product
 
-Chartworks is Pengui's structured analytics and governed publishing service: sources/uploads, profiles, reviewed semantic topics, NLQ/BYO query execution, reusable approved blocks, reports/dashboards, scheduled runs, retained results and portable rendering. API-first means no required standalone authoring application; a read viewer and true static rendering are in scope.
+Chartworks is Pengui's structured analytics and governed publishing service: sources/uploads, profiles, reviewed semantic topics, NLQ/BYO query execution, reusable approved blocks, reports/dashboards, scheduled runs, retained results and portable rendering. API-first means no required standalone authoring application. D-096 adds an optional manual report Builder/Consumer app shared by MCP Apps and a registered embedded iframe; the read viewer and true static rendering remain in scope.
 
 Pengui alone owns authentication, the issuer, identity, service accounts and access-policy decisions. Chartworks verifies Pengui JWTs and enforces their signed action/resource scopes. Do not recreate users, memberships, roles, grants, API keys, login/OAuth, token issuance, bootstrap admin or embed credentials. Warehouse connector secrets are a separate source concern, not permission to duplicate Pengui integration credentials.
 
@@ -70,7 +70,7 @@ Keep compact semantic contracts, one tokenizer budget, pinned metrics/hard const
 
 Only actual cron/interval/manual behavior and functional targets are advertised. Discard event/condition/condition-check/custom-code stubs; bounded maintenance remains internal. Preserve accepted due time/window/revisions through retries. Catalog delivery is not email; optional notification effects use existing Pengui integration receipts.
 
-MCP uses the established Apps bridge. Iframe auth uses a Pengui/client BFF forwarding scoped tokens server-side. Chartworks creates no embed session/bootstrap code. Static chart SSR must render actual content without client chart JavaScript. Renderer input is sealed typed data/spec, not arbitrary URLs or scripts; no network/source/model credentials, bounded resource usage and sanitized output.
+MCP uses the established Apps bridge. Iframe auth stays in the trusted Pengui/client host; bearer tokens and host-only nonces never reach the iframe. D-096 adds thin host adapters around one shared optional report app. Chartworks creates no embed session/bootstrap code. Static chart SSR must render actual content without client chart JavaScript. Renderer input is sealed typed data/spec, not arbitrary URLs or scripts; no network/source/model credentials, bounded resource usage and sanitized output.
 
 ## 11. Testing
 

@@ -82,3 +82,11 @@ header. See [clients v1](contracts/clients-v1.md).
   text equality is already mandatory at every selected SUM/COUNT occurrence in a
   PostgreSQL scoped singleton program. Explicit zero-parameter effects account
   for the request; this is not general Boolean inference or source authority.
+
+## Report application presentation profiles
+
+**Builder** is the report app's manual composition profile, derived from current
+server-verified capabilities. **Consumer** is its authorized published/retained
+consumption profile. Neither term is a Chartworks role, grant, user or issuer.
+**Host adapter** connects the same application to MCP Apps or an approved embedded
+parent; it never transfers provider credentials to the child frame.

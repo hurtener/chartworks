@@ -1,0 +1,103 @@
+# Manual report application v1
+
+Status: implementation in progress under D-096; production host activation is not
+claimed. This continuation belongs to phases 29/31. The previous read viewer URI
+and delivery contract remain supported independently.
+
+## One application, two adapters
+
+The optional `ui://chartworks/report-app/v1` resource is public-data-free compiled
+presentation. It reuses the existing document schema and retained-output renderer.
+MCP Apps invokes registered tools; the embedded adapter invokes only the trusted
+registered parent's bounded operation bridge. The app does not fetch credentials
+or choose provider destinations. Both surfaces reach the same HTTP/MCP DTOs and
+domain services. Manual use has no chat, conversation, hidden agent or model
+prerequisite.
+
+The embedded host owns origin registration, frame instance/generation, one-use
+initialization correlation, capability/entitlement checks and credential realm.
+Every message pins origin and expected parent window; stale or duplicate replies
+are fenced. Host-only nonce and Pengui bearer stay outside the iframe. No URL
+bootstrap, browser-storage token, unrestricted fetch, arbitrary method relay or
+wildcard authority is part of this contract. The host must close outstanding work
+on logout, organization change, withdrawal, navigation or frame replacement.
+
+## Native authority and presentation
+
+Pengui resolves current user, Team, organization, audiences, entitlement and grants.
+Read, write and grant remain separate central permissions. Chartworks validates
+Pengui authority and applies exact `cw.<kind>.<permission>:<id>` references and
+native actions to every actual domain dependency/context. Report IDs, publication,
+profile names, saved provenance and guidance are not grants.
+
+Builder/Consumer are derived UI hints, not roles. A hint is not proof that a target
+exists, all dependencies are reachable or a future call will succeed. Each call
+revalidates. No users, roles, memberships, policy database or credential issuer
+is introduced. Private draft read still requires independent read and preview
+reach; report-write alone cannot expose private retained values.
+
+New document creation requires exact new report write plus signed tenant/container
+write and the dependencies of all selected published blocks. The central host must
+approve/allocate this exact target through its existing ownership flow before
+supplying authority. An app editor grant alone cannot authorize creation.
+
+## Bounded manual operations
+
+`/v1/reporting/authoring/v1/` carries closed POST DTOs and corresponding versioned
+MCP tools. Capabilities, drafts and read are metadata/read operations. Create and
+save delegate canonical document validation and immutable revision CAS. The draft
+catalog applies current tenant, target and dependency eligibility before paging;
+it does not add private state to the published catalog.
+
+The first UI composes headings and already-published block outputs. KPI, chart
+(including approved trend shapes) and table outputs retain their stored meaning;
+UI selection cannot replace a chart mapping, invent a query or reinterpret units.
+Manual operations disable dynamic query widgets and narratives. Filters are typed
+canonical document parameters, not SQL or authority predicates.
+
+Targeted widget editing is an edit-intent boundary, not per-widget ACL. A separate
+narrow patch receives a stable widget ID, expected revision/CAS and allowlisted
+presentation/text fields. It loads the authorized baseline and constructs a new
+revision while preserving untargeted widgets, filters and layout. A selected-widget
+agent workflow must use this patch instead of whole-definition save. Whole-report
+save is an explicit manual report-write operation. Broader layout or batch edits
+need their own explicit scope and validation; target IDs cannot grant resource
+reach.
+
+Private preview reserves and executes an exact private revision through existing
+composition services, with fresh execute/preview/dependency authority. Preview
+privacy survives later publication. Reading/repainting retained output makes no
+source/model calls. An unknown execution outcome is inspected, never blindly
+replayed. Stale CAS requires reload and reconciliation.
+
+## Agent bootstrap and resources
+
+`report_app_bootstrap_v1` / POST `bootstrap` accepts version 1, mode chat/plan/apply
+and up to sixteen exact report targets. Each target requires current exact signed
+reach before capability hints are returned. Mode is interaction intent only:
+chat explains, plan proposes without mutation, apply uses separately authorized
+mutations. Bootstrap itself never edits, starts a model or expands authority.
+
+`report_app_guide_v1` / POST `guide` and the static resource
+`chartworks://report-app/guide/v1` provide versioned steps, constraints, document
+schema version and repository contract references. No hidden repository agent,
+copied third-party prompt, user context or secret enters that resource. Agent
+profiles consume these same public interfaces and obey target operation bounds.
+
+## Integration boundary and verification
+
+Pengui's initial registered App lane is pending retained-read coverage using
+operator-approved exact resource/context references. Provider metadata does not
+yet supply a dynamically discovered whole-catalog dependency closure. Do not infer
+that closure from browser-provided definitions. Manual host activation additionally
+needs central exact-target allocation, action projection, no-chat admission and
+both HTTP/MCP credential realms wired end to end.
+
+Required evidence: draft create/save/reopen/CAS/private preview on actual domain
+storage; exact and missing target/dependency/context negatives; cross-tenant and
+private-state exclusion; HTTP/MCP schemas/effects; selected-widget preservation;
+credential-free resource; parent origin/generation failures; repeated/aborted save
+and navigation; actual browser rendering and retained read. Deterministic fixtures
+are not deployed host or live-provider evidence. Advanced drag/drop, multi-page
+editing, arbitrary NLQ widget creation and optional export remain outside this
+first slice.

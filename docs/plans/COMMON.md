@@ -26,7 +26,7 @@ Check role-specific provider/capability/config, full embedding-space identity, c
 
 Domain phases add actual HTTP schemas and SDK operations, signed-scope/resource checks, errors, audit/usage and side-effect classification with their first consumer. MCP operations are added where assigned; early registration/parity suites expand with every implemented feature. An unbuilt endpoint is absent, not a success-returning stub. Explicit cancellation of durable work is different from disconnecting a client.
 
-Use closed write schemas and bounded unions, one route action convention and generated OpenAPI/SDK checks. The browser surface is a read viewer, not a mandatory builder. Its resources contain no bearer/provider/source credentials or authoritative duplicate report state. Iframe auth remains in the BFF.
+Use closed write schemas and bounded unions, one route action convention and generated OpenAPI/SDK checks. The read viewer remains supported. D-096 additionally permits one optional manual Builder/Consumer application shared by thin MCP Apps and embedded host adapters; it is not a mandatory application. Its resources contain no bearer/provider/source credentials or authoritative duplicate report state. Iframe auth remains in the BFF.
 
 ## Acceptance naming and evidence
 

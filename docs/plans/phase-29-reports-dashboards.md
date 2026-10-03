@@ -27,7 +27,7 @@ A report run resolves all floating pointers once before execution. Deduplicate o
 
 ## Non-goals
 
-No drag-and-drop builder, arbitrary code widgets, source-session impersonation or second dashboard execution model.
+No advanced drag-and-drop builder, arbitrary code widgets, source-session impersonation or second dashboard execution model. D-096 adds bounded optional manual report composition over the existing lifecycle and CAS model.
 
 ## Config and persistence
 

@@ -806,3 +806,5 @@ Renderer memory continuation: [D-093 kernel charged-memory enforcement and a sep
 Scalar equality continuation: [D-094 exact predicates required by every selected scalar occurrence](decisions/2026-10-03-scalar-predicate-entailment.md).
 
 Renderer containment continuation: [D-095 resource controls on a protected outer job domain](decisions/2026-10-03-renderer-protected-job-domain.md).
+
+Optional manual report application: [D-096 one shared Builder/Consumer app with Pengui-owned authority](decisions/2026-10-03-manual-report-app.md).
