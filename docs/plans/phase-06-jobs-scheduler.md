@@ -49,3 +49,13 @@ Occurrence, attempt, fence and execution binding remain shared terms. D-055 move
 ## Implemented evidence and limits
 
 See [phase 05–06 review](../reviews/phase-05-06-adversarial.md), [operator setup](../../GETTING-STARTED.md), and [execution authority v1](../contracts/execution-authority-v1.md). Named criteria execute against the pinned SDK and PostgreSQL 17, not mocked production drivers. D-062/D-063 record provider corrections, the exact Pengui-owned companion and scope boundaries. Broader analytics, pipeline, report and delivery targets remain owned by their subsequent phases.
+
+
+Request-control saturation repair: the existing request lifecycle uses one fixed
+additional metadata connection, while admission/resume and domain work remain in
+the ordinary pool. `store.max_conns` is the ordinary limit, so the total per DB
+instance is at most that value plus one; the existing 1–100 range is unchanged.
+The [request-control reserve contract](../contracts/execution-authority-v1.md#request-control-connection-reserve)
+records the exact consumers, retained authority/fence/deadline checks and native
+`TestRequestControl*` regression coverage. This is neither a second queue nor a
+claim that reserved capacity bypasses locked authoritative rows.

@@ -23,7 +23,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Options bounds database work. MigrationPolicy is apply or check; no down migration exists.
+// Options bounds database work. MaxConns is the ordinary pool limit (1–100);
+// request lifecycle controls have one additional reserved connection, so the total
+// is at most MaxConns+1. MigrationPolicy is apply or check; no down migration exists.
 type Options struct {
 	MaxConns                           int32
 	ConnectTimeout, TransactionTimeout time.Duration
@@ -35,9 +37,11 @@ func Defaults() Options {
 	return Options{MaxConns: 10, ConnectTimeout: 5 * time.Second, TransactionTimeout: 5 * time.Second, MigrationPolicy: "apply"}
 }
 
-// DB owns its pool and exposes only scoped domain methods plus operator lifecycle methods.
+// DB owns its ordinary and request-control pools and exposes only scoped domain
+// methods plus operator lifecycle methods.
 type DB struct {
 	pool               *pgxpool.Pool
+	requestControlPool *pgxpool.Pool
 	timeout            time.Duration
 	planOperationSlots chan struct{}
 	closed             atomic.Bool
@@ -59,6 +63,7 @@ func Open(ctx context.Context, dsn string, opts Options) (*DB, error) {
 	}
 	cfg.MaxConns = opts.MaxConns
 	cfg.MinConns = 0
+	cfg.MinIdleConns = 0
 	cfg.ConnConfig.ConnectTimeout = opts.ConnectTimeout
 	// Qualify application relations; user-created public functions cannot shadow helpers.
 	cfg.ConnConfig.RuntimeParams["search_path"] = "pg_catalog"
@@ -67,7 +72,20 @@ func Open(ctx context.Context, dsn string, opts Options) (*DB, error) {
 	if err != nil {
 		return nil, safe(err)
 	}
-	db := &DB{pool: pool, timeout: opts.TransactionTimeout}
+	// This pool is deliberately unavailable to ordinary admission, source fences,
+	// domain reads/writes and publication. It shares the same trusted connection
+	// configuration and credentials; capacity does not confer authority.
+	controlConfig := cfg.Copy()
+	controlConfig.MaxConns = 1
+	controlConfig.MinConns = 0
+	controlConfig.MinIdleConns = 0
+	controlConfig.ConnConfig.RuntimeParams["application_name"] = "chartworks-request-control"
+	control, err := pgxpool.NewWithConfig(ctx, controlConfig)
+	if err != nil {
+		pool.Close()
+		return nil, safe(err)
+	}
+	db := &DB{pool: pool, requestControlPool: control, timeout: opts.TransactionTimeout}
 	if opts.MaxConns >= 2 {
 		// Every advisory-lock callback uses the ordinary pool. Bound the
 		// holders so at least one connection remains available to it.
@@ -75,8 +93,11 @@ func Open(ctx context.Context, dsn string, opts Options) (*DB, error) {
 	}
 	connect, cancel := context.WithTimeout(ctx, opts.ConnectTimeout)
 	defer cancel()
-	if err = pool.Ping(connect); err != nil {
-		pool.Close()
+	if err = pool.Ping(connect); err == nil {
+		err = control.Ping(connect)
+	}
+	if err != nil {
+		db.Close()
 		return nil, safe(err)
 	}
 	if opts.MigrationPolicy == "apply" {
@@ -85,7 +106,7 @@ func Open(ctx context.Context, dsn string, opts Options) (*DB, error) {
 		err = db.Check(ctx)
 	}
 	if err != nil {
-		pool.Close()
+		db.Close()
 		return nil, err
 	}
 	return db, nil
@@ -94,6 +115,9 @@ func Open(ctx context.Context, dsn string, opts Options) (*DB, error) {
 // Close is safe to call repeatedly. All acquired connections are private and time-bounded.
 func (d *DB) Close() {
 	if !d.closed.Swap(true) {
+		if d.requestControlPool != nil {
+			d.requestControlPool.Close()
+		}
 		d.pool.Close()
 	}
 }
@@ -147,13 +171,23 @@ func (d *DB) transaction(ctx context.Context, fn func(context.Context, pgx.Tx) e
 func (d *DB) transactionOptions(ctx context.Context, options pgx.TxOptions, fn func(context.Context, pgx.Tx) error) error {
 	return d.transactionDuration(ctx, options, d.timeout, fn)
 }
+
+// requestControlTransaction is only for existing request lifecycle controls.
+// It keeps the ordinary transaction timeout, caller/authority deadline, server
+// statement/lock bounds and bounded rollback; it cannot bypass locked rows.
+func (d *DB) requestControlTransaction(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
+	return d.transactionPool(ctx, d.requestControlPool, pgx.TxOptions{}, d.timeout, fn)
+}
 func (d *DB) transactionDuration(ctx context.Context, options pgx.TxOptions, timeout time.Duration, fn func(context.Context, pgx.Tx) error) error {
-	if d.closed.Load() {
+	return d.transactionPool(ctx, d.pool, options, timeout, fn)
+}
+func (d *DB) transactionPool(ctx context.Context, pool *pgxpool.Pool, options pgx.TxOptions, timeout time.Duration, fn func(context.Context, pgx.Tx) error) error {
+	if d.closed.Load() || pool == nil {
 		return store.ErrUnavailable
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	tx, err := d.pool.BeginTx(ctx, options)
+	tx, err := pool.BeginTx(ctx, options)
 	if err != nil {
 		return safe(err)
 	}

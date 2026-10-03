@@ -82,7 +82,11 @@ Read execution has client, JWT, statement and PostgreSQL-17 transaction deadline
 The source-revision metadata fence has a separate bounded duration covering the
 read and its cleanup; ordinary metadata operations retain their short timeout.
 The executor requires metadata pool capacity of execution_concurrency plus two
-connections, preserving journal/control traffic while source fences are held.
+ordinary connections, preserving journal/control traffic while source fences are held.
+The separate fixed request-control connection described in
+[execution authority v1](execution-authority-v1.md#request-control-connection-reserve)
+is additional to `store.max_conns`; it does not count toward that read-execution
+capacity requirement or carry general read-attempt journal traffic.
 The default HTTP write/client timeouts are 75s. Explicit deployment/client timeouts
 must leave room for validation, execution and bounded cleanup; shorter caller
 budgets deliberately take precedence. Source probe/legacy-reader timeouts remain

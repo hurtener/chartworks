@@ -19,7 +19,7 @@ Use `chartworks config-check --defaults` for a machine-readable defaults snapsho
 | `server.max_body_bytes` | integer bytes | 10 MiB | 1 byte–100 MiB. Health endpoints accept no body; oversized known bodies receive 413. |
 | `server.max_header_bytes` | integer bytes | 32 KiB | 1 KiB–1 MiB; enforced by Go HTTP server. |
 | `store.dsn` | secret reference | `env:CHARTWORKS_STORE_URL` | Required nonblank environment value, never a literal credential in configuration. No implicit ambient database connection. |
-| `store.max_conns` | integer | 10 | 1–100; minimum idle connections is zero. |
+| `store.max_conns` | integer | 10 | 1–100 ordinary metadata connections, plus one reserved request-control connection per DB instance; total at most `max_conns + 1` (default 11). Both pools have zero minimum/idle connections. |
 | `store.connect_timeout` | duration string | `5s` | Positive, at most 1 minute; initial connection/ping is bounded. |
 | `store.transaction_timeout` | duration string | `5s` | At least 1 millisecond, at most 1 minute; context deadline plus PostgreSQL statement/lock limits. |
 | `store.migration_policy` | enum | `apply` | `apply` atomically adds pending forward migrations; `check` rejects missing/mismatched history without migrating. |
