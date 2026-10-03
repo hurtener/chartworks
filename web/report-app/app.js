@@ -19,7 +19,7 @@ export class ReportApp {
     this.observer=typeof ResizeObserver==='function'?new ResizeObserver(()=>{if(!this.closed){const box=root.getBoundingClientRect();adapter.resize(box.width,box.height);}}):null;this.observer?.observe(root);
     this.render();
   }
-  async invoke(name,args) { if(this.closed)throw appError('unavailable');return unpack(await this.adapter.call(name,args)); }
+  async invoke(name,args) { if(this.closed)throw appError('unavailable');const result=await this.adapter.call(name,args);if(this.closed)throw appError('unavailable');return unpack(result); }
   context(context) { boundedJSON(context,65536);document.documentElement.dataset.theme=context?.theme==='dark'?'dark':'light';if(typeof context?.locale==='string'){try{this.locale=Intl.getCanonicalLocales(context.locale)[0]||this.locale;}catch{}}document.documentElement.lang=this.locale; }
   async start() { try{await this.adapter.connect();if(this.closed)return;await this.refreshCapabilities();if(this.capabilities.consumer)await this.loadCatalog();else if(this.capabilities.builder){this.mode='builder';await this.loadDrafts();}else this.message='No report access is available under the current authority.';}catch(e){this.reportError(e);}this.render(); }
   async refreshCapabilities(report='') { const c=await this.invoke(authoringTool('capabilities'),{report});if(this.closed)return;this.session.setCapabilities(c);this.capabilities=c; }

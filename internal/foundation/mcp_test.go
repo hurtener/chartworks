@@ -103,3 +103,30 @@ func TestMCPAssemblyStartsWithDurableRenditionEffects(t *testing.T) {
 		t.Fatal("durable rendition MCP transport missing", definition)
 	}
 }
+
+func TestMCPAssemblyIncludesManualReportApp(t *testing.T) {
+	v := config.Defaults()
+	v.Features.MCP = true
+	v.MCP.Groups = []string{"reporting"}
+	v.Auth.Issuer = "https://issuer.example.test"
+	v.Auth.JWKSURL = "https://issuer.example.test/jwks"
+	v.Auth.Audiences = config.Audiences{HTTP: "chartworks:http", MCP: "chartworks:mcp", Jobs: "chartworks:execution"}
+	verifier, err := auth.New(v.Auth, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer verifier.Close()
+	authoring, err := reporting.NewAuthoring(&reporting.Documents{}, &reporting.Compositions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, handler, err := mountMCP(v, verifier, nil, nil, nil, nil, nil, nil, http.NotFoundHandler(), deliveryServices{delivery: &reporting.Delivery{}, authoring: authoring})
+	if err != nil || registry == nil || handler == nil {
+		t.Fatal("manual app MCP startup", err)
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, mcpserver.Path, nil))
+	if w.Code != 401 {
+		t.Fatal("app bypassed verifier", w.Code)
+	}
+}

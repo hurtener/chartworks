@@ -196,12 +196,16 @@ func WithResource(b Binding, uri string) (Binding, error) {
 	return b, nil
 }
 
+// MaxRegisteredTools bounds metadata inventory, not execution or response budgets.
+// The complete configured inventory includes 74 tools and 5 optional renditions.
+const MaxRegisteredTools = 96
+
 // Registry is an immutable inventory of concrete service bindings.
 type Registry struct{ bindings []Binding }
 
 // NewRegistry fails on omissions/duplicates rather than advertising a stub.
 func NewRegistry(bindings []Binding) (*Registry, error) {
-	if len(bindings) < 1 || len(bindings) > 64 {
+	if len(bindings) < 1 || len(bindings) > MaxRegisteredTools {
 		return nil, ErrRegistration
 	}
 	names, ids, resources := map[string]bool{}, map[string]bool{}, map[string]bool{}

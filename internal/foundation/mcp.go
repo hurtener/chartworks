@@ -28,6 +28,7 @@ import (
 	"github.com/hurtener/chartworks/internal/topicapi"
 	"github.com/hurtener/chartworks/internal/topicfeedback"
 	"github.com/hurtener/chartworks/internal/topicfeedbackapi"
+	reportapp "github.com/hurtener/chartworks/web/report-app"
 )
 
 // mountMCP composes real services before the common HTTP registry guard. It does
@@ -35,6 +36,7 @@ import (
 type deliveryServices struct {
 	topicFeedback    *topicfeedback.Service
 	delivery         *reporting.Delivery
+	authoring        *reporting.Authoring
 	renderer         *rendering.Service
 	evaluation       *evaluation.Service
 	evaluationRunner evaluation.Runner
@@ -104,13 +106,29 @@ func mountMCP(v config.Values, verifier *auth.Verifier, source *sources.Service,
 		}
 		bindings = append(bindings, group...)
 	}
+	if len(services) == 1 && services[0].authoring != nil {
+		app, appErr := mcpserver.NewAppResource(reportapp.URI, "Chartworks report app", "Manual report composition and authorized retained consumption", reportapp.HTML())
+		if appErr != nil {
+			return nil, nil, appErr
+		}
+		group, bindErr := reportingapi.AuthoringMCPBindings(services[0].authoring, app)
+		if bindErr != nil {
+			return nil, nil, fmt.Errorf("mcp report authoring bindings: %w", bindErr)
+		}
+		bindings = append(bindings, group...)
+		bootstrap, bindErr := reportingapi.ReportAppBootstrapMCPBindings(services[0].authoring, app)
+		if bindErr != nil {
+			return nil, nil, fmt.Errorf("mcp report bootstrap bindings: %w", bindErr)
+		}
+		bindings = append(bindings, bootstrap...)
+	}
 	selected, err := mcpserver.SelectGroups(bindings, v.MCP.Groups)
 	if err != nil {
 		return nil, nil, fmt.Errorf("mcp select groups: %w", err)
 	}
 	tools, err := mcpserver.NewRegistry(selected)
 	if err != nil {
-		return nil, nil, fmt.Errorf("mcp registry: %w", err)
+		return nil, nil, fmt.Errorf("mcp registry (%d registered tools): %w", len(selected), err)
 	}
 	server, err := mcpserver.New(verifier, tools, v.MCP, v.Server.CORSAllowlist)
 	if err != nil {

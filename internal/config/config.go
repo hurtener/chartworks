@@ -177,6 +177,7 @@ func (c Config) Values() Values {
 	v := c.values
 	v.MCP = c.values.MCP.Clone()
 	v.Server.CORSAllowlist = append([]string{}, c.values.Server.CORSAllowlist...)
+	v.Reporting.App.RegisteredParentOrigins = append([]string{}, c.values.Reporting.App.RegisteredParentOrigins...)
 	v.Sources = c.values.Sources.Clone()
 	v.Uploads = c.values.Uploads.Clone()
 	v.Profiling = c.values.Profiling.Clone()

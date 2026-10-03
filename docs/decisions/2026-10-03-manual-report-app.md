@@ -59,3 +59,13 @@ CAS/reload/private-preview tests and real browser flows. Test interrupted/repeat
 operations, cross-origin and stale replies, capability withdrawal, and selected
 widget escape attempts. Record unrun or blocked host paths explicitly. No provider
 calls, secrets/configuration changes or deployment are implied by this decision.
+
+## Bounded discovery inventory
+
+The existing default mounted inventory has 64 tools. This slice adds eight
+authoring operations and two bounded bootstrap/guidance tools, for 74; optional
+durable rendering contributes five more, for 79. The registry metadata ceiling
+is now 96, with 97 rejected. Per-schema, response-byte, request, concurrency and
+all execution/renderer budgets are unchanged. No existing tool is silently
+dropped. Agent entry uses bounded bootstrap/guidance rather than injecting all
+tool descriptions into an instruction prompt.

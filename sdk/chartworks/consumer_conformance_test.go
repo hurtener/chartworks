@@ -102,6 +102,8 @@ func TestEXP11CumulativeRegisteredConsumerMatrix(t *testing.T) {
 		func() (*api.Registry, error) { return reportingapi.Registry(true, true, true) },
 		func() (*api.Registry, error) { return reportingapi.RuntimeRegistry(true, true) },
 		func() (*api.Registry, error) { return reportingapi.DocumentsRegistry(true) },
+		reportingapi.AuthoringRegistry,
+		reportingapi.ReportAppBootstrapRegistry,
 		func() (*api.Registry, error) { return reportingapi.DeliveryRegistry(true, true, true) },
 		onboardingapi.Registry,
 		func() (*api.Registry, error) { return mcpserver.HTTPRegistry(config.DefaultMCP()) },

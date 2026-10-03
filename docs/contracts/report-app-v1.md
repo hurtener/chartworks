@@ -14,6 +14,16 @@ or choose provider destinations. Both surfaces reach the same HTTP/MCP DTOs and
 domain services. Manual use has no chat, conversation, hidden agent or model
 prerequisite.
 
+The separate `/apps/report/v1/embedded` asset is registered only when
+`reporting.app.embedded_enabled=true`. Its public HTTPS parent-origin list comes
+only from `reporting.app.registered_parent_origins` (1..16 exact unique origins).
+The default is disabled with an empty list; CORS clients do not automatically
+become embedded hosts. HTTP, null, wildcard, credential-bearing and non-origin
+entries are rejected. Data-plane CORS, if needed, is independently configured.
+The response supplies matching `frame-ancestors`; the HTML has an explicit
+embedded bootstrap and never falls back from MCP. No deployed setting is changed
+by this implementation.
+
 The embedded host owns origin registration, frame instance/generation, one-use
 initialization correlation, capability/entitlement checks and credential realm.
 Every message pins origin and expected parent window; stale or duplicate replies
@@ -66,7 +76,10 @@ reach.
 
 Private preview reserves and executes an exact private revision through existing
 composition services, with fresh execute/preview/dependency authority. Preview
-privacy survives later publication. Reading/repainting retained output makes no
+privacy survives later publication. After admission/execution returns a new run
+ID, the host obtains fresh exact run-read/preview authority before reading private
+retained values. A denied read is retried only after host refresh, never by
+rerunning the preview. Reading/repainting retained output makes no
 source/model calls. An unknown execution outcome is inspected, never blindly
 replayed. Stale CAS requires reload and reconciliation.
 
@@ -79,7 +92,7 @@ chat explains, plan proposes without mutation, apply uses separately authorized
 mutations. Bootstrap itself never edits, starts a model or expands authority.
 
 `report_app_guide_v1` / POST `guide` and the static resource
-`chartworks://report-app/guide/v1` provide versioned steps, constraints, document
+`chartworks://report_app/guide/v1` provide versioned steps, constraints, document
 schema version and repository contract references. No hidden repository agent,
 copied third-party prompt, user context or secret enters that resource. Agent
 profiles consume these same public interfaces and obey target operation bounds.

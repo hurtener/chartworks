@@ -108,3 +108,50 @@ jobs:
         run: |
           git diff --exit-code
           test -z "$(git ls-files --others --exclude-standard)"
+
+  report-app-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CGO_ENABLED: 0
+      GOFLAGS: -p=2
+      CHARTWORKS_CHROME_BIN: google-chrome
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - name: Record exact app source and browser
+        run: |
+          mkdir -p "$RUNNER_TEMP/report-app-proof"
+          git rev-parse HEAD | tee "$RUNNER_TEMP/report-app-proof/source.txt"
+          google-chrome --version | tee "$RUNNER_TEMP/report-app-proof/browser.txt"
+      - name: Compile shared resources and run deterministic app contracts
+        env:
+          CHARTWORKS_REPORT_APP_HTML_OUT: ${{ runner.temp }}/report-app-proof/mcp.html
+          CHARTWORKS_REPORT_APP_EMBEDDED_HTML_OUT: ${{ runner.temp }}/report-app-proof/embedded.html
+        run: |
+          set -o pipefail
+          go test -count=1 -v ./web/report-app | tee "$RUNNER_TEMP/report-app-proof/contracts.log"
+      - name: Actual Chromium MCP and registered embedded fixture journeys
+        run: |
+          set -o pipefail
+          node web/report-app/browser.test.mjs "$RUNNER_TEMP/report-app-proof/mcp.html" "$RUNNER_TEMP/report-app-proof/mcp.png" mcp | tee "$RUNNER_TEMP/report-app-proof/mcp.log"
+          node web/report-app/browser.test.mjs "$RUNNER_TEMP/report-app-proof/embedded.html" "$RUNNER_TEMP/report-app-proof/embedded.png" embedded | tee "$RUNNER_TEMP/report-app-proof/embedded.log"
+      - name: Retain synthetic host proof and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-app-synthetic-browser-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/report-app-proof
+          retention-days: 7
+      - name: Source remains unchanged
+        run: |
+          git diff --exit-code
+          test -z "$(git ls-files --others --exclude-standard)"
