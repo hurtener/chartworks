@@ -39,7 +39,17 @@ func TestSQLRecoveryGroupedSelectionAcceptance(t *testing.T) {
 	t.Run("null_group_with_periods", func(t *testing.T) { runGroupedSelectionAcceptance(t, true, false, true) })
 }
 
-func runGroupedSelectionAcceptance(t *testing.T, withPeriods, raw, nullOnly bool) {
+// Fresh reconstruction regression: successful scoped execution must offer only
+// its authenticated value-free base for subsequent reviewed learning.
+func TestSQLRecoveryScopedLearningBaseAcceptance(t *testing.T) {
+	for _, withPeriods := range []bool{false, true} {
+		t.Run(fmt.Sprintf("periods_%t", withPeriods), func(t *testing.T) {
+			runGroupedSelectionAcceptance(t, withPeriods, false, false, true)
+		})
+	}
+}
+
+func runGroupedSelectionAcceptance(t *testing.T, withPeriods, raw, nullOnly bool, wantLearning ...bool) {
 	t.Helper()
 	f := liveCommerceSource(t)
 	if _, err := f.admin.Exec(t.Context(), `DELETE FROM analytics.order_items; DELETE FROM analytics.refunds; DELETE FROM analytics.orders; DELETE FROM analytics.customers;
@@ -324,7 +334,15 @@ ALTER TABLE analytics.orders ALTER COLUMN total_usd DROP NOT NULL; ALTER TABLE a
 		t.Fatal("feedback", err)
 	}
 	examples, err := query.Examples(t.Context(), actor, pack.Topic, 8)
-	if err != nil || len(examples) != 0 {
+	if len(wantLearning) == 1 && wantLearning[0] {
+		if err != nil || len(examples) != 1 {
+			t.Fatalf("authenticated scoped base was not learned: count=%d err=%v", len(examples), err)
+		}
+		x := examples[0]
+		if x.SQL != sql || x.Origin.BindingPolicy == "" || x.ParameterSchema != nil || strings.Contains(x.Question+x.SQL, selected) {
+			t.Fatal("scoped learning did not preserve a value-free authenticated base")
+		}
+	} else if err != nil || len(examples) != 0 {
 		t.Fatal("scoped binding became reusable learning", err)
 	}
 	saved := nlqexec.SavedQuestion{Durability: "session_bound", Context: request.Context, Topics: []nlqexec.SavedTopic{{Topic: pack.Topic, Version: published.State.Version, Digest: published.Digest}}, Query: plan.QueryID}
