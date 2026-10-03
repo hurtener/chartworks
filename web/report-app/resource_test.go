@@ -47,7 +47,7 @@ func TestReportAppJavaScript(t *testing.T) {
 	if err != nil {
 		t.Fatal("Node is required for app source verification:", err)
 	}
-	for _, file := range []string{"model.test.mjs", "bridge.test.mjs", "app.test.mjs"} {
+	for _, file := range []string{"model.test.mjs", "bridge.test.mjs", "app.test.mjs", "browser_cleanup.test.mjs"} {
 		command := exec.Command(node, "--test", file)
 		if out, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("%s: %v\n%s", file, err, out)

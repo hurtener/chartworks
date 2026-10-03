@@ -108,3 +108,15 @@ and authority-refresh retry, conflict preservation, cancelled navigation,
 repeated save/navigation, closure with a delayed response, Consumer-only mode,
 and no browser storage. Failure screenshots are saved separately. These fixtures
 are not deployed host, live warehouse/provider or real-grant qualification.
+
+Browser evidence uses a fixed 1440×1000 desktop viewport and a fixture iframe
+that follows the app's bounded size notifications. Full-page screenshots capture
+the Builder editor at the requested path and Consumer retained view in the sibling
+`.consumer.png` file. Both show synthetic fixture data, not a production session.
+The harness requests graceful browser shutdown, joins its owned child process,
+and uses bounded profile-removal retries; cleanup failure still fails the run.
+Its deterministic cleanup regressions need no browser:
+
+```sh
+node --test web/report-app/browser_cleanup.test.mjs
+```
