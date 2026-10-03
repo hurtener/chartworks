@@ -77,3 +77,8 @@ SDK/CLI dispatch and, when queried under separate authority, MCP binding. It is
 not a permission grant or another authoritative business store. Replay eligibility
 is an explicit owner contract (`read`, `never`, `keyed`), not an inference from a
 header. See [clients v1](contracts/clients-v1.md).
+
+- **Scalar predicate entailment**: the bounded v13 proof that an exact authenticated
+  text equality is already mandatory at every selected SUM/COUNT occurrence in a
+  PostgreSQL scoped singleton program. Explicit zero-parameter effects account
+  for the request; this is not general Boolean inference or source authority.

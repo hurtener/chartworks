@@ -370,8 +370,16 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 		if err := s.verifyQueryClarificationBinding(ctx, e, old, parent); err != nil {
 			return PlanResult{}, err
 		}
+		// V13 refinement consumes a parent with occurrence and output evidence.
+		// Reprove its ordinals before routing can spend model work or expose a
+		// retained base. Structural receipt equality cannot establish ordinals.
+		if old.AnalyticalVersion == analyticalScalarEntailmentRecordVersion {
+			if err := s.verifyAnalyticalOutputReplay(ctx, e, old, parent); err != nil {
+				return PlanResult{}, err
+			}
+		}
 	}
-	if isScalarPeriodRecord(old) || isGroupedPeriodRecord(old) || (isGroupedSelectionRecord(old) || isGroupedFactRecord(old)) {
+	if isScalarEntailmentRecord(old) || isScalarPeriodRecord(old) || isGroupedPeriodRecord(old) || (isGroupedSelectionRecord(old) || isGroupedFactRecord(old)) {
 		// Grouping continuation reconstructs the parent contract from current
 		// authenticated period applications, never from stored route JSON.
 		parent, parentConstraints, err = s.scalarPeriodAdmission(ctx, e, old, parent)

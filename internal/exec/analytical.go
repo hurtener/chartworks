@@ -88,6 +88,7 @@ type AnalyticalMetric struct {
 // does NOT certify question interpretation or query-wide filters. v2 can also
 // prove an explicitly compiled direct-column grain; nil grain remains unmeasured.
 type AnalyticalContract struct {
+	ScalarEntailment   *AnalyticalScalarEntailment   `json:"scalar_entailment,omitempty"`
 	GroupSelection     *AnalyticalQueryPopulation    `json:"group_selection,omitempty"`
 	Completeness       *AnalyticalCompleteness       `json:"completeness,omitempty"`
 	ScalarPopulations  *AnalyticalScalarPopulations  `json:"scalar_populations,omitempty"`
@@ -112,16 +113,18 @@ func (c AnalyticalContract) LogValue() slog.Value { return slog.StringValue(c.St
 // AnalyticalReceipt is bounded non-executable evidence of the specified checks.
 // Native validation and business approval remain independent requirements.
 type AnalyticalReceipt struct {
-	Completeness    *AnalyticalCompleteness `json:"completeness,omitempty"`
-	Outputs         []AnalyticalOutput      `json:"outputs,omitempty"`
-	Version         string                  `json:"version"`
-	Scope           string                  `json:"scope"`
-	Contract        string                  `json:"contract"`
-	Query           string                  `json:"query"`
-	Metrics         []string                `json:"metrics"`
-	Grouping        []string                `json:"grouping,omitempty"`
-	QueryPopulation string                  `json:"query_population,omitempty"`
-	Intent          string                  `json:"intent,omitempty"`
+	ScalarEntailment         string                  `json:"scalar_entailment,omitempty"`
+	ScalarEntailmentCoverage string                  `json:"scalar_entailment_coverage,omitempty"`
+	Completeness             *AnalyticalCompleteness `json:"completeness,omitempty"`
+	Outputs                  []AnalyticalOutput      `json:"outputs,omitempty"`
+	Version                  string                  `json:"version"`
+	Scope                    string                  `json:"scope"`
+	Contract                 string                  `json:"contract"`
+	Query                    string                  `json:"query"`
+	Metrics                  []string                `json:"metrics"`
+	Grouping                 []string                `json:"grouping,omitempty"`
+	QueryPopulation          string                  `json:"query_population,omitempty"`
+	Intent                   string                  `json:"intent,omitempty"`
 }
 
 // CheckAnalyticalPlan checks an already native-validated opaque plan. It neither
@@ -165,7 +168,11 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	}
 	var joinErr error
 	if c.ScalarPopulations != nil {
-		relation, joinErr = analyticalScalarRelation(ctx, c, proofBinding, relation)
+		scalar := c
+		if c.Version == AnalyticalScalarEntailmentVersion {
+			scalar = scalarEntailmentBase(c)
+		}
+		relation, joinErr = analyticalScalarRelation(ctx, scalar, proofBinding, relation)
 	} else if c.GroupedPopulations != nil {
 		relation, joinErr = analyticalGroupedRelation(c, proofBinding, relation)
 	} else if len(c.Populations) > 0 {
@@ -266,11 +273,16 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	if c.Version == AnalyticalGroupedFactsVersion {
 		receipt.Scope = strings.ReplaceAll(receipt.Scope, "independent_grouped_populations", "independent_filtered_grouped_populations")
 	}
+	if c.ScalarEntailment != nil {
+		receipt.ScalarEntailment = AnalyticalScalarEntailmentPolicy
+		receipt.ScalarEntailmentCoverage = Hash(c.ScalarEntailment)
+		receipt.Scope = strings.ReplaceAll(receipt.Scope, "independent_scoped_singleton_populations", "independent_entailed_scoped_singleton_populations")
+	}
 	if c.Completeness != nil {
 		receipt.Completeness = CloneAnalyticalCompleteness(c.Completeness)
 		receipt.Scope += AnalyticalCompletenessScope
 	}
-	if c.Version == AnalyticalScopedPopulationsVersion || c.Version == AnalyticalGroupedOwnedPopulationsVersion || c.Version == AnalyticalGroupedSelectionVersion || c.Version == AnalyticalGroupedFactsVersion {
+	if c.Version == AnalyticalScalarEntailmentVersion || c.Version == AnalyticalScopedPopulationsVersion || c.Version == AnalyticalGroupedOwnedPopulationsVersion || c.Version == AnalyticalGroupedSelectionVersion || c.Version == AnalyticalGroupedFactsVersion {
 		receipt.Outputs, err = checker.provedOutputs(ids)
 		if err != nil {
 			return nil, err

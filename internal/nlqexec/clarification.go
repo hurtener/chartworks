@@ -119,7 +119,7 @@ func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Enve
 // before a new execution. It does not trust stored SQL, a digest, or a previous
 // answer as validator-issued proof; Run still performs normal fresh validation.
 func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identity.Envelope, record QueryRecord, a admission) error {
-	if isScalarPeriodRecord(record) || isGroupedPeriodRecord(record) || (isGroupedSelectionRecord(record) || isGroupedFactRecord(record)) {
+	if isScalarEntailmentRecord(record) || isScalarPeriodRecord(record) || isGroupedPeriodRecord(record) || (isGroupedSelectionRecord(record) || isGroupedFactRecord(record)) {
 		return s.verifyScalarPeriodBinding(ctx, e, record, a)
 	}
 	if !hasActiveBusinessEvidence(record.Route) {

@@ -218,3 +218,14 @@ charged-memory boundary of at most 1 GiB and a separate fixed 3 GiB virtual-addr
 ceiling. Missing controller or namespace enforcement fails closed; the application
 does not provision the host or substitute in-process rendering. Deployment
 qualification remains separate from pure functional tests.
+
+## Bounded scalar equality continuation
+
+The [scalar entailment contract](docs/contracts/analytical-scalar-entailment-v1.md)
+adds a separate v13 proof for authenticated text equality already mandatory at
+every selected SUM/COUNT occurrence of a PostgreSQL fact-owned scalar program.
+Complete immutable semantic identity, exact reviewed INNER relationships and
+current physical uniqueness remain mandatory. The binder explicitly accounts for
+those constraints without rewriting metric predicates or changing v9 period SQL.
+Schema6 receipts retain value-free coverage evidence; current authenticated replay
+reconstructs the proof. This adds no authority path or generic entailment solver.

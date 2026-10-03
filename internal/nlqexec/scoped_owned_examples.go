@@ -62,8 +62,8 @@ func currentScopedLearningPolicy(a admission) string {
 	return ""
 }
 
-// Schema 5 has no qualified owned-base learning/consumption policy yet.
+// Schemas 5 and 6 have no qualified owned-base learning/consumption policy yet.
 func groupedFactLearningUnsupported(a admission) bool {
 	c, err := compileCurrentAnalytical(context.Background(), a)
-	return err == nil && c != nil && c.Version == exec.AnalyticalGroupedFactsVersion
+	return err == nil && c != nil && (c.Version == exec.AnalyticalGroupedFactsVersion || c.Version == exec.AnalyticalScalarEntailmentVersion)
 }

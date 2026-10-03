@@ -1,6 +1,9 @@
 package exec
 
-import "sort"
+import (
+	"context"
+	"sort"
+)
 
 const AnalyticalCompletenessPolicy = "reviewed-known-amount-outputs-v1"
 const AnalyticalCompletenessScope = ";reviewed_known_amount_completeness"
@@ -25,6 +28,12 @@ type AnalyticalCompletenessObligation struct {
 }
 
 func validateAnalyticalCapabilities(c AnalyticalContract, b Binding) error {
+	if c.Version == AnalyticalScalarEntailmentVersion {
+		return ValidateAnalyticalScalarEntailment(context.Background(), c, b)
+	}
+	if c.ScalarEntailment != nil {
+		return ErrBinding
+	}
 	if c.Version == AnalyticalGroupedFactsVersion {
 		return validateGroupedFacts(c, b)
 	}
@@ -164,7 +173,14 @@ func AnalyticalOutputsValid(r *AnalyticalReceipt) bool {
 	if r == nil {
 		return false
 	}
-	if r.Version != AnalyticalScopedPopulationsVersion && r.Version != AnalyticalGroupedOwnedPopulationsVersion && r.Version != AnalyticalGroupedSelectionVersion && r.Version != AnalyticalGroupedFactsVersion {
+	if r.Version == AnalyticalScalarEntailmentVersion {
+		if r.ScalarEntailment != AnalyticalScalarEntailmentPolicy || !scalarEntailmentDigest(r.ScalarEntailmentCoverage) || r.Completeness != nil || len(r.Grouping) != 0 {
+			return false
+		}
+	} else if r.ScalarEntailment != "" || r.ScalarEntailmentCoverage != "" {
+		return false
+	}
+	if r.Version != AnalyticalScalarEntailmentVersion && r.Version != AnalyticalScopedPopulationsVersion && r.Version != AnalyticalGroupedOwnedPopulationsVersion && r.Version != AnalyticalGroupedSelectionVersion && r.Version != AnalyticalGroupedFactsVersion {
 		return len(r.Outputs) == 0 && r.Completeness == nil
 	}
 	if len(r.Outputs) != len(r.Metrics) || len(r.Outputs) == 0 {

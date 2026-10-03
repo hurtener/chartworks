@@ -134,3 +134,13 @@ and production annotation of typed results. Its private source registry is an
 in-memory fixture; discovery, EXPLAIN and result execution are real MySQL.
 Those controls do not by themselves certify natural-language output selection,
 all nineteen held-out corpus cases, other dialects or live-provider quality.
+
+## Fresh exact-equality continuation
+
+The separately specified [scalar entailment contract](analytical-scalar-entailment-v1.md)
+adds v13/schema6 only for canonical text equality already mandatory at every
+selected SUM/COUNT occurrence in a PostgreSQL scoped scalar program. It does not
+change v9 admission, period placement, source uniqueness or replay. The binder
+keeps the original scalar SQL/period parameters and explicitly accounts for each
+request predicate with complete occurrence-level evidence. Generic nonentailed
+constraints, grouped domains and other engines remain outside that increment.

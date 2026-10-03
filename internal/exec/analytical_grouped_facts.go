@@ -68,6 +68,9 @@ func groupedFactsBase(c AnalyticalContract, selection bool) AnalyticalContract {
 }
 
 func validateGroupedFacts(c AnalyticalContract, b Binding) error {
+	if c.ScalarEntailment != nil {
+		return ErrBinding
+	}
 	if c.Version != AnalyticalGroupedFactsVersion || b.Dialect != "postgres" || c.GroupedPopulations == nil || c.ScalarPopulations != nil || c.Completeness != nil || c.GroupDomain != nil || c.Grain == nil || len(c.Grain.Columns)+len(c.Grain.Buckets) == 0 || c.QueryPopulation == nil || c.QueryPopulation.Policy != AnalyticalQueryPopulationPolicy || len(c.QueryPopulation.Constraints) != 0 {
 		return ErrBinding
 	}

@@ -32,7 +32,7 @@ func (p AnalyticalScalarPopulations) GoString() string { return p.String() }
 // period remains a join dependency; it never creates another aggregate lane.
 func analyticalScalarRelation(ctx context.Context, c AnalyticalContract, b Binding, base Relation) (Relation, error) {
 	p := c.ScalarPopulations
-	if c.Version != AnalyticalScopedPopulationsVersion || b.Dialect != "postgres" || p == nil || p.Policy != AnalyticalScalarPopulationPolicy || len(p.Lanes) < 2 || len(p.Lanes) > 4 || c.GroupedPopulations != nil || len(c.Joins)+len(c.Populations) != 0 || c.Grain != nil && len(c.Grain.Columns)+len(c.Grain.Buckets) != 0 || c.QueryPopulation == nil || c.QueryPopulation.Policy != AnalyticalQueryPopulationPolicy || len(c.QueryPopulation.Constraints) != 0 {
+	if c.ScalarEntailment != nil || c.Version != AnalyticalScopedPopulationsVersion || b.Dialect != "postgres" || p == nil || p.Policy != AnalyticalScalarPopulationPolicy || len(p.Lanes) < 2 || len(p.Lanes) > 4 || c.GroupedPopulations != nil || len(c.Joins)+len(c.Populations) != 0 || c.Grain != nil && len(c.Grain.Columns)+len(c.Grain.Buckets) != 0 || c.QueryPopulation == nil || c.QueryPopulation.Policy != AnalyticalQueryPopulationPolicy || len(c.QueryPopulation.Constraints) != 0 {
 		return Relation{}, ErrBinding
 	}
 	facts := map[string]bool{}
@@ -210,6 +210,9 @@ func (a *analyticalChecker) scopedSingletonLane(q map[string]any, alias string, 
 // V9 and v10 compose unchanged v8 standard proofs with separately gated
 // ownership proofs. Keep c itself intact for the original contract digest.
 func analyticalStandardPolicy(c AnalyticalContract) AnalyticalContract {
+	if c.Version == AnalyticalScalarEntailmentVersion {
+		c = scalarEntailmentBase(c)
+	}
 	if c.Version == AnalyticalScopedPopulationsVersion || c.Version == AnalyticalGroupedOwnedPopulationsVersion || c.Version == AnalyticalGroupedSelectionVersion || c.Version == AnalyticalGroupedFactsVersion {
 		c.Version = AnalyticalGroupedProgramsVersion
 	}

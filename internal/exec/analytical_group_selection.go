@@ -23,6 +23,9 @@ func groupedSelectionHasPeriods(c AnalyticalContract) bool {
 }
 
 func validateGroupedSelection(c AnalyticalContract, b Binding) error {
+	if c.ScalarEntailment != nil {
+		return ErrBinding
+	}
 	if c.Version != AnalyticalGroupedSelectionVersion || b.Dialect != "postgres" || c.GroupedPopulations == nil || c.ScalarPopulations != nil || c.Completeness != nil || c.GroupDomain != nil || c.Grain == nil || len(c.Grain.Columns) == 0 || c.GroupSelection == nil || c.GroupSelection.Policy != AnalyticalQueryPopulationPolicy || len(c.GroupSelection.Constraints) == 0 || c.QueryPopulation == nil || len(c.QueryPopulation.Constraints) != 0 {
 		return ErrBinding
 	}

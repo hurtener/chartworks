@@ -28,7 +28,7 @@ func bindScalarPeriodCandidate(ctx context.Context, a admission, candidate gener
 }
 
 func (s *Service) scalarPeriodAdmission(ctx context.Context, e identity.Envelope, q QueryRecord, a admission) (admission, []exec.BusinessConstraint, error) {
-	if q.AnalyticalVersion != analyticalScopedRecordVersion && q.AnalyticalVersion != analyticalGroupedOwnedRecordVersion && q.AnalyticalVersion != analyticalGroupedSelectionRecordVersion && q.AnalyticalVersion != analyticalGroupedFactsRecordVersion {
+	if q.AnalyticalVersion != analyticalScopedRecordVersion && q.AnalyticalVersion != analyticalGroupedOwnedRecordVersion && q.AnalyticalVersion != analyticalGroupedSelectionRecordVersion && q.AnalyticalVersion != analyticalGroupedFactsRecordVersion && q.AnalyticalVersion != analyticalScalarEntailmentRecordVersion {
 		return admission{}, nil, exec.ErrBinding
 	}
 	if (!isGroupedSelectionRecord(q) && !isGroupedFactRecord(q)) || selectedMetricPeriods(a) {
@@ -49,7 +49,7 @@ func (s *Service) scalarPeriodAdmission(ctx context.Context, e identity.Envelope
 	if err != nil {
 		return admission{}, nil, err
 	}
-	if isGroupedSelectionRecord(q) || isGroupedFactRecord(q) {
+	if isGroupedSelectionRecord(q) || isGroupedFactRecord(q) || isScalarEntailmentRecord(q) {
 		if len(constraints) == 0 {
 			return admission{}, nil, exec.ErrBinding
 		}
@@ -98,6 +98,12 @@ func clarificationBindingSchemaValid(q QueryRecord) bool {
 		return false
 	}
 	b := q.Clarification.Binding
+	if b.SchemaVersion == 6 {
+		return scalarEntailmentBindingShape(q)
+	}
+	if b.Entailments != nil || isScalarEntailmentRecord(q) {
+		return false
+	}
 	if b.SchemaVersion == 1 {
 		return !isScalarPeriodRecord(q) && !isGroupedPeriodRecord(q) && !isGroupedSelectionRecord(q) && !isGroupedFactRecord(q) && b.PopulationPolicy == ""
 	}
@@ -144,6 +150,9 @@ func clarificationBindingSchemaValid(q QueryRecord) bool {
 }
 
 func analyticalVersionForReceipt(r *exec.AnalyticalReceipt) int {
+	if r != nil && r.Version == exec.AnalyticalScalarEntailmentVersion && analyticalReceiptScopeValid(r) && topics.DigestValid(r.Contract) && topics.DigestValid(r.Query) {
+		return analyticalScalarEntailmentRecordVersion
+	}
 	if r != nil && r.Version == exec.AnalyticalGroupedFactsVersion && analyticalReceiptScopeValid(r) && topics.DigestValid(r.Contract) && topics.DigestValid(r.Query) {
 		return analyticalGroupedFactsRecordVersion
 	}
@@ -176,6 +185,9 @@ func isGroupedFactRecord(q QueryRecord) bool {
 }
 
 func bindPeriodProgram(ctx context.Context, binding exec.Binding, statement string, parameters []exec.Parameter, c exec.AnalyticalContract) (exec.BusinessBoundQuery, error) {
+	if c.Version == exec.AnalyticalScalarEntailmentVersion {
+		return exec.BindScalarEntailmentConstraints(ctx, binding, statement, parameters, c)
+	}
 	if c.Version == exec.AnalyticalGroupedFactsVersion {
 		return exec.BindGroupedFactConstraints(ctx, binding, statement, parameters, c)
 	}
@@ -186,4 +198,40 @@ func bindPeriodProgram(ctx context.Context, binding exec.Binding, statement stri
 		return exec.BindGroupedPopulationConstraints(ctx, binding, statement, parameters, c)
 	}
 	return exec.BindScalarPopulationConstraints(ctx, binding, statement, parameters, c)
+}
+
+func isScalarEntailmentRecord(q QueryRecord) bool {
+	return q.AnalyticalVersion == analyticalScalarEntailmentRecordVersion && q.Analytical != nil && q.Analytical.Version == exec.AnalyticalScalarEntailmentVersion && strings.HasSuffix(q.Analytical.Scope, ";independent_entailed_scoped_singleton_populations")
+}
+
+func scalarEntailmentBindingShape(q QueryRecord) bool {
+	b := q.Clarification.Binding
+	if !isScalarEntailmentRecord(q) || b.SchemaVersion != 6 || b.PopulationPolicy != exec.AnalyticalScalarEntailmentPolicy || len(b.Bindings) < 2 || len(b.Bindings) > 4 || len(b.Entailments) < 1 || len(b.Entailments) > 64 {
+		return false
+	}
+	periods, populations, parameters := map[string]bool{}, map[string]bool{}, map[int]bool{}
+	for _, binding := range b.Bindings {
+		if binding.Population == "" || populations[binding.Population] || binding.Kind != "time_window" || binding.Operator != "range" || binding.Nulls != "exclude" || binding.Aggregation != "" || len(binding.Parameters) != 2 || !topics.DigestValid(binding.Resolution) {
+			return false
+		}
+		populations[binding.Population] = true
+		periods[binding.Resolution] = true
+		for _, position := range binding.Parameters {
+			if position < 1 || position > len(q.Parameters) || parameters[position] {
+				return false
+			}
+			parameters[position] = true
+		}
+	}
+	if len(parameters) != len(q.Parameters) {
+		return false
+	}
+	previous, occurrences := "", 0
+	for _, effect := range b.Entailments {
+		if effect.Kind != "entailed_scalar_predicate" || !topics.DigestValid(effect.Resolution) || effect.Resolution <= previous || periods[effect.Resolution] || !topics.DigestValid(effect.Coverage) || effect.Occurrences < 1 || effect.Occurrences > 512/len(b.Entailments) || effect.Parameters == nil || len(effect.Parameters) != 0 || occurrences != 0 && effect.Occurrences != occurrences {
+			return false
+		}
+		previous, occurrences = effect.Resolution, effect.Occurrences
+	}
+	return true
 }

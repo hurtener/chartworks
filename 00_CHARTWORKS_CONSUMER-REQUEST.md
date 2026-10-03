@@ -45,3 +45,14 @@ bounded phase-10 execution consumer, exact transport, attempt evidence and
 cancellation/reconciliation. Reporting and scheduler consumers must reuse it and
 its ceilings. It introduces no new reporting target, retained result cache,
 identity-policy owner or model dependency.
+
+## Bounded scalar equality continuation
+
+An explicit reviewed predicate that every selected scalar population already
+requires can be supported only with complete occurrence-level proof, exact
+reviewed relationship/source identity and current physical uniqueness. The fresh
+[scalar entailment contract](docs/contracts/analytical-scalar-entailment-v1.md)
+adds v13/schema6 for the closed PostgreSQL text-equality SUM/COUNT case. Retained
+versions, NULL/empty outcomes, private evidence custody and current replay checks
+remain mandatory; generic predicate propagation and broader release qualification
+are separate work.

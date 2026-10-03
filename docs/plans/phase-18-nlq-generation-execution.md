@@ -508,3 +508,19 @@ current replacement, exact receipt tampering and zero-model terminal replay.
 Schema5 learning/owned-example consumption is explicitly ineligible; separately
 restored schemas2-4 retain their existing policies. Execution evidence is recorded
 separately from this inventory.
+
+## Fresh bounded scalar equality entailment
+
+[Scalar entailment v1](../contracts/analytical-scalar-entailment-v1.md) addresses a
+newly characterized missing case: an explicit paid-parent selection that every
+selected scalar SUM/COUNT population already requires. V13/schema6 records a
+separate occurrence-complete semantic/physical proof and explicit zero-parameter
+effects. Existing v9 SQL, periods, NULL/empty outcomes and retained version
+semantics remain unchanged. Migration 081 adds the closed storage family.
+
+`TestScalarPredicateEntailment*`, `TestScalarEntailment*` and
+`TestScalarEntailmentPopulatedMigration` own compiler, native, HTTP/SDK,
+receipt/replay/refinement and populated-upgrade qualification. Automatic learning
+and owned-example consumption for schema6 remain ineligible. This is a fresh
+bounded extension under local qualification, not recovered historical code or a
+claim that generic scalar predicate propagation or wider SQL recovery is complete.

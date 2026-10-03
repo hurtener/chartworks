@@ -38,6 +38,9 @@ func compileCurrentAnalytical(ctx context.Context, a admission) (contract *exec.
 	}
 	if len(constraints) > 0 && !selectedKnownAmountCompleteness(a) {
 		version = analyticalGroupedFactsRecordVersion
+		if selectedMetricPeriods(a) {
+			version = analyticalScalarEntailmentRecordVersion
+		}
 	}
 	return compileAnalyticalVersion(ctx, a, version, constraints)
 }
@@ -78,7 +81,7 @@ func compileQueryPopulation(ctx context.Context, a admission, contract *exec.Ana
 // Persisted route JSON has no in-process predicate seal. Reconstruct through the
 // existing authenticated router replay, never by trusting saved resolutions.
 func (s *Service) expectedAnalytical(ctx context.Context, e identity.Envelope, q QueryRecord, a admission) (*exec.AnalyticalContract, error) {
-	if isScalarPeriodRecord(q) || isGroupedPeriodRecord(q) || (isGroupedSelectionRecord(q) || isGroupedFactRecord(q)) {
+	if isScalarEntailmentRecord(q) || isScalarPeriodRecord(q) || isGroupedPeriodRecord(q) || (isGroupedSelectionRecord(q) || isGroupedFactRecord(q)) {
 		a, constraints, err := s.scalarPeriodAdmission(ctx, e, q, a)
 		if err != nil {
 			return nil, err

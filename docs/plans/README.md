@@ -157,3 +157,9 @@ closure/rules, not SQL authority. Explicit choices and historical replay retain
 their behavior; unknown/ambiguous model choices cannot produce executable plans.
 No interpretation-confidence, live quality or full-recovery completion is inferred
 from these software changes. Historical results above retain their stated scope.
+
+The fresh [bounded scalar equality continuation](../contracts/analytical-scalar-entailment-v1.md)
+is tracked separately from historical reconstruction. Its v13/schema6 family
+accounts for an exact request predicate only when every selected scalar SUM/COUNT
+occurrence already requires it. Qualification remains scoped to the named tests
+and source snapshots; this does not close broader recovery or release gates.

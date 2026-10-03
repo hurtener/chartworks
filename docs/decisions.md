@@ -802,3 +802,5 @@ PNG continuation: [D-091 bounded single-output raster renditions with visible re
 Statistical narrative continuation: [D-092 closed deterministic retained statistics](decisions/2026-10-01-statistical-narrative-evidence.md).
 
 Renderer memory continuation: [D-093 kernel charged-memory enforcement and a separate virtual-address ceiling](decisions/2026-10-01-renderer-charged-memory.md).
+
+Scalar equality continuation: [D-094 exact predicates required by every selected scalar occurrence](decisions/2026-10-03-scalar-predicate-entailment.md).
