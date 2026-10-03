@@ -60,6 +60,39 @@ func TestRendererKernelMemoryContract(t *testing.T) {
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("probe compile: %v %s", err, out)
 	}
+	t.Run("startup-after-kill-probe", func(t *testing.T) {
+		// New verifies cgroup.kill on a separate empty sibling. On kernels with
+		// the CLONE_INTO_CGROUP kill_seq regression, probing the launch leaf
+		// itself instead makes even this healthy child die before it can reply.
+		for i := 0; i < 2; i++ {
+			g, err := containment.New(root, 1<<30)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			cmd, cleanup, err := sandboxCommand(ctx, binary, "linux_namespaces")
+			if err == nil {
+				err = bindMemoryGroup(cmd, g)
+			}
+			var stdout, stderr bytes.Buffer
+			if err == nil {
+				cmd.Args = append(cmd.Args, "healthy")
+				cmd.Env = []string{"GOMAXPROCS=1"}
+				cmd.Stdin = strings.NewReader("ping\n")
+				cmd.Stdout, cmd.Stderr = &stdout, &stderr
+				cmd.Cancel = g.Kill
+				cmd.WaitDelay = time.Second
+				err = cmd.Run()
+			}
+			killed, eventErr := g.OOMKilled()
+			closeErr := g.Close()
+			cleanup()
+			cancel()
+			if err != nil || stdout.String() != "alive\n" || stderr.Len() != 0 || eventErr != nil || killed || closeErr != nil {
+				t.Fatalf("fresh worker %d: run=%v stdout=%q stderr=%q oom=%v accounting=%v cleanup=%v", i, err, stdout.String(), stderr.String(), killed, eventErr, closeErr)
+			}
+		}
+	})
 	t.Run("revoked-controls", func(t *testing.T) {
 		// A privileged manager can bypass revoked mode bits and mask this bug.
 		status, err := os.ReadFile("/proc/self/status")

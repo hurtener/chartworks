@@ -135,6 +135,10 @@ func New(rootPath string, memory int64) (*Group, error) {
 		return nil, ErrUnavailable
 	}
 	name := "render-" + hex.EncodeToString(random[:])
+	if err := probeKillControl(root, name+"-probe"); err != nil {
+		_ = root.Close()
+		return nil, err
+	}
 	if unix.Mkdirat(int(root.Fd()), name, 0700) != nil {
 		_ = root.Close()
 		return nil, ErrUnavailable
@@ -177,7 +181,7 @@ func New(rootPath string, memory int64) (*Group, error) {
 			}
 		}
 	}
-	if huge == 0 || g.openControls() != nil || g.Kill() != nil {
+	if huge == 0 || g.openControls() != nil {
 		return nil, g.discard()
 	}
 	stats, e := readControl(g.dir, "cgroup.stat")
@@ -193,6 +197,30 @@ func New(rootPath string, memory int64) (*Group, error) {
 		return nil, g.discard()
 	}
 	return g, nil
+}
+
+// probeKillControl verifies a real kill write on a disposable empty sibling.
+// Never write cgroup.kill on the future worker leaf: kernels affected by Linux
+// b69bb476dee9 snapshot the parent's kill_seq for CLONE_INTO_CGROUP and kill the
+// child immediately when that differs from the target's sequence. Upstream fix:
+// 8e359920216689b3b79e0fe8961a77fe312a511f. The launch leaf stays fresh, while
+// its writable kill descriptor and the ordinary cancellation/cleanup remain.
+func probeKillControl(root *os.File, name string) (err error) {
+	if unix.Mkdirat(int(root.Fd()), name, 0700) != nil {
+		return ErrUnavailable
+	}
+	defer func() {
+		if unix.Unlinkat(int(root.Fd()), name, unix.AT_REMOVEDIR) != nil {
+			err = errors.Join(ErrUnavailable, ErrCleanup)
+		}
+	}()
+	fd, err := unix.Openat(int(root.Fd()), name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return ErrUnavailable
+	}
+	dir := os.NewFile(uintptr(fd), "render-kill-probe")
+	defer dir.Close()
+	return writeControl(dir, "cgroup.kill", "1")
 }
 
 func pageBudget(memory, page int64) int64 {

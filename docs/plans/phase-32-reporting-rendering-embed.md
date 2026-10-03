@@ -90,3 +90,21 @@ Missing enforcement has no fallback. Host provisioning remains separate approval
 mandatory deployment gate alongside the existing AC01–AC08; absence is failure,
 not a planning skip. Pure tests and recorded functional rendering do not qualify
 a host that cannot provide the boundary.
+
+## Worker startup continuation — 2026-10-03
+
+The first disposable-host kernel run at source `e08af54` passed cgroup admission
+but every launched probe received an immediate SIGKILL without an OOM receipt.
+That pattern matches the upstream Linux `CLONE_INTO_CGROUP` kill-sequence defect
+documented in [fix 8e3599202166](https://kernel.googlesource.com/pub/scm/linux/kernel/git/tip/tip/+/8e359920216689b3b79e0fe8961a77fe312a511f):
+the previous admission check wrote `cgroup.kill` on the future worker leaf.
+Admission now verifies that write on a distinct disposable empty sibling, removes
+it, and creates the untouched launch leaf afterward. Failed probe cleanup remains
+an explicit supervisor-poisoning failure; writable retained controls, limits,
+atomic namespace placement and cancellation/cleanup assertions are unchanged.
+
+`TestRendererKernelMemoryContract/startup-after-kill-probe` requires two successful
+healthy launches after admission, with no OOM and successful cleanup. Local
+containment tests and compilation cannot confirm behavior on the deployment
+kernel. The complete kernel and Phase32 gates at the fixed exact source remain
+required before claiming the startup cause or deployment qualification resolved.

@@ -92,3 +92,15 @@ A supported operator-provisioned runner must pass the kernel and full Phase32 ga
 Primary references: [Linux cgroup v2](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html),
 [clone3](https://man7.org/linux/man-pages/man2/clone.2.html),
 [Go process creation](https://go.dev/src/syscall/exec_linux.go).
+
+## Admission implementation clarification — 2026-10-03
+
+The required kill-control write probe uses a separate disposable empty sibling,
+which must be removed before the worker leaf is created. The worker leaf retains
+its writable kill descriptor without a pre-launch kill write. This avoids the
+upstream [CLONE_INTO_CGROUP kill-sequence regression](https://kernel.googlesource.com/pub/scm/linux/kernel/git/tip/tip/+/8e359920216689b3b79e0fe8961a77fe312a511f)
+while preserving real kill-write admission, all job limits and mandatory terminal
+cleanup. Probe removal failure is an explicit cleanup failure that disables the
+supervisor. No host setting, namespace flag or memory ceiling changes. The
+additional healthy-start regression and existing adversarial kernel gates must
+pass on the exact deployed source; this clarification does not claim they passed.

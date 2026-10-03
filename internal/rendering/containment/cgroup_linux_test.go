@@ -108,6 +108,39 @@ func TestContainmentCleanupFailureIsDistinct(t *testing.T) {
 		t.Fatal("population check")
 	}
 }
+
+func TestContainmentKillProbeFailureCleanup(t *testing.T) {
+	rootPath := t.TempDir()
+	root, err := os.Open(rootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	// Ordinary directories do not supply cgroup.kill. Admission must fail and
+	// remove the newly created probe without mistaking that for cleanup failure.
+	if err := probeKillControl(root, "missing-control"); !errors.Is(err, ErrUnavailable) || errors.Is(err, ErrCleanup) {
+		t.Fatal("missing kill control", err)
+	}
+	if _, err := os.Stat(filepath.Join(rootPath, "missing-control")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("failed probe retained", err)
+	}
+	// A name collision is not our leaf and must never be removed or killed.
+	existing := filepath.Join(rootPath, "existing")
+	if err := os.Mkdir(existing, 0700); err != nil {
+		t.Fatal(err)
+	}
+	control := filepath.Join(existing, "cgroup.kill")
+	if err := os.WriteFile(control, []byte("untouched"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := probeKillControl(root, "existing"); !errors.Is(err, ErrUnavailable) {
+		t.Fatal("existing probe admitted", err)
+	}
+	if data, err := os.ReadFile(control); err != nil || string(data) != "untouched" {
+		t.Fatal("existing leaf changed", err)
+	}
+}
+
 func TestContainmentIndependentBudgets(t *testing.T) {
 	if AddressSpaceBytes != 3<<30 || MaxChargedBytes != 1<<30 {
 		t.Fatal("approved ceilings changed")
