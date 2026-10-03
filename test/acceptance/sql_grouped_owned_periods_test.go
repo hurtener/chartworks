@@ -365,7 +365,25 @@ ALTER TABLE analytics.orders ALTER COLUMN total_usd DROP NOT NULL; ALTER TABLE a
 						t.Fatal("owned grouped Run", err)
 					}
 					assertResult(result, "2026")
-					assertScopedLearningBase(t, query, actor, pack.Topic, plan.QueryID, sql, nlqexec.ScopedGroupedExamplePolicy)
+					learned := assertScopedLearningBase(t, query, actor, pack.Topic, plan.QueryID, sql, nlqexec.ScopedGroupedExamplePolicy)
+					active := activateScopedLearningBase(t, query, actor, learned)
+					fresh := request
+					fresh.Operation = "current-scoped-population"
+					fresh.Question = strings.Replace(fresh.Question, "2026", "2025", 1)
+					freshPlan, freshErr := query.Plan(t.Context(), actor, fresh)
+					if freshErr != nil {
+						t.Fatal("new-period learned plan", freshErr)
+					}
+					freshStored, freshErr := f.db.ReadQuery(t.Context(), scope, freshPlan.QueryID)
+					if freshErr != nil {
+						t.Fatal(freshErr)
+					}
+					assertScopedExampleUsage(t, freshStored, active, 3)
+					freshResult, freshErr := query.Run(t.Context(), actor, nlqexec.RunRequest{QueryID: freshPlan.QueryID, Operation: "current-scoped-population-run"})
+					if freshErr != nil {
+						t.Fatal("new-period learned run", freshErr)
+					}
+					assertResult(freshResult, "2025")
 					metadata := support.Raw(t, f.dsn)
 					calls, attempts := model.requests.Load(), count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
 					restarted, err := nlqexec.New(router, topic, f.s, f.validator, f.executor, model.engine, f.db)

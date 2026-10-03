@@ -48,6 +48,7 @@ func TestSQLRecoveryScalarCohortActivityAcceptance(t *testing.T) {
 		}
 		return nlqexec.PlanRequest{QuestionRequest: nlqexec.QuestionRequest{Topic: current.Pack.Topic, Context: current.Pack.Datasets[0].Source.Context, Locale: nlq.LanguageEnglish, Question: questions[key], MetricIDs: metrics, Kinds: []string{"kpi", "measure", "dimension"}, LimitPerKind: 8}}
 	}
+	var previousExample *nlqexec.ExampleRecord
 	for _, activity := range []bool{false, true} {
 		model.mode.Store(phase18RawResponse(t, scopedNetModelSQL(activity)))
 		plan, err := h.query.Plan(t.Context(), h.queryActor, request(activity))
@@ -88,7 +89,81 @@ func TestSQLRecoveryScalarCohortActivityAcceptance(t *testing.T) {
 		if err != nil || stored.AnalyticalVersion != 9 || stored.Clarification == nil || stored.Clarification.BaseSQL != scopedNetModelSQL(activity) || len(stored.Clarification.BaseParameters) != 0 || len(stored.Parameters) != 4 {
 			t.Fatal("period custody/replay record", err)
 		}
-		assertScopedLearningBase(t, h.query, h.queryActor, current.Pack.Topic, plan.QueryID, scopedNetModelSQL(activity), nlqexec.ScopedScalarExamplePolicy)
+		learned := assertScopedLearningBase(t, h.query, h.queryActor, current.Pack.Topic, plan.QueryID, scopedNetModelSQL(activity), nlqexec.ScopedScalarExamplePolicy)
+		active := activateScopedLearningBase(t, h.query, h.queryActor, learned)
+		fresh := request(activity)
+		fresh.Operation = "current-scoped-" + key
+		freshPlan, freshErr := h.query.Plan(t.Context(), h.queryActor, fresh)
+		if freshErr != nil {
+			t.Fatal("current scalar learned plan", freshErr)
+		}
+		freshStored, freshErr := h.f.db.ReadQuery(t.Context(), scope, freshPlan.QueryID)
+		if freshErr != nil {
+			t.Fatal(freshErr)
+		}
+		if activity {
+			// The full activity context cannot fit both complete demonstrations.
+			// Ranking is not use: preserve explicit budget omission, then isolate
+			// the activity candidate to prove that mandatory-context pressure, not
+			// a competing template, causes omission. Do not raise token limits or
+			// remove the required amount-completeness outputs to force a use claim.
+			usage := freshStored.ExampleSelection.Usage
+			if usage == nil || len(usage.Used) != 0 || len(usage.Omitted) != 2 || previousExample == nil {
+				t.Fatal("overfull scoped lane lost explicit omission")
+			}
+			omittedIDs := map[string]bool{active.ID: true, previousExample.ID: true}
+			selectedIDs := map[string]bool{active.ID: true, previousExample.ID: true}
+			for _, omitted := range usage.Omitted {
+				if omitted.Reason != "budget" || !omittedIDs[omitted.ExampleID] {
+					t.Fatal("unexpected scoped omission identity/reason")
+				}
+				delete(omittedIDs, omitted.ExampleID)
+			}
+			for _, selected := range freshStored.ExampleSelection.Selected {
+				if !selectedIDs[selected.ExampleID] {
+					t.Fatal("unexpected selected scoped identity")
+				}
+				delete(selectedIDs, selected.ExampleID)
+			}
+			if len(omittedIDs) != 0 || len(selectedIDs) != 0 {
+				t.Fatal("scoped omission identity set incomplete")
+			}
+			if _, retireErr := h.query.ExampleState(t.Context(), h.queryActor, nlqexec.ExampleStateRequest{ExampleID: previousExample.ID, ExpectedVersion: previousExample.Version, State: "retired", ReviewNote: "Isolate current activity demonstration for bounded prompt qualification"}); retireErr != nil {
+				t.Fatal("retire prior test demonstration", retireErr)
+			}
+			fresh.Operation += "-isolated"
+			freshPlan, freshErr = h.query.Plan(t.Context(), h.queryActor, fresh)
+			if freshErr != nil {
+				t.Fatal("isolated scalar learned plan", freshErr)
+			}
+			freshStored, freshErr = h.f.db.ReadQuery(t.Context(), scope, freshPlan.QueryID)
+			if freshErr != nil {
+				t.Fatal(freshErr)
+			}
+			usage = freshStored.ExampleSelection.Usage
+			if usage == nil || len(usage.Used) != 0 || len(usage.Omitted) != 1 || usage.Omitted[0].ExampleID != active.ID || usage.Omitted[0].Reason != "budget" || len(freshStored.ExampleSelection.Selected) != 1 || freshStored.ExampleSelection.Selected[0].ExampleID != active.ID {
+				t.Fatal("single activity example lost exact budget omission")
+			}
+			if freshStored.Clarification == nil || freshStored.Clarification.Binding.SchemaVersion != 2 || freshStored.ExampleSelection.Eligibility == nil || freshStored.ExampleSelection.Eligibility.CurrentScopedPolicy != nlqexec.ScopedScalarExamplePolicy {
+				t.Fatal("budget omission dropped current scoped custody")
+			}
+		} else {
+			assertScopedExampleUsage(t, freshStored, active, 2)
+		}
+		previousExample = &active
+		freshResult, freshErr := h.query.Run(t.Context(), h.queryActor, nlqexec.RunRequest{QueryID: freshPlan.QueryID, Operation: freshPlan.QueryID + "-learned"})
+		if freshErr != nil || freshResult.Execution.Result == nil || len(freshResult.Execution.Result.Rows) != 1 || len(freshResult.Execution.Result.Rows[0]) != len(expected) {
+			t.Fatal("current scalar learned result", freshErr)
+		}
+		for i, want := range expected {
+			var value string
+			if json.Unmarshal(freshResult.Execution.Result.Rows[0][i], &value) != nil {
+				value = string(freshResult.Execution.Result.Rows[0][i])
+			}
+			if !liveNumberEquals(value, want) {
+				t.Fatal("learned scalar independent oracle", activity, i, value, want)
+			}
+		}
 		t.Logf("actual scoped activity=%t expected=%v receipt=%d binding=%d", activity, expected, stored.AnalyticalVersion, stored.Clarification.Binding.SchemaVersion)
 		for _, b := range stored.Clarification.Binding.Bindings {
 			if b.Population == "" || len(b.Parameters) != 2 {

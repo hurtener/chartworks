@@ -1,6 +1,7 @@
 package nlqexec
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -28,5 +29,21 @@ func TestLearningGenerationRetrievalQueryBounds(t *testing.T) {
 	}
 	if q := generationExampleQuery(a, "Revenue revenue ingresos"); q.SearchText != `"ingresos" OR "revenue"` {
 		t.Fatal("unstable normalized query", q.SearchText)
+	}
+}
+
+func TestScopedEligibilityPreservesOrdinaryDigestShape(t *testing.T) {
+	q := generationExampleQuery(grainAdmission("Revenue"), "Revenue")
+	raw, err := json.Marshal(q)
+	if err != nil || strings.Contains(string(raw), "ScopedPolicy") {
+		t.Fatal("ordinary eligibility digest shape changed", err)
+	}
+	if exampleEligibilityEvidence(q).Version != "current-example-eligibility-v1" {
+		t.Fatal("ordinary evidence changed version")
+	}
+	q.ScopedPolicy = ScopedScalarExamplePolicy
+	e := exampleEligibilityEvidence(q)
+	if e.Version != "current-example-eligibility-v2" || e.CurrentScopedPolicy != ScopedScalarExamplePolicy {
+		t.Fatal("scoped eligibility receipt lost policy")
 	}
 }

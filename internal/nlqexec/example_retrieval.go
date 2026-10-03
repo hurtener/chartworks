@@ -23,7 +23,7 @@ type GenerationExampleQuery struct {
 	RuleVersions        []string
 	Templates           []rulesets.TemplateSelection
 	AllowOwned          bool
-	ScopedPolicy        string
+	ScopedPolicy        string `json:",omitempty"`
 	SearchText          string
 	Limit               int
 }

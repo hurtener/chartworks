@@ -112,3 +112,12 @@ and native analytical validator still prove the generated query. Requalification
 passes the freshly compiled contract to the same binder before analytical review.
 These source changes require new native lifecycle and adversarial qualification;
 previously unpublished results do not establish their correctness or live quality.
+
+Example eligibility and ranking are not evidence of prompt use. The final token
+fit may omit an eligible scoped demonstration to preserve mandatory reviewed
+semantics. Qualification records actual `used` and `omitted` receipts separately.
+The full scalar activity fixture retains all amount-completeness outputs and
+explicitly proves budget omission with both two candidates and one isolated
+candidate; the scalar cohort and grouped current-year replacement cases separately
+prove actual use. No larger token cap or reduced semantic fixture substitutes for
+that distinction, and these recorded controls do not prove live learning gains.
