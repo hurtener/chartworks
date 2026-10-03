@@ -340,4 +340,67 @@ func TestReportAppAuthoringBlockReach(t *testing.T) {
 	if beforeSource != f.f.f.lookups.Load() || beforeModel != f.f.model.requests.Load() {
 		t.Fatal("manual authoring or denial performed source/model work")
 	}
+
+	// An explicit preview uses the already approved block and its actual source
+	// partition. No query-generation or narrative action is granted.
+	executionScopes := append(slices.Clone(scopes), "reporting.execute", "sources.read", "sources.query", "topics.read",
+		"cw.report.execute:manual-data", "cw.block.execute:manual-block", "cw.block.preview:manual-block", "cw.source.query:"+f.base.Source)
+	executor := phase27Actor(t, f.f, author.User(), executionScopes)
+	beforeAttempts := f.attemptCount(t)
+	preview, err := service.Preview(ctx, executor, reporting.AuthoringPreviewRequest{Report: state.ID, Key: "manual-block-preview", Revision: state.DraftRevision})
+	if err != nil || !preview.Private || preview.Complete || preview.QueryGroups != 1 {
+		t.Fatal("explicit manual block preview admission", preview, err)
+	}
+	if f.attemptCount(t) != beforeAttempts {
+		t.Fatal("preview admission executed a source query")
+	}
+	for _, missing := range []string{"cw.block.execute:manual-block", "cw.execution_context.use:" + f.base.Context} {
+		denied := phase27Actor(t, f.f, author.User(), slices.DeleteFunc(slices.Clone(executionScopes), func(scope string) bool { return scope == missing }))
+		beforeDeniedSource := f.f.f.lookups.Load()
+		if _, err := service.Execute(ctx, denied, reporting.AuthoringExecuteRequest{Run: preview.ID}); err == nil {
+			t.Fatal("execution accepted missing selected dependency authority", missing)
+		}
+		if f.f.f.lookups.Load() != beforeDeniedSource || f.attemptCount(t) != beforeAttempts || f.f.model.requests.Load() != beforeModel {
+			t.Fatal("denied execution performed source/model work", missing)
+		}
+	}
+	completed, err := service.Execute(ctx, executor, reporting.AuthoringExecuteRequest{Run: preview.ID})
+	if err != nil || !completed.Private || !completed.Complete || completed.State != "completed" {
+		t.Fatal("manual approved-block preview execution", completed, err)
+	}
+	if f.attemptCount(t) != beforeAttempts+1 || f.f.model.requests.Load() != beforeModel {
+		t.Fatal("frozen preview did not use exactly one source attempt with zero model calls")
+	}
+	record, err := f.f.f.db.ReadComposition(ctx, executor, preview.ID)
+	if err != nil || len(record.Results) != 1 || record.Results[0].Block == nil || !record.Results[0].Block.Private || record.Results[0].Block.Revision != snapshot.Revision.Number {
+		t.Fatal("private preview lost the exact approved child revision", record, err)
+	}
+
+	// The host refreshes only the returned run and original private/context
+	// authority. Retained reads need no authoring, execution or source-query grant.
+	readerScopes := []string{"reporting.read", "reporting.preview", "cw.run.read:" + preview.ID,
+		"cw.report.preview:" + state.ID, "cw.execution_context.use:" + f.base.Context}
+	reader := phase27Actor(t, f.f, author.User(), readerScopes)
+	beforeRetainedSource := f.f.f.lookups.Load()
+	view, err := f.compositions.Get(ctx, reader, preview.ID)
+	if err != nil || !view.Private || !view.Complete {
+		t.Fatal("exact refreshed authority cannot reopen retained preview", view, err)
+	}
+	payload, err := f.compositions.Widget(ctx, reader, preview.ID, "main", "selected")
+	if err != nil || len(payload.Outputs) != 1 || payload.Outputs[0].ID != f.base.Outputs[0].ID || payload.Outputs[0].Chart == nil {
+		t.Fatal("retained manual block output selection", payload, err)
+	}
+	rows := payload.Outputs[0].Chart.Rows
+	if len(rows) != 2 || len(rows[0]) != 2 || rows[0][0].Value != "1" || rows[0][1].Value != "9007199254740993.125" {
+		t.Fatal("retained approved-block values lost exact source semantics", rows)
+	}
+	for _, missing := range []string{"cw.run.read:" + preview.ID, "cw.execution_context.use:" + f.base.Context} {
+		denied := phase27Actor(t, f.f, author.User(), slices.DeleteFunc(slices.Clone(readerScopes), func(scope string) bool { return scope == missing }))
+		if _, err := f.compositions.Widget(ctx, denied, preview.ID, "main", "selected"); err == nil {
+			t.Fatal("retained output ignored exact run/context reach", missing)
+		}
+	}
+	if f.f.f.lookups.Load() != beforeRetainedSource || f.attemptCount(t) != beforeAttempts+1 || f.f.model.requests.Load() != beforeModel {
+		t.Fatal("retained reads or denials re-executed source/model work")
+	}
 }

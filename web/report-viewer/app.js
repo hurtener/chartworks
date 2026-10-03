@@ -541,7 +541,7 @@ function retainedRunOutputs(v) {
 function periodValue(raw){let p;try{p=JSON.parse(raw);}catch{throw fail('invalid_request');}boundedJSON(p,4096);const keys=new Set(['mode','unit','count','start','end','from_date','first_occurrence','dst_policy','month_policy']);if(!p||Array.isArray(p)||Object.keys(p).some(k=>!keys.has(k)))throw fail('invalid_request');return {period:p};}
 
 export class Viewer {
-  constructor(root,bridge){this.root=root;this.bridge=bridge;this.locale='en';this.value=null;this.generation=0;this.mutationPending=false;this.timer=null;this.closed=false;this.lastSize='';bridge.onresult=result=>this.accept(result);bridge.oninput=()=>this.loading();bridge.oncontext=context=>this.context(context);bridge.onfailure=e=>this.error(e);bridge.onclose=()=>this.close();this.observer=typeof ResizeObserver==='function'?new ResizeObserver(()=>{const box=root.getBoundingClientRect(),key=Math.ceil(box.width)+':'+Math.ceil(box.height);if(key!==this.lastSize){this.lastSize=key;bridge.resize(box.width,box.height);}}):null;this.observer?.observe(root);this.loading();}
+  constructor(root,bridge,options={}){this.allowRun=options.allowRun!==false;this.allowGenerated=options.allowGenerated!==false;this.root=root;this.bridge=bridge;this.locale='en';this.value=null;this.generation=0;this.mutationPending=false;this.timer=null;this.closed=false;this.lastSize='';bridge.onresult=result=>this.accept(result);bridge.oninput=()=>this.loading();bridge.oncontext=context=>this.context(context);bridge.onfailure=e=>this.error(e);bridge.onclose=()=>this.close();this.observer=typeof ResizeObserver==='function'?new ResizeObserver(()=>{const box=root.getBoundingClientRect(),key=Math.ceil(box.width)+':'+Math.ceil(box.height);if(key!==this.lastSize){this.lastSize=key;bridge.resize(box.width,box.height);}}):null;this.observer?.observe(root);this.loading();}
   get w(){return words[this.locale];}
   clear(){clearTimeout(this.timer);this.timer=null;this.value=null;this.root.replaceChildren();}
   loading(){this.generation++;this.clear();const p=element('p',this.w.loading,'notice');p.setAttribute('role','status');this.root.append(p);}
@@ -594,6 +594,7 @@ export class Viewer {
     }catch(e){this.error(e);}
   }
   filters(v){
+    if(!this.allowRun)return;
     const w=this.w,filters=array(v.filters);if(!filters.length)return;
     const details=element('details');details.append(element('summary',w.filters));const fieldset=element('fieldset');fieldset.append(element('legend',w.filters),element('p',w.consent));const grid=element('div',undefined,'filters'),controls=[];
     for(const f of filters){const p=f.parameter;if(!id(p?.name))throw fail('invalid_request');const label=element('label',text(f.label)||p.name);let input;
@@ -601,7 +602,7 @@ export class Viewer {
       else{input=element(p.type==='relative_period'?'textarea':'input');if(input.tagName==='INPUT'){input.type=p.type==='date'?'date':'text';if(['number','integer','top_n'].includes(p.type))input.inputMode='decimal';}input.maxLength=p.type==='relative_period'?4096:4096;input.placeholder=p.default?JSON.stringify(p.default):w.default;}
       input.setAttribute('aria-label',text(f.label)||p.name);const useDefault=element('input');useDefault.type='checkbox';useDefault.checked=true;input.disabled=true;useDefault.addEventListener('change',()=>{input.disabled=useDefault.checked;});const defaultLabel=element('span',undefined,'check');defaultLabel.append(useDefault,element('span',w.default));label.append(defaultLabel,input);if(p.type==='relative_period')label.append(element('span','JSON: mode, unit, count, start, end, dst_policy, month_policy','metadata'));grid.append(label);controls.push({f,input,useDefault});
     }
-    fieldset.append(grid);const dynamic=element('input'),narrative=element('input');dynamic.type=narrative.type='checkbox';for(const [input,label]of[[dynamic,w.dynamic],[narrative,w.narrative]]){const l=element('label',undefined,'check');l.append(input,element('span',label));fieldset.append(l);}
+    fieldset.append(grid);const dynamic=element('input'),narrative=element('input');dynamic.type=narrative.type='checkbox';for(const [input,label]of(this.allowGenerated?[[dynamic,w.dynamic],[narrative,w.narrative]]:[])){const l=element('label',undefined,'check');l.append(input,element('span',label));fieldset.append(l);}
     const run=button(w.apply,async()=>{
       if(this.mutationPending||this.closed)return;this.mutationPending=true;run.disabled=true;const oldSelection={...v.selection},startingGeneration=this.generation;
       try{

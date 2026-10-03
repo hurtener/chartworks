@@ -31,3 +31,7 @@ func HTML() string {
 		"</script></body></html>",
 	}, "")
 }
+
+// Assets exposes the single retained-output presentation implementation for
+// other compiled Chartworks resources. It contains no caller or tenant data.
+func Assets() (javascript, css string) { return script, styles }
