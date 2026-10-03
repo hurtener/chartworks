@@ -223,7 +223,7 @@ try{
  await click('Close retained view');await evaluate('compactCatalog=true');await click('Refresh runs');await ready();await click('Open retained run');await textHas(exactAmount);await ready();
  await checkGrid('compactDefinition','Consumer legacy short cards');await checkFixedGrid('Consumer legacy short cards');
  await check(`(()=>{const c=${canvas},body=c.querySelector('[data-output="kpi-main"]').closest('.widget-body');return Array.from(c.querySelectorAll('article[data-widget]')).every(e=>Number(e.dataset.height)===1&&Math.abs(e.getBoundingClientRect().height-80)<2)&&body.scrollHeight>body.clientHeight&&getComputedStyle(body).overflowY==='auto'&&c.textContent.includes(${JSON.stringify(exactAmount)});})()`,'legacy short cells retain saved height and provide scrolling access to complete exact values');
- await evaluate(`${output('kpi-main')}.closest('.widget-body').scrollTop=10000`);
+ await evaluate(`(()=>{const section=${output('kpi-main')};if(!section)throw new Error('Missing compact KPI output');section.closest('.widget-body').scrollTop=10000;})()`);
  await check(`${output('kpi-main')}.closest('.widget-body').scrollTop>0&&${executions}===${beforeCompact}`,'scrolling an undersized retained card never reflows the saved grid or executes data');
  await click('Close retained view');await evaluate('compactCatalog=false');await click('Refresh runs');await ready();await click('Open retained run');await textHas(exactAmount);await ready();
  const beforeDenials=await evaluate(executions);
