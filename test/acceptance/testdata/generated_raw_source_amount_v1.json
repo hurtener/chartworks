@@ -1,0 +1,23 @@
+{
+  "id": "generated-raw-source-amount-v1",
+  "topic": "generated-raw-source-amount-v1",
+  "name": "Raw order source amount",
+  "business": "Raw order source amount means only SUM(orders.total_usd), expressed in USD, across all order rows at one row per order_id. Include paid and cancelled rows; status is descriptive and never restricts this population. The stored total_usd value is an opaque source amount. Its components and business calculation are not defined: do not label or infer gross revenue, net revenue, tax, discount or refund treatment. ordered_at is the order's Gregorian calendar date in UTC; month, quarter and year groupings are meaningful. order_id is an identifier. Produce no additional measures, KPIs or relationships. Missing business meaning remains unresolved outside this raw source-amount definition.",
+  "source_fixture_sha256": "260ea4dcf53cf923245c0a99f43ae5ce62bdf2e0094b82a5f072f487f82fb70b",
+  "expected_total": "700.00",
+  "expected_months": {"2026-01": "320.00", "2026-02": "240.00", "2026-03": "140.00"},
+  "queries": [
+    {
+      "id": "raw-source-amount-total-v1",
+      "question": "What is the raw order source amount in USD, summing orders.total_usd across every order row including paid and cancelled orders?",
+      "recorded_sql": "SELECT SUM(total_usd) AS raw_source_amount FROM analytics.orders",
+      "monthly": false
+    },
+    {
+      "id": "raw-source-amount-calendar-v1",
+      "question": "What is the raw order source amount in USD by Gregorian calendar month in 2026 using ordered_at in UTC, including every paid and cancelled order row?",
+      "recorded_sql": "SELECT date_trunc('month',CAST(ordered_at AS timestamp without time zone)) AS order_month, SUM(total_usd) AS raw_source_amount FROM analytics.orders WHERE ordered_at >= DATE '2026-01-01' AND ordered_at < DATE '2027-01-01' GROUP BY date_trunc('month',CAST(ordered_at AS timestamp without time zone)) ORDER BY order_month",
+      "monthly": true
+    }
+  ]
+}

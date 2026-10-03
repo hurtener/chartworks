@@ -38,6 +38,9 @@ func recordedQualityAnswer(t *testing.T, mode string, context, material map[stri
 		}
 		answer["status"] = "needs_review"
 		answer["findings"] = []any{map[string]any{"code": "incomplete_evidence", "entities": []string{entity}, "detail": "An operator must verify that the declared all-order gross definition matches the intended business requirement."}}
+		if mode == "topic_quality_ambiguous_amount" {
+			answer["findings"] = []any{map[string]any{"code": "ambiguous_meaning", "entities": []string{entity}, "detail": "The stored amount components and business calculation are not defined, so the claimed gross meaning remains unresolved."}}
+		}
 		return answer
 	}
 	t.Error("recorded quality fixture lacks a measure reference")

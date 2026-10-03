@@ -1,0 +1,8 @@
+{
+  "id": "generated-raw-source-amount-v2-sql-v2",
+  "input_fixture_id": "generated-raw-source-amount-v2",
+  "input_fixture_sha256": "b0a348f50e4e71603b6a6a5dbe18203093f0221d093c110918420689bc9f2831",
+  "case_id": "raw-source-amount-calendar-v2",
+  "sql": "SELECT date_trunc('month',CAST(ordered_at AS timestamp without time zone)) AS order_month, SUM(total_usd) AS raw_source_amount FROM analytics.orders GROUP BY date_trunc('month',CAST(ordered_at AS timestamp without time zone)) ORDER BY order_month",
+  "reason": "The service separately binds the exact admitted UTC 2026 range. Model SQL must not duplicate it as literal predicates."
+}

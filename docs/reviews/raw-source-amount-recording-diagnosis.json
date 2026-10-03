@@ -1,0 +1,44 @@
+{
+  "format": "raw-source-amount-v2-recording-diagnosis-v1",
+  "input_fixture_sha256": "b0a348f50e4e71603b6a6a5dbe18203093f0221d093c110918420689bc9f2831",
+  "recorded_sql_v2_sha256": "ebf1b1b1a18b4dffa88f63e1e1c95e88ed52ac7abcfe98dac9bca5f0fe1888ab",
+  "original_recording_outcome": "analytical_population_mismatch",
+  "route": {
+    "interpretation_policy": "grounded-calendar-v2",
+    "column": "ordered_at",
+    "calendar": "gregorian",
+    "timezone": "UTC",
+    "type": "date",
+    "start": "2026-01-01",
+    "end": "2027-01-01",
+    "grouping": "month"
+  },
+  "corrected_model_sql": "SELECT date_trunc('month',CAST(ordered_at AS timestamp without time zone)) AS order_month, SUM(total_usd) AS raw_source_amount FROM analytics.orders GROUP BY date_trunc('month',CAST(ordered_at AS timestamp without time zone)) ORDER BY order_month",
+  "final_validated_sql": "SELECT date_trunc('month',CAST(ordered_at AS timestamp without time zone)) AS order_month, SUM(total_usd) AS raw_source_amount FROM analytics.orders  WHERE (\"orders\".\"ordered_at\" >= CAST($1 AS DATE) AND \"orders\".\"ordered_at\" < CAST($2 AS DATE)) GROUP BY date_trunc('month',CAST(ordered_at AS timestamp without time zone)) ORDER BY order_month",
+  "binding": {
+    "kind": "time_window",
+    "operator": "range",
+    "column": "ordered_at",
+    "parameters": [
+      1,
+      2
+    ],
+    "validated": true
+  },
+  "actual_rows": [
+    [
+      "2026-01-01 00:00:00",
+      "320.00"
+    ],
+    [
+      "2026-02-01 00:00:00",
+      "240.00"
+    ],
+    [
+      "2026-03-01 00:00:00",
+      "140.00"
+    ]
+  ],
+  "outcome": "succeeded",
+  "evidence_scope": "Offline synthetic diagnosis with an added capture test, not exact-source final qualification or a live provider run."
+}
