@@ -48,7 +48,19 @@ func TestLiveGeneratedTopicGatewayE2E(t *testing.T) { runLiveGeneratedTopic(t, f
 
 func TestLiveGeneratedTopicPaidVocabularyE2E(t *testing.T) { runLiveGeneratedTopic(t, true) }
 
+// The raw-source lane is separately opted in and never changes the gross lane.
+func TestLiveGeneratedRawSourceAmountV2E2E(t *testing.T) {
+	if os.Getenv("CHARTWORKS_LIVE_E2E") != "1" || os.Getenv("CHARTWORKS_LIVE_GENERATED_TOPICS") != "1" || os.Getenv("CHARTWORKS_LIVE_RAW_SOURCE_AMOUNT_V2") != "1" {
+		t.Skip("parent budget runner must explicitly enable the separate raw-source-amount-v2 live gate")
+	}
+	runLiveGeneratedTopicFixture(t, false, loadGeneratedRawSourceAmountV2(t))
+}
+
 func runLiveGeneratedTopic(t *testing.T, paid bool) {
+	runLiveGeneratedTopicFixture(t, paid, nil)
+}
+
+func runLiveGeneratedTopicFixture(t *testing.T, paid bool, raw *generatedRawSourceAmountFixture) {
 	if os.Getenv("CHARTWORKS_LIVE_E2E") != "1" || os.Getenv("CHARTWORKS_LIVE_GENERATED_TOPICS") != "1" {
 		t.Skip("parent budget runner must explicitly enable the generated-topic live gate")
 	}
@@ -67,11 +79,17 @@ func runLiveGeneratedTopic(t *testing.T, paid bool) {
 	}
 	observed := &liveReceiptEngine{Engine: engine, callLimit: 32, traceEnabled: os.Getenv("CHARTWORKS_LIVE_SYNTHETIC_TRACE") == "1"}
 	report := &generatedTopicReport{GeneratedOnly: true, Stage: "not_started", Unsupported: []string{"Paid-only and refund populations require explicit admitted business vocabulary; no authored filters are injected by this baseline"}}
+	artifactPrefix := "generated-topic"
+	if raw != nil {
+		report = raw.report()
+		artifactPrefix = raw.ID
+		writeLiveJSON(t, artifactDir, artifactPrefix+"-fixture.json", raw)
+	}
 	defer func() {
 		report.ModelUsage = observed.since(0)
-		writeLiveJSON(t, artifactDir, "generated-topic-receipt.json", report)
+		writeLiveJSON(t, artifactDir, artifactPrefix+"-receipt.json", report)
 		if observed.traceEnabled {
-			writeLiveJSON(t, artifactDir, "generated-topic-trace.json", observed.traceSnapshot())
+			writeLiveJSON(t, artifactDir, artifactPrefix+"-trace.json", observed.traceSnapshot())
 		}
 	}()
 	business := generatedOrdersBusiness
@@ -79,21 +97,40 @@ func runLiveGeneratedTopic(t *testing.T, paid bool) {
 		business = generatedPaidBusiness
 		report.Unsupported = []string{"Cross-dataset refund/net definitions require their own admitted meaning and reviewed relationships"}
 	}
-	h := newGeneratedTopicHarness(t, observed, business, report)
+	var h *generatedTopicHarness
+	if raw != nil {
+		h = newNamedGeneratedTopicHarness(t, observed, raw.Business, report, raw.Topic, raw.Name)
+	} else {
+		h = newGeneratedTopicHarness(t, observed, business, report)
+	}
 	var vocabulary []drafts.AuthoringValue
 	if paid {
 		classifyGeneratedStatusVocabulary(t, h, report)
 		vocabulary = generatedPaidVocabulary(h.scaffold.Pack)
 	}
-	current := h.generate(t, report, nil, vocabulary)
-	writeLiveJSON(t, artifactDir, "generated-topic-candidate.json", current)
+	var current drafts.Version
+	if raw != nil {
+		current = h.generate(t, report, nil)
+	} else {
+		current = h.generate(t, report, nil, vocabulary)
+	}
+	writeLiveJSON(t, artifactDir, artifactPrefix+"-candidate.json", current)
 	requireLiveModelCall(t, observed.since(0), "enhance", "openrouter", "openai/gpt-6-luna", "openai/gpt-6-luna", "gpt-6-luna")
 	requireLiveModelCall(t, observed.since(0), "topic_review", "openrouter", "openai/gpt-6-luna", "openai/gpt-6-luna", "gpt-6-luna")
-	h.publish(t, current, report, paid)
+	if raw != nil {
+		h.publishReviewed(t, current, report, generatedRawSourceAmountReview(current.Pack), "Synthetic operator checked only SUM(orders.total_usd), all rows, USD, order_id grain and Gregorian UTC calendar against this exact candidate; no source amount components are defined")
+	} else {
+		h.publish(t, current, report, paid)
+	}
 	requireLiveModelCall(t, observed.since(0), "embedding", "openrouter", "perplexity/pplx-embed-v1-0.6b", "pplx-embed-v1-0.6b", "perplexity/pplx-embed-v1-0.6b")
 	ctx, cancel := context.WithTimeout(t.Context(), 4*time.Minute)
 	defer cancel()
-	h.runQueries(t, ctx, current, report, nil, paid)
+	if raw != nil {
+		total, months := raw.independentTotals(t, h)
+		h.runQueryCases(t, ctx, current, report, nil, raw.queryCases(), total, months, report.InterpretationPolicy)
+	} else {
+		h.runQueries(t, ctx, current, report, nil, paid)
+	}
 	requireLiveModelCall(t, observed.since(0), "sqlgen", "openrouter", "openai/gpt-6-luna", "openai/gpt-6-luna", "gpt-6-luna")
 	requireLiveModelCall(t, observed.since(0), "rerank", "openrouter-rerank", "cohere/rerank-4-fast", "cohere/rerank-4-fast", "rerank-4-fast")
 }

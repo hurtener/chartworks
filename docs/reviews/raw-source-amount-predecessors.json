@@ -1,0 +1,48 @@
+{
+  "format": "raw-source-amount-predecessor-failures-v1",
+  "fixture_id": "generated-raw-source-amount-v1",
+  "fixture_sha256": "be9f3d0e29aab3002bba6aac5745c0c9ee718463f0c19e8bd13226a5b225796c",
+  "monthly_case": "raw-source-amount-calendar-v1",
+  "expected_outcome": "answer",
+  "expected_months": {
+    "2026-01": "320.00",
+    "2026-02": "240.00",
+    "2026-03": "140.00"
+  },
+  "quality_outcome": "failed_to_answer",
+  "attempts": [
+    {
+      "interpretation_policy": "legacy_default",
+      "exact_source_measured": false,
+      "source_note": "Build began before final local test edits; not exact-source qualification.",
+      "reported_failure": "analytical_population_mismatch",
+      "acceptance_log_sha256": "889943d630587fd25a8fc98a1c0a7baf024dc52cc7fce9cc037d21af43f46512",
+      "paid_provider_calls": 0
+    },
+    {
+      "interpretation_policy": "grounded-calendar-v2",
+      "exact_source_measured": true,
+      "source_commit": "0e7a4311bc36906a1abc9bd5a1073d8f5785422e",
+      "source_tree": "eeaaea99cdc9396a4040ca792a9c15048223a8a6",
+      "reported_failure": "plan_error",
+      "source_and_tree_unchanged": true,
+      "acceptance_log_sha256": "59909130d0b00bf18cc982cf3f1753cc147896ba827838872768a311df5d2309",
+      "paid_provider_calls": 0
+    }
+  ],
+  "disposition": "Preserve the expected answer and failed observations. The independently versioned v2 phrase is a separate bounded fixture; it does not make v1 a successful quality case.",
+  "v2_initial_recording": {
+    "fixture_id": "generated-raw-source-amount-v2",
+    "fixture_sha256": "b0a348f50e4e71603b6a6a5dbe18203093f0221d093c110918420689bc9f2831",
+    "expected_outcome": "answer",
+    "quality_outcome": "failed_to_answer",
+    "source_commit": "c1f57d84c6f622acd72af62f4a608bb014c06e6b",
+    "source_tree": "b5720a83cf4d74b256e9216276a0c099d82b22b4",
+    "interpretation_policy": "grounded-calendar-v2",
+    "reported_failure": "analytical_population_mismatch",
+    "source_and_tree_unchanged": true,
+    "acceptance_log_sha256": "09da1fd25773297402ced7aa012665b330dcccf2a608d62a424ae34dd0002a8a",
+    "paid_provider_calls": 0,
+    "disposition": "Fixture recording error: model supplied literal predicates for the already service-owned year range. Correct only through a separately versioned SQL recording; preserve v2 input/questions/oracles."
+  }
+}

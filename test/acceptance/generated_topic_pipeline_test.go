@@ -30,6 +30,11 @@ import (
 const generatedOrdersBusiness = "All-order gross value is the sum of total_usd in USD at one row per order_id. It includes both paid and cancelled orders; status is descriptive, not a population restriction. ordered_at is the order's calendar date, using the Gregorian calendar and UTC; month, quarter and year groupings are meaningful. order_id is an identifier. Produce no net-revenue KPI or relationships. Missing business meaning must remain unresolved."
 
 type generatedTopicReport struct {
+	RecordingID             string                 `json:"recording_id,omitempty"`
+	RecordingDigest         string                 `json:"recording_digest,omitempty"`
+	InterpretationPolicy    string                 `json:"interpretation_policy,omitempty"`
+	FixtureID               string                 `json:"fixture_id,omitempty"`
+	FixtureDigest           string                 `json:"fixture_digest,omitempty"`
 	PrivacyAnnotationDigest string                 `json:"privacy_annotation_digest,omitempty"`
 	InputMode               string                 `json:"input_mode"`
 	Stage                   string                 `json:"stage"`
@@ -58,6 +63,11 @@ type generatedTopicHarness struct {
 // Uses the real warehouse and profile service. No semantic entities are inserted
 // by this helper: the sole initial draft comes from OnboardProfile.
 func newGeneratedTopicHarness(t *testing.T, engine gateway.Engine, business string, report *generatedTopicReport) *generatedTopicHarness {
+	t.Helper()
+	return newNamedGeneratedTopicHarness(t, engine, business, report, "generated-order-value", "All-order gross value")
+}
+
+func newNamedGeneratedTopicHarness(t *testing.T, engine gateway.Engine, business string, report *generatedTopicReport, topic, name string) *generatedTopicHarness {
 	t.Helper()
 	ctx := t.Context()
 	report.Stage = "source_profile"
@@ -122,7 +132,7 @@ func newGeneratedTopicHarness(t *testing.T, engine gateway.Engine, business stri
 	}
 	client := publicationClient(t, f, draftService, topicService, topicScopes(f.e.Tenant()))
 	report.Stage = "profile_onboarding"
-	scaffold, err := client.OnboardTopicProfile(ctx, sdk.OnboardTopicProfileRequest{Topic: "generated-order-value", Version: "v1", Name: "All-order gross value", Description: business, Profile: profile.Version, Change: "Create unresolved scaffold from real profile"})
+	scaffold, err := client.OnboardTopicProfile(ctx, sdk.OnboardTopicProfileRequest{Topic: topic, Version: "v1", Name: name, Description: business, Profile: profile.Version, Change: "Create unresolved scaffold from real profile"})
 	if err != nil {
 		t.Fatal("profile onboarding", err)
 	}
@@ -246,15 +256,29 @@ func generatedBusinessReview(p semantics.TopicPack, paidOnly bool) string {
 
 func (h *generatedTopicHarness) publish(t *testing.T, current drafts.Version, report *generatedTopicReport, paid ...bool) {
 	t.Helper()
+	h.publishReviewed(t, current, report, generatedBusinessReview(current.Pack, len(paid) > 0 && paid[0]), "Synthetic operator checked all-order gross and Gregorian UTC calendar business requirements against this exact generated candidate")
+}
+
+// Both fixture lanes stop on findings. Recorded advisories are contract fixtures,
+// never permission to waive a finding in a live candidate.
+func generatedPublicationBlockReason(current drafts.Version, businessReview string) string {
+	if businessReview != "accepted_synthetic_business_contract" {
+		return businessReview
+	}
+	if current.Quality == nil || current.Quality.Status != "no_findings" {
+		return "model_advisory_requires_adjudication"
+	}
+	return ""
+}
+
+func (h *generatedTopicHarness) publishReviewed(t *testing.T, current drafts.Version, report *generatedTopicReport, businessReview, note string) {
+	t.Helper()
 	report.Stage = "explicit_operator_review"
-	report.BusinessReview = generatedBusinessReview(current.Pack, len(paid) > 0 && paid[0])
-	if report.BusinessReview != "accepted_synthetic_business_contract" {
-		t.Fatalf("generated business review: %s", report.BusinessReview)
+	report.BusinessReview = businessReview
+	if reason := generatedPublicationBlockReason(current, businessReview); reason != "" {
+		t.Fatalf("generated candidate not patched or published: %s", reason)
 	}
-	if current.Quality.Status != "no_findings" {
-		t.Fatal("model advisory requires unresolved human adjudication; candidate not patched or published")
-	}
-	review, err := h.client.ReviewTopic(t.Context(), current.Pack.Topic, sdk.TopicReviewRequest{DraftRevision: current.Metadata.Revision, Digest: current.Metadata.Digest, Decision: "approve", Note: "Synthetic operator checked all-order gross and Gregorian UTC calendar business requirements against this exact generated candidate"})
+	review, err := h.client.ReviewTopic(t.Context(), current.Pack.Topic, sdk.TopicReviewRequest{DraftRevision: current.Metadata.Revision, Digest: current.Metadata.Digest, Decision: "approve", Note: note})
 	if err != nil {
 		t.Fatal("explicit generated-topic review", err)
 	}
@@ -269,23 +293,42 @@ func (h *generatedTopicHarness) publish(t *testing.T, current drafts.Version, re
 	report.PublicationDigest = published.Digest
 }
 
-func generatedQueryCases(paid ...bool) []struct{ id, question, sql string } {
+type generatedTopicQuery struct {
+	id, question, sql string
+	monthly           bool
+	checkPlan         func(*testing.T, nlqexec.PlanResult)
+}
+
+func generatedQueryCases(paid ...bool) []generatedTopicQuery {
 	if len(paid) > 0 && paid[0] {
-		return []struct{ id, question, sql string }{{"paid-gross", "What is paid-order gross revenue in USD?", "SELECT SUM(total_usd) AS paid_gross FROM analytics.orders WHERE status='paid'"}, {"paid-calendar-month", "What is paid-order gross revenue by month in 2026?", "SELECT date_trunc('month',CAST(ordered_at AS timestamp without time zone)) AS order_month, SUM(total_usd) AS paid_gross FROM analytics.orders WHERE status='paid' GROUP BY date_trunc('month',CAST(ordered_at AS timestamp without time zone)) ORDER BY order_month"}}
+		return []generatedTopicQuery{{"paid-gross", "What is paid-order gross revenue in USD?", "SELECT SUM(total_usd) AS paid_gross FROM analytics.orders WHERE status='paid'", false, nil}, {"paid-calendar-month", "What is paid-order gross revenue by month in 2026?", "SELECT date_trunc('month',CAST(ordered_at AS timestamp without time zone)) AS order_month, SUM(total_usd) AS paid_gross FROM analytics.orders WHERE status='paid' GROUP BY date_trunc('month',CAST(ordered_at AS timestamp without time zone)) ORDER BY order_month", true, nil}}
 	}
-	return []struct{ id, question, sql string }{
-		{"all-order-gross", "What is the all-order gross value in USD across every order, including paid and cancelled orders?", "SELECT SUM(total_usd) AS all_order_gross FROM analytics.orders"},
-		{"calendar-month", "What is all-order gross value by month in 2026?", "SELECT date_trunc('month',CAST(ordered_at AS timestamp without time zone)) AS order_month, SUM(total_usd) AS all_order_gross FROM analytics.orders GROUP BY date_trunc('month',CAST(ordered_at AS timestamp without time zone)) ORDER BY order_month"},
+	return []generatedTopicQuery{
+		{"all-order-gross", "What is the all-order gross value in USD across every order, including paid and cancelled orders?", "SELECT SUM(total_usd) AS all_order_gross FROM analytics.orders", false, nil},
+		{"calendar-month", "What is all-order gross value by month in 2026?", "SELECT date_trunc('month',CAST(ordered_at AS timestamp without time zone)) AS order_month, SUM(total_usd) AS all_order_gross FROM analytics.orders GROUP BY date_trunc('month',CAST(ordered_at AS timestamp without time zone)) ORDER BY order_month", true, nil},
 	}
 }
 
 func (h *generatedTopicHarness) runQueries(t *testing.T, ctx context.Context, current drafts.Version, report *generatedTopicReport, prepare func(string), paid ...bool) {
 	t.Helper()
+	paidOnly := len(paid) > 0 && paid[0]
+	expectedTotal, expectedMonths := generatedIndependentTotals(t, h.f, paidOnly)
+	h.runQueryCases(t, ctx, current, report, prepare, generatedQueryCases(paidOnly), expectedTotal, expectedMonths)
+}
+
+func (h *generatedTopicHarness) runQueryCases(t *testing.T, ctx context.Context, current drafts.Version, report *generatedTopicReport, prepare func(string), cases []generatedTopicQuery, expectedTotal string, expectedMonths map[string]string, policies ...string) {
+	t.Helper()
+	policy := ""
+	if len(policies) > 1 {
+		t.Fatal("ambiguous generated-query interpretation policy")
+	}
+	if len(policies) == 1 {
+		policy = policies[0]
+	}
+	report.InterpretationPolicy = policy
 	report.Stage = "nlq_execution"
 	metric := semantics.GeneratedEntityID(semantics.EnhancementMeasure, current.Pack.Datasets[0].ID, "total_usd")
-	paidOnly := len(paid) > 0 && paid[0]
-	expectedGross, expectedMonths := generatedIndependentTotals(t, h.f, paidOnly)
-	for _, tc := range generatedQueryCases(paidOnly) {
+	for _, tc := range cases {
 		t.Run(tc.id, func(t *testing.T) {
 			if prepare != nil {
 				prepare(tc.sql)
@@ -293,19 +336,22 @@ func (h *generatedTopicHarness) runQueries(t *testing.T, ctx context.Context, cu
 			receipt := liveReceipt{Case: tc.id, Status: "not_completed"}
 			report.Queries = append(report.Queries, receipt)
 			slot := len(report.Queries) - 1
-			planned, err := h.query.Plan(ctx, h.queryActor, nlqexec.PlanRequest{QuestionRequest: nlqexec.QuestionRequest{Topic: current.Pack.Topic, Topics: []string{current.Pack.Topic}, Context: current.Pack.Datasets[0].Source.Context, Locale: nlq.LanguageEnglish, Question: tc.question, MetricIDs: []string{metric}, Kinds: []string{"measure", "dimension"}, LimitPerKind: 5, Rerank: true}})
+			planned, err := h.query.Plan(ctx, h.queryActor, nlqexec.PlanRequest{QuestionRequest: nlqexec.QuestionRequest{InterpretationPolicy: policy, Topic: current.Pack.Topic, Topics: []string{current.Pack.Topic}, Context: current.Pack.Datasets[0].Source.Context, Locale: nlq.LanguageEnglish, Question: tc.question, MetricIDs: []string{metric}, Kinds: []string{"measure", "dimension"}, LimitPerKind: 5, Rerank: true}})
 			if err != nil {
 				report.Queries[slot].Reason = livePlanFailureReason(err)
 				t.Fatalf("generated-topic plan: %s", report.Queries[slot].Reason)
+			}
+			if tc.checkPlan != nil {
+				tc.checkPlan(t, planned)
 			}
 			run, err := h.query.Run(ctx, h.queryActor, nlqexec.RunRequest{QueryID: planned.QueryID, Operation: "generated-" + tc.id, Rows: 20, Bytes: 65536})
 			if err != nil || run.Execution.Result == nil {
 				t.Fatal("generated-topic execution", err, run.Status)
 			}
-			if strings.HasSuffix(tc.id, "gross") && !liveSingleNumericEquals(run.Execution.Result.Rows, expectedGross) {
-				t.Fatal("generated gross differs from independently calculated fixture result")
+			if !tc.monthly && !liveSingleNumericEquals(run.Execution.Result.Rows, expectedTotal) {
+				t.Fatal("generated amount differs from independently calculated fixture result")
 			}
-			if strings.Contains(tc.id, "calendar") && !generatedCalendarCorrect(run.Execution.Result.Rows, expectedMonths) {
+			if tc.monthly && !generatedCalendarCorrect(run.Execution.Result.Rows, expectedMonths) {
 				t.Fatal("generated calendar totals differ from independently calculated per-month results")
 			}
 			report.Queries[slot] = liveReceipt{Case: tc.id, Status: run.Status, QueryID: planned.QueryID, RowCount: len(run.Execution.Result.Rows), ModelCalls: len(planned.Receipt.Calls), ModelCallsKnown: true, ModelUsage: planned.Receipt.Calls, RouteOutcome: string(planned.Route.Outcome), SourceStatus: run.Execution.Attempt.Status}

@@ -81,7 +81,7 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 		if rerankMode == "normal" {
 			rerankMode = mode
 		}
-		if mode == "topic_quality_echo" || mode == "topic_quality_findings" || mode == "topic_quality_unqualified" {
+		if mode == "topic_quality_echo" || mode == "topic_quality_findings" || mode == "topic_quality_unqualified" || mode == "topic_quality_ambiguous_amount" {
 			// Recorded reproduction of the observed strict-provider restriction.
 			// Only enum literals are restricted, not ordinary request JSON strings.
 			if recordedQualityQuotedEnums(input["response_format"]) {

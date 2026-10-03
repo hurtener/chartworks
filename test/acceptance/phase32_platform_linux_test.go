@@ -3,6 +3,8 @@
 package acceptance
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,41 +42,61 @@ func mustExecutable32(t *testing.T) string {
 }
 func phase32Probe(t *testing.T, kind, _ string) string {
 	t.Helper()
-	sourceDir, err := os.MkdirTemp(".", ".phase32-probe-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(sourceDir) })
-	var source string
 	switch kind {
-	case "crash":
-		source = `package main
-import "os"
-func main(){os.Exit(9)}`
-	case "sleep":
-		source = `package main
-import "time"
-func main(){time.Sleep(2*time.Second)}`
-	case "large":
-		source = `package main
-import "os"
-func main(){_,_=os.Stdout.Write(make([]byte,4096))}`
-	case "clean":
-		source = `package main
-import("os";"github.com/hurtener/chartworks/internal/rendering")
-func main(){if os.Getenv("SECRET_CANARY")!="" || os.Getenv("GOMAXPROCS")!="1"{os.Exit(7)};if rendering.WorkerMain(os.Stdin,os.Stdout,4<<20,4<<20,1<<30)!=nil{os.Exit(1)}}`
+	case "crash", "sleep", "large", "clean":
 	default:
 		t.Fatal("unknown probe")
 	}
-	file := filepath.Join(sourceDir, "main.go")
-	if err := os.WriteFile(file, []byte(source), 0600); err != nil {
-		t.Fatal(err)
-	}
-	absoluteFile, err := filepath.Abs(file)
-	if err != nil {
-		t.Fatal(err)
-	}
 	output := filepath.Join(t.TempDir(), kind)
-	phase32StaticBuild(t, output, absoluteFile)
+	// Source stays tracked inside the module for internal imports and read-only
+	// source qualification. Only the executable is written to the test tempdir.
+	phase32StaticBuild(t, output, "./test/acceptance/testdata/phase32_probes/"+kind+".go")
 	return output
+}
+
+func TestPhase32ProbeBinaries(t *testing.T) {
+	for _, kind := range []string{"crash", "sleep", "large", "clean"} {
+		t.Run(kind, func(t *testing.T) {
+			binary := phase32Probe(t, kind, "")
+			relative, relativeErr := filepath.Rel(phase32RepoRoot(t), binary)
+			if relativeErr != nil || !filepath.IsAbs(binary) || filepath.IsLocal(relative) {
+				t.Fatal("probe output must be outside the source tree")
+			}
+			cmd := exec.CommandContext(t.Context(), binary)
+			cmd.Env = []string{"GOMAXPROCS=1", "RENDER_MEMORY_CONTRACT=charged-memory-v1"}
+			cmd.Stdin = bytes.NewBufferString("{}")
+			start := time.Now()
+			body, err := cmd.Output()
+			switch kind {
+			case "crash", "clean":
+				want := 9
+				if kind == "clean" {
+					want = 1 // Clean environment reaches the invalid-input rejection.
+				}
+				var exit *exec.ExitError
+				if !errors.As(err, &exit) || exit.ExitCode() != want || len(body) != 0 {
+					t.Fatal("probe exit contract changed", err, len(body))
+				}
+			case "sleep":
+				if err != nil || time.Since(start) < 2*time.Second || len(body) != 0 {
+					t.Fatal("probe sleep contract changed", err, len(body))
+				}
+			case "large":
+				if err != nil || !bytes.Equal(body, make([]byte, 4096)) {
+					t.Fatal("probe output contract changed", err, len(body))
+				}
+			}
+			if kind == "clean" {
+				for _, environment := range [][]string{{"GOMAXPROCS=1", "SECRET_CANARY=must-not-cross"}, {"GOMAXPROCS=2"}, {}} {
+					cmd := exec.CommandContext(t.Context(), binary)
+					cmd.Env = environment
+					body, err := cmd.Output()
+					var exit *exec.ExitError
+					if !errors.As(err, &exit) || exit.ExitCode() != 7 || len(body) != 0 {
+						t.Fatal("probe clean-environment guard changed", err, len(body))
+					}
+				}
+			}
+		})
+	}
 }
