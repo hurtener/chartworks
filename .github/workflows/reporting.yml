@@ -104,6 +104,23 @@ jobs:
           assert required <= passed, sorted(required-passed)
           assert not [e for e in events if e.get('Action') in ('fail','skip')]
           PYVERIFY
+      - name: Durable cold source custody and lifecycle fences
+        if: always()
+        run: |
+          set -o pipefail
+          go test -race -count=1 -json -timeout=8m ./test/acceptance -run '^(TestFrozenCold.*Postgres|TestFrozenConcurrentColdReusePostgres|TestFrozenReuseIdentityPostgres|TestPhase28)$' 2>&1 | tee /tmp/reporting-cold-custody.log
+          python3 - <<'PYVERIFY'
+          import json, pathlib
+          required = {'TestFrozenColdOwnershipBoundariesPostgres', 'TestFrozenColdNativeUncertaintyPostgres', 'TestFrozenColdMissingCustodyPostgres', 'TestFrozenColdFollowerCancellationPostgres', 'TestFrozenColdPrivateSessionIsolationPostgres', 'TestFrozenColdExplicitNoReusePostgres', 'TestFrozenConcurrentColdReusePostgres', 'TestFrozenReuseIdentityPostgres', 'TestPhase28'}
+          required.update(f'TestPhase28/AC{i:02d}' for i in range(1, 9))
+          events=[]
+          for line in pathlib.Path('/tmp/reporting-cold-custody.log').read_text().splitlines():
+              try: events.append(json.loads(line))
+              except ValueError: pass
+          passed={e.get('Test') for e in events if e.get('Action')=='pass' and e.get('Package')=='github.com/hurtener/chartworks/test/acceptance'}
+          assert required <= passed, sorted(required-passed)
+          assert not [e for e in events if e.get('Action') in ('fail','skip')]
+          PYVERIFY
       - name: Kernel charged-memory renderer contract
         if: always()
         run: |
@@ -154,6 +171,9 @@ jobs:
               except ValueError: pass
           passed={e.get('Test') for e in events if e.get('Action')=='pass'}
           assert required <= passed, sorted(required-passed)
+          controls=set(['TestRequestControlCancellationUnderSaturation', 'TestRequestControlCloseJoinsBoundedTransactions', 'TestRequestControlExpiredAuthorityOnlySealsFailure', 'TestRequestControlHonorsRowLockAndCallerDeadline', 'TestRequestControlNestedClaimKeepsParentFenceUnderSaturation', 'TestRequestControlPoolBoundsAndClose', 'TestRequestControlPoolOpenFailureClosesBothPools', 'TestRequestControlReserveDoesNotAdmitOrdinaryWork', 'TestRequestControlSignedAuthorityNegativesUnderSaturation', 'TestRequestControlStaleFenceUnderSaturation', 'TestRequestControlSurvivesOrdinaryPoolSaturation'])
+          control_passed={e.get('Test') for e in events if e.get('Action')=='pass' and e.get('Package')=='github.com/hurtener/chartworks/internal/store/postgres'}
+          assert controls <= control_passed, sorted(controls-control_passed)
           assert not [e for e in events if e.get('Action')=='fail']
           PYVERIFY
       - name: Planning, formatting and actual build
