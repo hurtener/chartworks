@@ -32,6 +32,9 @@ func TestCompiledReportApp(t *testing.T) {
 			t.Fatal("unsafe resource primitive", forbidden)
 		}
 	}
+	if strings.Count(script, "function renderRetainedOutput(") != 1 || strings.Count(script, "class RetainedReport") != 1 {
+		t.Fatal("retained canvas must use a single output presentation implementation")
+	}
 	if strings.Count(script, "export class Viewer") != 0 || strings.Count(script, "class Viewer") != 1 {
 		t.Fatal("retained renderer is not shared exactly once")
 	}
@@ -47,7 +50,7 @@ func TestReportAppJavaScript(t *testing.T) {
 	if err != nil {
 		t.Fatal("Node is required for app source verification:", err)
 	}
-	for _, file := range []string{"model.test.mjs", "bridge.test.mjs", "app.test.mjs", "browser_cleanup.test.mjs"} {
+	for _, file := range []string{"model.test.mjs", "bridge.test.mjs", "retained.test.mjs", "app.test.mjs", "browser_cleanup.test.mjs"} {
 		command := exec.Command(node, "--test", file)
 		if out, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("%s: %v\n%s", file, err, out)

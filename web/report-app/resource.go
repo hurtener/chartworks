@@ -23,6 +23,9 @@ var appScript string
 //go:embed model.js
 var modelScript string
 
+//go:embed retained.js
+var retainedScript string
+
 //go:embed bridge.js
 var bridgeScript string
 
@@ -30,11 +33,11 @@ var bridgeScript string
 var appStyles string
 
 // Source modules stay independently testable. The data-free resource uses exact
-// compiled bytes and hashes, with one shared Viewer rather than copied renderers.
+// compiled bytes and hashes, with one shared retained-output presenter rather than copied renderers.
 func compiledAssets() (string, string) {
 	viewer, css := reportviewer.Assets()
-	script := "const retainedPresentation = (() => {\n" + strings.ReplaceAll(viewer, "export ", "") + "\nreturn {Viewer,boundedJSON};\n})();\nconst {Viewer,boundedJSON}=retainedPresentation;\n"
-	for _, source := range []string{modelScript, bridgeScript, appScript} {
+	script := "const retainedPresentation = (() => {\n" + strings.ReplaceAll(viewer, "export ", "") + "\nreturn {boundedJSON,validateRetainedView,renderRetainedOutput};\n})();\nconst {boundedJSON,validateRetainedView,renderRetainedOutput}=retainedPresentation;\n"
+	for _, source := range []string{modelScript, retainedScript, bridgeScript, appScript} {
 		for _, line := range strings.Split(source, "\n") {
 			if !strings.HasPrefix(line, "import ") {
 				script += line + "\n"

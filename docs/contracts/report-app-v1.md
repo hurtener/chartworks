@@ -83,6 +83,23 @@ rerunning the preview. Reading/repainting retained output makes no
 source/model calls. An unknown execution outcome is inspected, never blindly
 replayed. Stale CAS requires reload and reconciliation.
 
+## Retained saved-layout presentation
+
+Builder and Consumer use the existing retained-output renderer for headings, KPI,
+trend and table cells in the saved grid. Presentation does not execute a query.
+After an explicit preview, read-only fanout is limited to four concurrent reads,
+100 selected cells and 16 MiB in aggregate (4 MiB per result). Each read validates
+its exact run, target, widget, output, digest and page identity before reuse.
+Table paging reads retained pages only. Navigation, expiry, denial and malformed
+responses clear values; stale previews are marked and never automatically rerun.
+
+Builder compatibility is established only by the captured admission snapshot,
+not matching revision numbers alone, because runtime filters can differ. Safe
+presentation-only edits retain that provenance. Existing retained query-widget
+outputs remain readable without enabling query creation in the manual editor.
+Required mapping arrays preserve nil versus non-nil emptiness through cloning;
+frozen-output digest validation remains strict.
+
 ## Agent bootstrap and resources
 
 `report_app_bootstrap_v1` / POST `bootstrap` accepts version 1, mode chat/plan/apply

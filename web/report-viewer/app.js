@@ -540,6 +540,42 @@ function retainedRunOutputs(v) {
 }
 function periodValue(raw){let p;try{p=JSON.parse(raw);}catch{throw fail('invalid_request');}boundedJSON(p,4096);const keys=new Set(['mode','unit','count','start','end','from_date','first_occurrence','dst_policy','month_policy']);if(!p||Array.isArray(p)||Object.keys(p).some(k=>!keys.has(k)))throw fail('invalid_request');return {period:p};}
 
+// Pure retained presentation shared by the viewer and the report canvas.
+// The caller owns current authorization, selection, expiry and read lifetimes.
+export function validateRetainedView(v) {
+  boundedJSON(v);
+  if(v.version!==VERSION||!id(v.summary?.run)||!['block','report','dashboard'].includes(v.summary.kind)||!v.selection||array(v.outputs).length>64||array(v.pages).length>100||array(v.filters).length>100)throw fail('invalid_request');
+  try{if(!text(v.timezone))throw fail('invalid_request');new Intl.DateTimeFormat('en-US',{timeZone:v.timezone}).format(0);}catch{throw fail('invalid_request');}
+  if(v.selection.run!==v.summary.run||v.selection.kind!==v.summary.kind||v.summary.target?.kind!==v.summary.kind||!id(v.summary.target?.id)||!integer(v.summary.target?.revision,1,256))throw fail('invalid_request');
+  if(!integer(v.page_bounds?.offset,0,100000)||!integer(v.page_bounds?.limit,1,1000)||!integer(v.page_bounds?.total,0,100000))throw fail('invalid_request');
+  const expiry=Date.parse(v.summary.expires_at);if(!Number.isFinite(expiry))throw fail('invalid_request');
+  return expiry;
+}
+
+export function renderRetainedOutput(content,v,{locale='en',onPage=null}={}) {
+  validateRetainedView(v);
+  const language=locale.toLowerCase().startsWith('es')?'es':'en',w=words[language];
+  if(v.text){content.append(element('p',text(v.text.content??v.text.text),'narrative'));return;}
+  if(v.output?.state!=='succeeded'){content.append(element('p',`${text(v.output?.state)||text(v.summary.state)} ${text(v.output?.code)}`,'notice'));return;}
+  if(v.output.table){
+    const t=v.output.table;
+    renderTable(content,array(t.columns),array(t.rows),w,w.table,array(t.totals),array(t.row_indices),v.timezone);
+    if(t.completeness?.status)content.append(element('p',`Result completeness: ${text(t.completeness.status)}${t.completeness.reason?' · '+text(t.completeness.reason):''}`,'metadata'));
+    for(const warning of array(t.warnings))content.append(element('p',text(warning),'metadata'));
+    const b=v.page_bounds,pager=element('div',undefined,'pager');
+    pager.append(element('span',`${b.offset+Math.min(1,array(t.rows).length)}–${b.offset+array(t.rows).length} / ${b.total}`));
+    const prev=button(w.previous,()=>onPage?.(Math.max(0,b.offset-b.limit)));prev.disabled=!onPage||b.offset===0;
+    const next=button(w.next,()=>onPage?.(b.next));next.disabled=!onPage||!integer(b.next,b.offset+1,b.total);
+    pager.append(prev,next);content.append(pager);
+  }else if(v.output.chart)renderChart(content,v.output.chart,language,v.timezone);
+  else if(v.output.narrative){
+    content.append(element('p',text(v.output.narrative.text),'narrative'));
+    for(const caveat of array(v.output.narrative.caveats))content.append(element('p',text(caveat),'notice'));
+    content.append(element('p',`${text(v.output.narrative.model_version)} · ${text(v.output.narrative.prompt_version)} · ${text(v.output.narrative.locale)}`,'metadata'));
+  }
+  for(const line of amountDisclosureLines(v.output.amount_completeness,language))content.append(element('p',line,'metadata'));
+}
+
 export class Viewer {
   constructor(root,bridge,options={}){this.allowRun=options.allowRun!==false;this.allowGenerated=options.allowGenerated!==false;this.root=root;this.bridge=bridge;this.locale='en';this.value=null;this.generation=0;this.mutationPending=false;this.timer=null;this.closed=false;this.lastSize='';bridge.onresult=result=>this.accept(result);bridge.oninput=()=>this.loading();bridge.oncontext=context=>this.context(context);bridge.onfailure=e=>this.error(e);bridge.onclose=()=>this.close();this.observer=typeof ResizeObserver==='function'?new ResizeObserver(()=>{const box=root.getBoundingClientRect(),key=Math.ceil(box.width)+':'+Math.ceil(box.height);if(key!==this.lastSize){this.lastSize=key;bridge.resize(box.width,box.height);}}):null;this.observer?.observe(root);this.loading();}
   get w(){return words[this.locale];}
@@ -549,12 +585,8 @@ export class Viewer {
   context(c){try{boundedJSON(c,65536);document.documentElement.dataset.theme=c?.theme==='dark'?'dark':'light';if(typeof c?.locale==='string'&&c.locale.length<=64){try{const canonical=Intl.getCanonicalLocales(c.locale)[0];document.documentElement.lang=canonical;this.locale=canonical.toLowerCase().startsWith('es')?'es':'en';}catch{/* Ignore malformed optional host locale. */}}if(this.value)this.draw();}catch(e){this.error(e);}}
   accept(result){if(this.closed)return;try{const v=unwrap(result);if(v.selection&&v.summary)this.show(v);else if(id(v.run)&&['block','report','dashboard'].includes(v.kind))void this.read({kind:v.kind,run:v.run,page:'',widget:'',output:'',offset:0,limit:0});else throw fail('unavailable');}catch(e){this.error(e);}}
   show(v){
-    boundedJSON(v);if(v.version!==VERSION||!id(v.summary?.run)||!['block','report','dashboard'].includes(v.summary.kind)||!v.selection||array(v.outputs).length>64||array(v.pages).length>100||array(v.filters).length>100)throw fail('invalid_request');
-    try{if(!text(v.timezone))throw fail('invalid_request');new Intl.DateTimeFormat('en-US',{timeZone:v.timezone}).format(0);}catch{throw fail('invalid_request');}
-    if(v.selection.run!==v.summary.run||v.selection.kind!==v.summary.kind||v.summary.target?.kind!==v.summary.kind||!id(v.summary.target?.id)||!integer(v.summary.target?.revision,1,256))throw fail('invalid_request');
-    if(!integer(v.page_bounds?.offset,0,100000)||!integer(v.page_bounds?.limit,1,1000)||!integer(v.page_bounds?.total,0,100000))throw fail('invalid_request');
+    const expiry=validateRetainedView(v);
     this.generation++;this.clear();this.value=v;
-    const expiry=Date.parse(v.summary.expires_at);if(!Number.isFinite(expiry))throw fail('invalid_request');
     if(v.summary.state==='expired'||expiry<=Date.now()){this.clear();this.root.append(element('p',this.w.expired,'notice'));return;}
     this.timer=setTimeout(()=>{this.clear();this.root.append(element('p',this.w.expired,'notice'));},Math.min(2147483647,expiry-Date.now()));this.draw();
   }
@@ -582,13 +614,7 @@ export class Viewer {
     this.root.append(toolbar);
     const content=element('section');content.setAttribute('aria-label',w.outputs);this.root.append(content);
     try{
-      if(v.text)content.append(element('p',text(v.text.content??v.text.text),'narrative'));
-      else if(v.output?.state==='succeeded'){
-        if(v.output.table){const t=v.output.table;renderTable(content,array(t.columns),array(t.rows),w,w.table,array(t.totals),[],v.timezone);for(const warning of array(t.warnings))content.append(element('p',text(warning),'metadata'));const b=v.page_bounds;const pager=element('div',undefined,'pager');pager.append(element('span',`${b.offset+Math.min(1,array(t.rows).length)}–${b.offset+array(t.rows).length} / ${b.total}`));const prev=button(w.previous,()=>this.navigate({offset:Math.max(0,b.offset-b.limit)}));prev.disabled=b.offset===0;const next=button(w.next,()=>this.navigate({offset:b.next}));next.disabled=!integer(b.next,b.offset+1,b.total);pager.append(prev,next);content.append(pager);}
-        else if(v.output.chart)renderChart(content,v.output.chart,this.locale,v.timezone);
-        else if(v.output.narrative){content.append(element('p',text(v.output.narrative.text),'narrative'));for(const caveat of array(v.output.narrative.caveats))content.append(element('p',text(caveat),'notice'));content.append(element('p',`${text(v.output.narrative.model_version)} · ${text(v.output.narrative.prompt_version)} · ${text(v.output.narrative.locale)}`,'metadata'));}
-        for(const line of amountDisclosureLines(v.output.amount_completeness,this.locale))content.append(element('p',line,'metadata'));
-      }else content.append(element('p',`${text(v.output?.state)||text(v.summary.state)} ${text(v.output?.code)}`,'notice'));
+      renderRetainedOutput(content,v,{locale:this.locale,onPage:offset=>this.navigate({offset})});
       if(!['succeeded','completed','partial','expired'].includes(v.summary.state))content.append(button(w.refresh,()=>this.navigate({})));
       if(!v.summary.private)this.filters(v);
     }catch(e){this.error(e);}

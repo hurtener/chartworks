@@ -5,7 +5,7 @@
 separate embedded entrypoint for a bounded list of registered canonical HTTPS
 parent origins. Neither entrypoint falls back to the other. Both mount the same
 `ReportApp`, `DraftSession`, canonical `DocumentDefinition` and shared retained
-`Viewer`. The existing `ui://chartworks/report-viewer/v1` stays unchanged.
+`renderRetainedOutput` presentation. The existing `ui://chartworks/report-viewer/v1` remains supported and uses the same presentation function.
 
 ## First slice
 
@@ -32,6 +32,28 @@ A private preview's returned run ID is retained as an inspection coordinate.
 The host may need fresh exact run-read/preview authority before `reporting_view`
 can read it. **Inspect last retained run** performs only that read; it never
 executes the preview again. An expired/denied artifact does not regenerate itself.
+
+## Saved report canvas
+
+After an explicit retained opening or private preview, Builder and Consumer show
+heading and retained KPI/chart/table outputs together in the canonical grid.
+Consumer uses the authorized retained page summary and can inspect an existing query widget’s fixed retained `result` table without executing it; Builder can overlay current
+presentation and layout only when its execution fingerprint matches the immutable
+definition captured at that exact preview admission. Saving does not replace that
+snapshot. Semantic changes hide values behind a visible stale notice until an
+explicit saved preview; title, heading and layout redraws reuse existing values.
+An uncaptured preview is not treated as evidence for draft defaults, even at the same revision, because other callers can supply runtime filter overrides.
+
+The disposable canvas reads only currently authorized `reporting_view` selections
+from retained widget/output summaries, reuses the initial exact payload, and caps
+fanout at four concurrent reads, 100 selected outputs including headings, and
+16 MiB cached responses. Each response keeps the existing 4 MiB value bound.
+Paging replaces one table window while preserving sibling output values and the
+whole-output retained digest. Overflow, denial, changed authority projection,
+expiry, navigation or close clears retained buffers. Redraw performs no tool call.
+Every view stays pinned to its run, exact target/revision, privacy, page, widget,
+output, paging window and authorized layout. Private read denial requests host
+refresh rather than another execution. Values never become a new definition.
 
 ## Embedded integration boundary
 
@@ -80,7 +102,7 @@ Pure controller/bridge tests (including a deliberately small fake DOM) are not
 browser evidence:
 
 ```sh
-node --test web/report-app/model.test.mjs web/report-app/bridge.test.mjs web/report-app/app.test.mjs
+node --test web/report-app/model.test.mjs web/report-app/bridge.test.mjs web/report-app/retained.test.mjs web/report-app/app.test.mjs
 ```
 
 The Go resource test checks compilation, exact CSP hashes, public-only bytes,

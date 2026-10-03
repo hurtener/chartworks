@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ReportApp, awaitEmbeddedParent} from './app.js';
+import {Viewer,renderRetainedOutput} from '../report-viewer/app.js';
 import {appError, layoutWidgets} from './model.js';
 class Element {
- constructor(tag){this.tagName=tag.toUpperCase();this.children=[];this.attributes={};this.listeners={};this.dataset={};this._text='';this.disabled=false;this.value='';}
+ constructor(tag){this.tagName=tag.toUpperCase();this.children=[];this.attributes={};this.listeners={};this.dataset={};this.style={};this._text='';this.disabled=false;this.value='';}
  set textContent(value){this.children=[];this._text=String(value);}get textContent(){return this._text+this.children.map(c=>c.textContent||'').join('');}
  append(...children){this.children.push(...children);}replaceChildren(...children){this._text='';this.children=children;}
  setAttribute(name,value){this.attributes[name]=String(value);}getAttribute(name){return this.attributes[name]??null;}
@@ -45,7 +46,7 @@ test('new exact-authorized draft resets previous report recovery',async()=>{cons
 
 test('late failed preview cannot attach old-report recovery to a newer report',async()=>{const root=installDOM(),f=fixture();let rejectPreview;const base=f.adapter.call.bind(f.adapter);f.adapter.call=(name,args)=>name==='reporting_authoring_preview_v1'?new Promise((resolve,reject)=>{rejectPreview=reject;}):base(name,args);const app=new ReportApp(root,f.adapter);await app.start();await app.openDraft('report-a');const preview=app.previewDraft();const rejected=assert.rejects(preview,/unavailable/);assert.equal(app.uncertainRun,true);await app.openDraft('report-b');rejectPreview(appError('unavailable',true));await rejected;assert.equal(app.recoveryOwner,'report-b');assert.equal(app.lastMutationRun,null);assert.equal(app.uncertainRun,false);app.close();});
 
-function retainedStatus(run,state='completed',report='report-a',isPrivate=true,code='') {return {version:'reporting-view-v1',summary:{kind:'report',run,target:{kind:'report',id:report,revision:1},private:isPrivate,state,code},selection:{kind:'report',run},pages:[]};}
+function retainedStatus(run,state='completed',report='report-a',isPrivate=true,code='') {return {version:'reporting-view-v1',timezone:'UTC',locale:'en-US',page_bounds:{offset:0,limit:100,total:0},summary:{kind:'report',run,target:{kind:'report',id:report,revision:1},private:isPrivate,state,code,expires_at:'2099-01-01T00:00:00Z'},selection:{kind:'report',run},pages:[]};}
 test('terminal read after denied private preview enables future preview while pending and foreign reads cannot clear',async()=>{
  const root=installDOM(),f=fixture(),base=f.adapter.call.bind(f.adapter);let denied=true,status='completed',target='report-a';
  f.adapter.call=async(name,args)=>{
@@ -59,7 +60,7 @@ test('terminal read after denied private preview enables future preview while pe
  denied=false;status='running';await app.openRun('preview-a',true);assert.equal(app.uncertainRun,true);
  status='unknown';await app.openRun('preview-a',true);assert.equal(app.uncertainRun,true);
  status='completed';await app.openRun('foreign-run',true);assert.equal(app.uncertainRun,true);
- target='report-b';await app.openRun('preview-a',true);assert.equal(app.uncertainRun,true);
+ target='report-b';await assert.rejects(app.openRun('preview-a',true),/stale_validation/);assert.equal(app.uncertainRun,true);assert.equal(app.preview,null);
  target='report-a';await app.openRun('preview-a',true);assert.equal(app.uncertainRun,false);app.closePreview();app.render();
  assert.equal(root.querySelectorAll('button').find(b=>b.textContent==='Private preview').disabled,false);
  await app.openDraft('report-a');assert.equal(app.uncertainRun,false);app.close();
@@ -74,3 +75,51 @@ test('nested retained viewer size requests use the entire report root and one ou
 test('layout control reflects a saved two-column canonical grid after reopen',async()=>{const root=installDOM(),f=fixture(),app=new ReportApp(root,f.adapter);await app.start();app.mode='builder';await app.openDraft('report-a');app.edit(d=>{d.widgets.push({...d.widgets[0],id:'second',presentation:{},text:{format:'plain',text:'Second heading'}});d.widgets=layoutWidgets(d.widgets,2);});await app.save();await app.openDraft('report-a');app.render();const layout=root.querySelectorAll('select').find(e=>e.getAttribute('aria-label')==='Layout');assert.equal(layout.children.find(option=>option.selected).value,'2');assert.equal(app.session.definition.widgets[1].grid.column,6);app.edit(d=>{d.widgets[1].grid.row=5;});const custom=root.querySelectorAll('select').find(e=>e.getAttribute('aria-label')==='Layout');assert.equal(custom.children.find(option=>option.selected).value,'custom');app.close();});
 
 test('connection readiness flushes an unchanged size measured before bridge initialization',async()=>{const root=installDOM(),f=fixture(),sent=[];let finishConnect;const connected=new Promise(resolve=>{finishConnect=resolve;});f.adapter.ready=false;f.adapter.connect=async()=>{await connected;f.adapter.ready=true;};f.adapter.resize=(width,height)=>{if(f.adapter.ready)sent.push({width,height});};const app=new ReportApp(root,f.adapter);app.requestRootSize();assert.equal(app.lastSize,'1000:800');assert.deepEqual(sent,[]);const starting=app.start();finishConnect();await starting;assert.deepEqual(sent,[{width:1000,height:800}]);app.requestRootSize();assert.equal(sent.length,1);app.close();});
+
+function canvasFixture(){
+ const f=fixture(),base=f.adapter.call.bind(f.adapter);let admitted,revision,denied=false;
+ f.adapter.call=async(name,args)=>{
+  if(name==='reporting_authoring_preview_v1'){admitted=JSON.parse(JSON.stringify(f.stored()));revision=args.revision;return {structuredContent:{result:{id:'canvas-preview',private:true}}};}
+  if(name==='reporting_authoring_execute_v1')return {structuredContent:{result:{id:args.run,private:true,state:'completed'}}};
+  if(name==='reporting_view'){
+   if(denied)throw appError('not_found');
+   const widget=admitted.widgets.find(w=>w.id===(args.widget||admitted.widgets[0].id)),output=args.output||widget.block?.outputs[0]||'',view={version:'reporting-view-v1',summary:{kind:'report',run:args.run,target:{kind:'report',id:'report-a',revision},private:true,state:'completed',expires_at:'2099-01-01T00:00:00Z'},selection:{...args,page:'main',widget:widget.id,output},pages:[{id:'main',report:'report-a',revision,widgets:admitted.widgets.map(w=>({id:w.id,kind:w.kind,grid:w.grid,presentation:w.presentation,outputs:w.block?.outputs||[],state:'completed'}))}],outputs:output?[{id:output,enabled:true,selected:true}]:[],filters:[],locale:'en-US',timezone:'UTC',page_bounds:{offset:args.offset,limit:1,total:output?2:0,...(output&&args.offset===0?{next:1}:{})}};
+   if(widget.text)view.text=widget.text;else view.output={id:output,kind:'table',state:'succeeded',retained_digest:'fixed-'+output,table:{columns:[{id:'amount',name:'Amount',type:'decimal'}],rows:[[{value:args.offset?'5.50':'9007199254740993.01',null:false}]],totals:[],warnings:[]}};
+   f.calls.push({name,args});return {structuredContent:{result:view}};
+  }
+  return base(name,args);
+ };
+ return {...f,deny:()=>{denied=true;}};
+}
+async function savedCanvas(app){await app.start();app.mode='builder';await app.openDraft('report-a');app.edit(d=>{d.widgets.push({id:'metric',kind:'block',grid:{row:2,column:3,width:9,height:2},presentation:{title:'Revenue'},block:{block:'block-a',revision:7,outputs:['amount'],policy:'published',narrative:false}});d.filters=[{label:'Maximum',parameter:{name:'maximum',type:'integer',default:{literal:'30'}}}];});await app.save();await app.previewDraft();app.render();}
+
+test('saved canvas reuses retained output during presentation edits and saves, while semantic edits visibly stale it',async()=>{
+ const root=installDOM(),f=canvasFixture(),app=new ReportApp(root,f.adapter);await savedCanvas(app);assert(root.textContent.includes('9007199254740993.01'));const card=root.querySelectorAll('article').find(e=>e.dataset.widget==='metric');assert.equal(card.style.gridColumn,'4 / span 9');assert.equal(card.style.gridRow,'3 / span 2');const reads=f.calls.filter(c=>c.name==='reporting_view').length,origin=app.previewDefinition;
+ app.edit(d=>{d.metadata[0].title='New report title';d.widgets[0].text.text='New heading';d.widgets[1].presentation.title='New widget title';d.widgets[1].grid={row:1,column:0,width:12,height:1};});assert(root.textContent.includes('9007199254740993.01'));assert(root.textContent.includes('New heading'));assert.equal(f.calls.filter(c=>c.name==='reporting_view').length,reads);await app.save();app.render();assert(root.textContent.includes('Values from revision 2'));assert.equal(app.session.revision,3);assert.equal(app.previewDefinition,origin);assert(root.textContent.includes('9007199254740993.01'));
+ app.edit(d=>{d.filters[0].parameter.default.literal='31';});assert(root.textContent.includes('Preview is stale. Save and preview'));assert(!root.textContent.includes('9007199254740993.01'));assert.equal(f.calls.filter(c=>c.name==='reporting_view').length,reads);app.edit(d=>{d.filters[0].parameter.default.literal='30';});assert(root.textContent.includes('9007199254740993.01'));app.close();
+});
+test('denied output page erases the whole canvas and requests exact private-run host refresh',async()=>{
+ const root=installDOM(),f=canvasFixture(),app=new ReportApp(root,f.adapter);await savedCanvas(app);f.deny();await assert.rejects(app.pageOutput('main','metric','amount',1),e=>e.code==='not_found'&&e.needsRunAuthority===true);app.render();assert(!root.textContent.includes('9007199254740993.01'));assert.equal(app.preview,null);assert.equal(app.retained.entries.size,0);app.close();
+});
+test('Consumer uses retained canonical grid without editor or Viewer debug selectors',async()=>{
+ const root=installDOM(),f=canvasFixture(),app=new ReportApp(root,f.adapter);await savedCanvas(app);app.mode='consumer';app.selected={target:{kind:'report',id:'report-a',revision:2},title:'Retained report'};app.render();assert(root.textContent.includes('9007199254740993.01'));assert(root.querySelectorAll('h2').some(e=>e.textContent==='Overview'));const card=root.querySelectorAll('article').find(e=>e.dataset.widget==='metric');assert.equal(card.style.gridColumn,'4 / span 9');assert.equal(card.style.gridRow,'3 / span 2');assert(!root.querySelectorAll('select').length);assert(!root.querySelectorAll('button').some(e=>e.textContent==='Save report'));app.close();
+});
+test('newer retained opening wins and closing during first read cannot restore stale data',async()=>{
+ const root=installDOM(),waiting=new Map(),app=new ReportApp(root,{resize(){},call:(_,args)=>new Promise(resolve=>waiting.set(args.run,()=>resolve({structuredContent:{result:retainedStatus(args.run)}})))});const first=app.openRun('first'),second=app.openRun('second');waiting.get('second')();await second;waiting.get('first')();await first;assert.equal(app.preview.summary.run,'second');const pending=app.openRun('third');app.closePreview();waiting.get('third')();await pending;assert.equal(app.preview,null);assert.equal(app.retained.value,null);app.close();
+});
+
+test('Viewer and canvas share exact table, source-row, total, completeness and inert disclosure presentation',async t=>{
+ const root=installDOM(),f=canvasFixture(),app=new ReportApp(root,f.adapter);await savedCanvas(app);const v=JSON.parse(JSON.stringify(app.retained.get('main','metric','amount')));
+ v.output.table.columns[0].format={fraction_digits:3,currency:'USD',unit:'revenue'};v.output.table.row_indices=[7];v.output.table.totals=[{column:'amount',value:{value:'9007199254740998.51',null:false},scope:'complete_result'}];v.output.table.completeness={status:'partial_result',reason:'max_rows'};v.output.table.warnings=['<img src=x onerror=alert(1)>'];v.output.amount_completeness=[{label:'Known amount',evidence:'reviewed_definition',query_outcome:'succeeded',rows_scope:'visible_source_rows',role:'amount',result:{policy:'reviewed-amount-completeness-v1',scope:'returned_query_rows',metric:'amount',unknown_count_metric:'unknown',status:'incomplete',rows:[{row:7,status:'incomplete',unknown_count:'9007199254740993'}]}}];
+ const canvas=new Element('section'),viewerRoot=new Element('main'),pages=[];renderRetainedOutput(canvas,v,{locale:'en-US',onPage:offset=>pages.push(offset)});const viewer=new Viewer(viewerRoot,{resize(){}},{allowRun:false});t.after(()=>{viewer.close();app.close();});viewer.show(v);
+ assert.equal(canvas.querySelectorAll('table')[0].textContent,viewerRoot.querySelectorAll('table')[0].textContent);for(const value of ['9,007,199,254,740,993.010 USD revenue','9,007,199,254,740,998.510 USD revenue','Total scope: complete_result','Result completeness: partial_result · max_rows','Unknown amount count (displayed rows): 9007199254740993','<img src=x onerror=alert(1)>']){assert(canvas.textContent.includes(value),value);assert(viewerRoot.textContent.includes(value),value);}assert.equal(canvas.querySelectorAll('tr')[1].dataset.sourceRow,'7');assert.equal(canvas.querySelectorAll('img').length,0);canvas.querySelectorAll('button').find(b=>b.textContent==='Next').emit('click');assert.deepEqual(pages,[1]);viewer.close();app.close();
+});
+
+test('uncaptured private runs never overlay draft defaults even at the same revision',async()=>{
+ const root=installDOM(),f=canvasFixture(),app=new ReportApp(root,f.adapter);await savedCanvas(app);const reads=f.calls.filter(c=>c.name==='reporting_view').length;app.context({locale:'es-ES',theme:'dark'});assert.equal(f.calls.filter(c=>c.name==='reporting_view').length,reads);assert(root.textContent.includes('9007199254740993.01'));assert.equal(document.documentElement.dataset.theme,'dark');
+ app.closePreview();assert(!root.textContent.includes('9007199254740993.01'),'closing erases DOM values synchronously');app.lastMutationRun=null;app.lastPreviewDefinition=null;await app.openRun('reopened-private',true);app.render();assert.equal(app.session.revision,app.preview.summary.target.revision);assert.equal(app.compatiblePreview(),false);assert(root.textContent.includes('Preview is stale'));assert(!root.textContent.includes('9007199254740993.01'));app.close();
+});
+
+test('malformed matching terminal retained response cannot clear the unknown-execution fence',async()=>{
+ for(const change of [v=>delete v.summary.expires_at,v=>v.timezone='not-a-timezone',v=>delete v.page_bounds]){const root=installDOM(),view=retainedStatus('preview-a');change(view);const app=new ReportApp(root,{resize(){},async call(){return {structuredContent:{result:view}};}});uncertainPreview(app);await assert.rejects(app.openRun('preview-a',true));assert.equal(app.uncertainRun,true);assert.equal(app.preview,null);assert.equal(app.retained.entries.size,0);app.close();}
+});
