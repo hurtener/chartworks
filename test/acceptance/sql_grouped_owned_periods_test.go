@@ -365,6 +365,7 @@ ALTER TABLE analytics.orders ALTER COLUMN total_usd DROP NOT NULL; ALTER TABLE a
 						t.Fatal("owned grouped Run", err)
 					}
 					assertResult(result, "2026")
+					assertScopedLearningBase(t, query, actor, pack.Topic, plan.QueryID, sql, nlqexec.ScopedGroupedExamplePolicy)
 					metadata := support.Raw(t, f.dsn)
 					calls, attempts := model.requests.Load(), count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
 					restarted, err := nlqexec.New(router, topic, f.s, f.validator, f.executor, model.engine, f.db)

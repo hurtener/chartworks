@@ -88,6 +88,7 @@ func TestSQLRecoveryScalarCohortActivityAcceptance(t *testing.T) {
 		if err != nil || stored.AnalyticalVersion != 9 || stored.Clarification == nil || stored.Clarification.BaseSQL != scopedNetModelSQL(activity) || len(stored.Clarification.BaseParameters) != 0 || len(stored.Parameters) != 4 {
 			t.Fatal("period custody/replay record", err)
 		}
+		assertScopedLearningBase(t, h.query, h.queryActor, current.Pack.Topic, plan.QueryID, scopedNetModelSQL(activity), nlqexec.ScopedScalarExamplePolicy)
 		t.Logf("actual scoped activity=%t expected=%v receipt=%d binding=%d", activity, expected, stored.AnalyticalVersion, stored.Clarification.Binding.SchemaVersion)
 		for _, b := range stored.Clarification.Binding.Bindings {
 			if b.Population == "" || len(b.Parameters) != 2 {

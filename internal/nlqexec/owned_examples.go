@@ -18,7 +18,7 @@ import (
 const OwnedExamplePolicy = "current-owned-predicates-v1"
 
 func validExampleBindingPolicy(policy string) bool {
-	return policy == "" || policy == OwnedExamplePolicy
+	return policy == "" || ownedLearningPolicy(policy)
 }
 
 func originExampleDigest(topic, question, sql string, parameters *exampleparams.Schema, origin ExampleOrigin) string {
@@ -28,7 +28,7 @@ func originExampleDigest(topic, question, sql string, parameters *exampleparams.
 	if origin.BindingPolicy == "" {
 		return parameterExampleDigest(topic, question, sql, parameters)
 	}
-	return exec.Hash([]any{OwnedExamplePolicy, topic, question, sql, parameters})
+	return exec.Hash([]any{origin.BindingPolicy, topic, question, sql, parameters})
 }
 
 // reusableLearningBase never removes predicates by parsing a bound query. Only
@@ -52,12 +52,12 @@ func (s *Service) reusableLearningBase(ctx context.Context, e identity.Envelope,
 		return QueryRecord{}, "", false, err
 	}
 	evidence := q.Clarification
-	if correction != "" || evidence == nil || evidence.Binding.SchemaVersion != 1 || evidence.BaseSQL == "" {
+	if correction != "" || evidence == nil || !clarificationBindingSchemaValid(q) || evidence.BaseSQL == "" {
 		return QueryRecord{}, "", false, nil
 	}
 	// Known values in an allegedly unbound base are grounds not to learn, even
 	// when executable SQL has passed its different native-safety requirements.
-	if len(q.Parameters) == 0 {
+	if len(q.Parameters) == 0 && evidence.Binding.SchemaVersion == 1 {
 		return QueryRecord{}, "", false, exec.ErrBinding
 	}
 	private, complete, err := ownedLearningPrivateValues(ctx, q)
@@ -121,7 +121,7 @@ func (s *Service) reusableLearningBase(ctx context.Context, e identity.Envelope,
 	if len(provedBase) == 1 && provedBase[0] != nil {
 		*provedBase[0] = plan
 	}
-	return base, OwnedExamplePolicy, true, nil
+	return base, learningPolicyForBinding(evidence.Binding.SchemaVersion), true, nil
 }
 
 // Only a freshly sealed routed context can supply current owned predicates.
@@ -129,6 +129,9 @@ func (s *Service) reusableLearningBase(ctx context.Context, e identity.Envelope,
 func ownedExampleApplicable(example ExampleRecord, a admission) bool {
 	if example.Origin.BindingPolicy == "" {
 		return true
+	}
+	if scopedLearningPolicy(example.Origin.BindingPolicy) {
+		return scopedExampleApplicable(example.Origin.BindingPolicy, a)
 	}
 	if example.Origin.BindingPolicy != OwnedExamplePolicy || !hasActiveBusinessEvidence(a.route) {
 		return false
@@ -138,7 +141,7 @@ func ownedExampleApplicable(example ExampleRecord, a admission) bool {
 }
 
 func ownedExampleInstruction(x ExampleRecord) string {
-	if !ExampleParametersValid(x) || x.Origin.BindingPolicy != OwnedExamplePolicy {
+	if !ExampleParametersValid(x) || !ownedLearningPolicy(x.Origin.BindingPolicy) {
 		return ""
 	}
 	raw, err := json.Marshal(struct {
@@ -187,6 +190,12 @@ func ownedLearningPrivateValues(ctx context.Context, q QueryRecord) ([]exec.Para
 	for _, r := range q.Route.Resolutions {
 		if err := ctx.Err(); err != nil {
 			return nil, false, err
+		}
+		// A proved NULL selection has no SQL position, but still needs the
+		// disclosure scanner's syntax checks. Represent that actual resolved
+		// value as null only for scanning; it never enters model/source slots.
+		if r.Null && !add(exec.Parameter{Kind: "null"}) {
+			return nil, false, nil
 		}
 		if r.Sensitivity != semantics.LiteralSensitive {
 			continue

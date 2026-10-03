@@ -23,6 +23,7 @@ type GenerationExampleQuery struct {
 	RuleVersions        []string
 	Templates           []rulesets.TemplateSelection
 	AllowOwned          bool
+	ScopedPolicy        string
 	SearchText          string
 	Limit               int
 }
@@ -44,6 +45,7 @@ func generationExampleQuery(a admission, question string) GenerationExampleQuery
 	}
 	constraints, err := a.route.ResolvedBusinessConstraints()
 	q.AllowOwned = hasActiveBusinessEvidence(a.route) && err == nil && len(constraints) > 0 && a.route.SourceBindingDigest == q.SourceBindingDigest
+	q.ScopedPolicy = currentScopedLearningPolicy(a)
 	set := map[string]bool{}
 	for _, word := range strings.FieldsFunc(strings.ToLower(question), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) }) {
 		if len(word) <= 128 {
@@ -72,10 +74,15 @@ type ExampleEligibilityEvidence struct {
 	Version                string `json:"version"`
 	OriginDigest           string `json:"origin_digest"`
 	CurrentOwnedPredicates bool   `json:"current_owned_predicates"`
+	CurrentScopedPolicy    string `json:"current_scoped_policy,omitempty"`
 }
 
 func exampleEligibilityEvidence(q GenerationExampleQuery) *ExampleEligibilityEvidence {
 	q.SearchText = ""
 	q.Limit = 0
-	return &ExampleEligibilityEvidence{Version: "current-example-eligibility-v1", OriginDigest: exec.Hash(q), CurrentOwnedPredicates: q.AllowOwned}
+	version := "current-example-eligibility-v1"
+	if q.ScopedPolicy != "" {
+		version = "current-example-eligibility-v2"
+	}
+	return &ExampleEligibilityEvidence{Version: version, OriginDigest: exec.Hash(q), CurrentOwnedPredicates: q.AllowOwned, CurrentScopedPolicy: q.ScopedPolicy}
 }

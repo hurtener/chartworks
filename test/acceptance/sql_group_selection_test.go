@@ -44,12 +44,12 @@ func TestSQLRecoveryGroupedSelectionAcceptance(t *testing.T) {
 func TestSQLRecoveryScopedLearningBaseAcceptance(t *testing.T) {
 	for _, withPeriods := range []bool{false, true} {
 		t.Run(fmt.Sprintf("periods_%t", withPeriods), func(t *testing.T) {
-			runGroupedSelectionAcceptance(t, withPeriods, false, false, true)
+			runGroupedSelectionAcceptance(t, withPeriods, false, false)
 		})
 	}
 }
 
-func runGroupedSelectionAcceptance(t *testing.T, withPeriods, raw, nullOnly bool, wantLearning ...bool) {
+func runGroupedSelectionAcceptance(t *testing.T, withPeriods, raw, nullOnly bool) {
 	t.Helper()
 	f := liveCommerceSource(t)
 	if _, err := f.admin.Exec(t.Context(), `DELETE FROM analytics.order_items; DELETE FROM analytics.refunds; DELETE FROM analytics.orders; DELETE FROM analytics.customers;
@@ -329,21 +329,60 @@ ALTER TABLE analytics.orders ALTER COLUMN total_usd DROP NOT NULL; ALTER TABLE a
 	if calls != model.requests.Load() || attempts != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
 		t.Fatal("authority denial did work")
 	}
-	// Successful feedback records the vote but cannot learn schema4 private SQL.
+	// Feedback learns the authenticated unbound base, never schema4 private SQL.
 	if err = query.Feedback(t.Context(), actor, nlqexec.FeedbackRequest{QueryID: plan.QueryID, Verdict: "positive"}); err != nil {
 		t.Fatal("feedback", err)
 	}
 	examples, err := query.Examples(t.Context(), actor, pack.Topic, 8)
-	if len(wantLearning) == 1 && wantLearning[0] {
-		if err != nil || len(examples) != 1 {
-			t.Fatalf("authenticated scoped base was not learned: count=%d err=%v", len(examples), err)
+	if err != nil || len(examples) != 1 {
+		t.Fatalf("authenticated scoped base was not learned: count=%d err=%v", len(examples), err)
+	}
+	x := examples[0]
+	if x.SQL != sql || x.Origin.BindingPolicy != nlqexec.ScopedSelectionExamplePolicy || x.ParameterSchema != nil || strings.Contains(x.Question+x.SQL, selected) {
+		t.Fatal("scoped learning did not preserve a value-free authenticated base")
+	}
+	if !nullOnly && !raw {
+		beforeCalls, beforeReads := model.requests.Load(), count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
+		active, reviewErr := query.ExampleState(t.Context(), actor, nlqexec.ExampleStateRequest{ExampleID: x.ID, ExpectedVersion: x.Version, State: "active", ReviewNote: "Reviewed scoped value-free base and current-only final-group binding"})
+		if reviewErr != nil || active.State != "active" || beforeCalls != model.requests.Load() || beforeReads != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
+			t.Fatal("scoped review performed model/source execution or failed", reviewErr)
 		}
-		x := examples[0]
-		if x.SQL != sql || x.Origin.BindingPolicy == "" || x.ParameterSchema != nil || strings.Contains(x.Question+x.SQL, selected) {
-			t.Fatal("scoped learning did not preserve a value-free authenticated base")
+		currentRequest := request
+		currentRequest.Operation = "learned-current-group"
+		currentRequest.Answers = []semantics.ClarificationAnswer{answer("zero")}
+		currentPlan, planErr := query.Plan(t.Context(), actor, currentRequest)
+		if planErr != nil {
+			t.Fatal("scoped example current plan", planErr)
 		}
-	} else if err != nil || len(examples) != 0 {
-		t.Fatal("scoped binding became reusable learning", err)
+		currentStored, readErr := f.db.ReadQuery(t.Context(), scope, currentPlan.QueryID)
+		if readErr != nil || currentStored.ExampleSelection.Usage == nil || len(currentStored.ExampleSelection.Usage.Used) != 1 || currentStored.ExampleSelection.Usage.Used[0].ExampleID != active.ID || currentStored.Clarification == nil || currentStored.Clarification.Binding.SchemaVersion != 4 {
+			t.Fatal("current route did not actually use scoped base", readErr)
+		}
+		currentRun := nlqexec.RunRequest{QueryID: currentPlan.QueryID, Operation: "learned-current-group-run"}
+		currentResult, runErr := query.Run(t.Context(), actor, currentRun)
+		if runErr != nil {
+			t.Fatal("scoped learned execution", runErr)
+		}
+		assertResult(currentResult, "zero")
+		beforeCalls, beforeReads = model.requests.Load(), count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
+		if _, replayErr := restarted.Run(t.Context(), actor, currentRun); replayErr != nil || beforeCalls != model.requests.Load() || beforeReads != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
+			t.Fatal("scoped learned replay repeated model/source work", replayErr)
+		}
+		bundle, exportErr := query.ExportExamples(t.Context(), actor, nlqexec.ExampleExportRequest{Topic: pack.Topic, Limit: 8})
+		if exportErr != nil || len(bundle.Examples) != 1 || bundle.Examples[0].SchemaVersion != 3 || bundle.Examples[0].SQL != sql {
+			t.Fatal("scoped portable base", exportErr)
+		}
+		portable := bundle.Examples[0]
+		portable.SQL += " "
+		portable.Digest = exec.Hash([]any{nlqexec.ScopedSelectionExamplePolicy, pack.Topic, portable.Question, portable.SQL, portable.ParameterSchema})
+		imported, importErr := query.ImportExample(t.Context(), actor, nlqexec.ExampleImportRequest{Anchor: currentRequest.QuestionRequest, Example: portable})
+		if importErr != nil || imported.State != "candidate" || imported.Origin.BindingPolicy != nlqexec.ScopedSelectionExamplePolicy {
+			t.Fatal("scoped protected import", importErr)
+		}
+		portable.Origin.BindingPolicy = nlqexec.ScopedScalarExamplePolicy
+		if _, err := query.ImportExample(t.Context(), actor, nlqexec.ExampleImportRequest{Anchor: currentRequest.QuestionRequest, Example: portable}); err == nil {
+			t.Fatal("scoped import binder substitution accepted")
+		}
 	}
 	saved := nlqexec.SavedQuestion{Durability: "session_bound", Context: request.Context, Topics: []nlqexec.SavedTopic{{Topic: pack.Topic, Version: published.State.Version, Digest: published.Digest}}, Query: plan.QueryID}
 	evidence, err := query.InspectSaved(t.Context(), actor, saved)

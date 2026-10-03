@@ -46,7 +46,7 @@ func learnedParameterSchema(ctx context.Context, q QueryRecord, bindingPolicy ..
 	question := semantics.RedactClarificationText(q.Question, nil, redactions)
 	// The owned-learning producer already redacted the catalog suffix. The
 	// fixed server-authored prefix cannot reveal a coincidentally equal value.
-	if len(bindingPolicy) == 1 && bindingPolicy[0] == OwnedExamplePolicy && neutralOwnedExampleQuestion(q.Question) {
+	if len(bindingPolicy) == 1 && ownedLearningPolicy(bindingPolicy[0]) && neutralOwnedExampleQuestion(q.Question) {
 		question = q.Question
 	}
 	if strings.TrimSpace(question) == "" || len(question) > 16384 || !utf8.ValidString(question) || strings.ContainsRune(question, 0) {
@@ -129,7 +129,7 @@ func portableExampleVersion(schema *exampleparams.Schema, policy ...string) int 
 	if schema != nil && schema.Version == exampleparams.DomainVersion {
 		return 4
 	}
-	if len(policy) == 1 && policy[0] == OwnedExamplePolicy {
+	if len(policy) == 1 && ownedLearningPolicy(policy[0]) {
 		return 3
 	}
 	if schema != nil {

@@ -85,3 +85,30 @@ exact result IDs/decimals and zero-work replay. The earlier private-exclusion
 regression now checks that only the verified base is exported; annotation and
 known-value exclusions remain. Test inventory is not a passing/live gate; the
 tracker records observed results separately.
+
+## Scoped population reconstruction
+
+The reconstructed continuation also admits exact authenticated binding receipts
+2 (scalar owned populations), 3 (grouped owned populations), and 4 (final group
+selection). Each uses a distinct value-free origin policy:
+`current-owned-scalar-populations-v1`, `current-owned-grouped-populations-v1`, or
+`current-owned-group-selection-v1`. The policy participates in the digest, so
+substituting a binder family invalidates the example. Existing ordinary owned
+examples keep their original digest and policy. These policies use the existing
+version-3 owned portable envelope (version 4 for a domain-bearing model schema,
+version 5 when separately requalified); unsupported policy names fail closed.
+
+Learning still reconstructs the entire source-bound receipt through authenticated
+current router replay and the exact schema-specific binder before native dry
+validation of the original base. No period, final group value, NULL selection, or
+private alias becomes a model parameter or reusable default. A NULL-only final
+group predicate can have no positional values; that does not invalidate its
+separately proved schema-4 custody. Manually corrected bound SQL remains excluded.
+
+Consumption and protected import require a newly compiled matching analytical
+family from the current in-process route seal. Historical JSON, an origin marker,
+or a caller-supplied compiled contract cannot supply that seal. The current binder
+and native analytical validator still prove the generated query. Requalification
+passes the freshly compiled contract to the same binder before analytical review.
+These source changes require new native lifecycle and adversarial qualification;
+previously unpublished results do not establish their correctness or live quality.
