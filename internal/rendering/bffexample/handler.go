@@ -6,8 +6,6 @@ package bffexample
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -85,7 +83,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var in rendering.Request
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
-	if dec.Decode(&in) != nil || dec.Decode(new(any)) != io.EOF || (in.Format != "html" && in.Format != "svg") {
+	if dec.Decode(&in) != nil || dec.Decode(new(any)) != io.EOF || (in.Format != "html" && in.Format != "svg" && in.Format != "png") || in.Format == "png" && in.Full {
 		http.Error(w, "invalid request", 400)
 		return
 	}
@@ -123,15 +121,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid upstream response", http.StatusBadGateway)
 		return
 	}
-	wantMedia := map[string]string{"html": "text/html; charset=utf-8", "svg": "image/svg+xml"}[in.Format]
-	digest := sha256.Sum256([]byte(out.Content))
+	wantMedia := map[string]string{"html": "text/html; charset=utf-8", "svg": "image/svg+xml", "png": "image/png"}[in.Format]
+	content, contentErr := rendering.ContentBytes(r.Context(), out, 20<<20)
 	heightOK := out.Height == in.Height || in.Full && in.Format == "svg" && out.Height > 0 && out.Height <= 1_000_000 && strings.Contains(out.Content, "height=\""+strconv.Itoa(out.Height)+"\"")
-	if out.Content == "" || out.State != "succeeded" || out.Version != rendering.Version || out.Format != in.Format || out.MediaType != wantMedia || out.Theme != in.Theme || out.Width != in.Width || !heightOK || out.Bytes != len(out.Content) || out.Digest != hex.EncodeToString(digest[:]) {
+	if out.Content == "" || out.State != "succeeded" || out.Version != rendering.Version || out.Format != in.Format || out.MediaType != wantMedia || out.Theme != in.Theme || out.Width != in.Width || !heightOK || contentErr != nil {
 		http.Error(w, "invalid upstream response", http.StatusBadGateway)
 		return
 	}
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors "+h.parents)
 	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Type", out.MediaType)
-	_, _ = io.WriteString(w, out.Content)
+	_, _ = w.Write(content)
 }

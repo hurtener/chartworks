@@ -114,3 +114,46 @@ paths, including wrong manifest/binding/audience/service, expiry, refusal, narro
 context, retries and zero protected work on denial. Metadata-only catalog reads
 are independent of that broker. The [delivery contract](reporting-delivery-v1.md)
 describes the four target representations and distinct effect/receipt states.
+
+## Request-control connection reserve
+
+Request-driven work continues to use the existing operation ledger, immutable
+manifests, opaque invocation and monotonic lease fences. Its metadata store owns
+one additional connection reserved for `ReadRequest`, `ClaimRequest`,
+`ClaimNestedRequest`, `PulseRequest`, `FailRequest` and `CancelRequest`.
+`ReadRequest` belongs here because the public request runner performs it before
+cancellation and when recovering a final receipt. Ordinary admission/resume,
+domain metadata, source fences and publication cannot consume the reserve.
+No queue, lease, authorization representation or durable token is added.
+
+`store.max_conns` retains its ordinary-pool meaning and range of 1–100. Total
+metadata connections per DB instance are at most `store.max_conns + 1` (11 by
+default), with no minimum idle connections in either pool. Operators must budget
+the extra connection for each process/DB instance in the PostgreSQL server
+connection limit. A `max_conns` value of 1 therefore permits two total metadata
+connections. The previously valid minimum
+of one ordinary connection still supports request lifecycle control; it does not
+satisfy any separate read-execution concurrency requirement. Source connections
+are configured separately.
+
+The reserve prevents ordinary connection exhaustion from starving live request
+renewal, durable cancellation or fenced failure finalization. It is not a bypass
+of row locks, global/tenant admission limits, signed actor/session/context reach,
+token expiry or parent/child ownership. Acquisition, statements and locks retain
+the ordinary transaction timeout and any shorter caller/authority deadline;
+rollback cleanup is separately bounded to one second. A saturated control pool or
+locked authoritative row can still cause a bounded failure. Both pools are closed
+on failed startup and normal shutdown. Only an originally owned live fence may
+seal failure after authority expiry; that allowance cannot renew a lease, perform
+protected work, publish values or read a fresh receipt with expired authority.
+
+The native `TestRequestControl*` regressions exercise real PostgreSQL with the
+ordinary pool deliberately occupied and signed ES256/JWKS fixture authority. They
+cover `jobs.RequestRunner.Cancel` (used by engineering request cancellation)
+and its observer, failure finalization, stale/expired/
+foreign authority, nested parent fencing, row-lock deadlines/rollback, ordinary
+work exclusion, connection bounds and shutdown. These tests establish the scoped
+request-control behavior. Reporting `Runs.Cancel`/`Compositions.Cancel` use
+separate domain transactions that still use ordinary capacity and are not
+saturation-qualified here. Other metadata traffic and external source termination
+are also outside this qualification.

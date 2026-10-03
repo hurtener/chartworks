@@ -25,6 +25,9 @@ func AnalyticalColumnName(base, dataset, column string) string {
 // analyticalJoinRelation builds an immutable local namespace, not a data-access
 // binding. All native validation still uses the original restrictive source scope.
 func analyticalJoinRelation(c AnalyticalContract, b Binding, base Relation) (Relation, error) {
+	if c.ScalarEntailment != nil {
+		return Relation{}, ErrBinding
+	}
 	if len(c.Joins) == 0 {
 		return base, nil
 	}

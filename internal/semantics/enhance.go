@@ -79,9 +79,12 @@ func ApplyRichEnhancements(model Model, version string, proposals []Enhancement,
 	}
 	p := model.Pack()
 	p.Version = version
+	// Canonicalization changes only a detached proposal, never caller-owned
+	// temporal metadata or the immutable prior model.
+	proposals = append([]Enhancement(nil), proposals...)
 	seen := map[Reference]bool{}
 	processed := map[Reference]bool{}
-	for _, item := range proposals {
+	for index, item := range proposals {
 		ref := Reference{Kind: KindColumn, Dataset: item.Dataset, ID: item.Column}
 		if !model.Contains(ref) || seen[ref] {
 			return Model{}, invalid(CodeInvalidReference, "enhancements.column")
@@ -100,6 +103,12 @@ func ApplyRichEnhancements(model Model, version string, proposals []Enhancement,
 			if item.Completeness != nil {
 				return Model{}, invalid(CodeInvalidValue, "enhancements.dimension.completeness")
 			}
+			temporal, known := canonicalEnhancementTemporal(item.Temporal)
+			if !known {
+				return Model{}, invalid(CodeInvalidValue, "enhancements.dimension.calendar")
+			}
+			item.Temporal = temporal
+			proposals[index] = item
 			if !validLine(item.Name, 256) || !item.Role.valid() || item.Geography && item.Role != DimensionCategorical || item.Aggregation != "" || item.Reason != "" || !validText(item.Description, 4096) || !validAliases(item.Aliases) || item.Unit != "" || !item.SemanticRole.valid() || !validGovernedValues(item.Values) || !validTemporal(item.Temporal, item.Role) || !validFilters(item.Filters) {
 				return Model{}, invalid(CodeInvalidValue, "enhancements.dimension")
 			}

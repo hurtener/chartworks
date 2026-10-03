@@ -24,13 +24,14 @@ type BusinessParameterBinding struct {
 // BusinessBindingReceipt is provenance, not execution authority. The final read
 // receipt is attached only after the existing validator issues an opaque Plan.
 type BusinessBindingReceipt struct {
-	PopulationPolicy string                     `json:"population_policy,omitempty"`
-	SchemaVersion    int                        `json:"schema_version"`
-	SourceBinding    string                     `json:"source_binding"`
-	Constraints      string                     `json:"constraints"`
-	Statement        string                     `json:"statement"`
-	Bindings         []BusinessParameterBinding `json:"bindings"`
-	Validation       *Receipt                   `json:"validation,omitempty"`
+	Entailments      []BusinessScalarPredicateEffect `json:"entailments,omitempty"`
+	PopulationPolicy string                          `json:"population_policy,omitempty"`
+	SchemaVersion    int                             `json:"schema_version"`
+	SourceBinding    string                          `json:"source_binding"`
+	Constraints      string                          `json:"constraints"`
+	Statement        string                          `json:"statement"`
+	Bindings         []BusinessParameterBinding      `json:"bindings"`
+	Validation       *Receipt                        `json:"validation,omitempty"`
 }
 
 // BusinessBoundQuery carries protected SQL and parameters pending ordinary read validation.

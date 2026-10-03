@@ -34,6 +34,9 @@ func (d *DB) RequalifyExample(ctx context.Context, scope store.Scope, x nlqexec.
 		}
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := queryRetentionFence(ctx, tx, scope.Tenant()); err != nil {
+			return err
+		}
 		const columns = `example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,uncertainty,positive_evidence,negative_evidence,origin,version,reviewed_by,review_note,reviewed_at,provenance,created_at,updated_at,parameter_schema`
 		var old nlqexec.ExampleRecord
 		if err := scanExample(tx.QueryRow(ctx, `SELECT `+columns+` FROM chartworks.nlq_examples WHERE tenant_id=$1 AND example_id=$2 FOR SHARE`, scope.Tenant(), r.ExampleID), &old); err != nil {
@@ -99,6 +102,14 @@ func (d *DB) RequalifyExample(ctx context.Context, scope store.Scope, x nlqexec.
 		}
 		if exec.Hash(out.Origin) != exec.Hash(x.Origin) || exec.Hash(out.ParameterSchema) != exec.Hash(x.ParameterSchema) {
 			return store.ErrConflict
+		}
+		if tag.RowsAffected() == 1 && old.ReviewedAt == nil {
+			if _, err := tx.Exec(ctx, `INSERT INTO chartworks.nlq_example_contributions(tenant_id,example_id,feedback_id,actor_id,session_id,query_id) SELECT tenant_id,$3,feedback_id,actor_id,session_id,query_id FROM chartworks.nlq_example_contributions WHERE tenant_id=$1 AND example_id=$2`, scope.Tenant(), old.ID, out.ID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO chartworks.nlq_example_quarantine(tenant_id,example_id,reason) SELECT $1,$3,'legacy_lineage_unproved' WHERE EXISTS(SELECT 1 FROM chartworks.nlq_example_quarantine WHERE tenant_id=$1 AND example_id=$2) OR $4<>(SELECT count(*) FROM chartworks.nlq_example_contributions WHERE tenant_id=$1 AND example_id=$3)`, scope.Tenant(), old.ID, out.ID, out.EvidenceCount); err != nil {
+				return err
+			}
 		}
 		return nil
 	})

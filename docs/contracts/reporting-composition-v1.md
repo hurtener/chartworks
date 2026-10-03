@@ -83,7 +83,11 @@ Expired reads never silently regenerate values.
 Irreversible document deletion is the narrower ownership exception. A composition
 root directly targeting the deleted document, or a dashboard root whose sealed page
 targets a deleted report, owns its `operations.nested_parent` children and dynamic
-query rows whose operation is exactly `composition:<root>:<group>`. The delete
+query identities registered against the exact persisted query group. Initial
+Plan identity and authoritative group Plan/Result query coordinates establish
+ownership; a later Run operation cannot move that ownership. An explicit immutable
+saved-copy origin propagates private ownership to unreviewed session copies,
+without treating arbitrary conversational parentage as ownership. The delete
 transaction locks and fences the root and children, cancels active attempts, erases
 their retained values and expires bounded receipts before tombstoning the document.
 Active nested and dynamic read-attempt journals are retained with
@@ -91,7 +95,24 @@ Active nested and dynamic read-attempt journals are retained with
 observable; a late success resolves to cancelled with no row/byte result counts.
 Workers holding an earlier fence cannot publish after commit. Independently admitted
 block runs, authoring queries, shared blocks/topics and dashboard definitions are not
-transitive children and keep their independent lifecycle.
+transitive children and keep their independent lifecycle. Independently authored reports
+that borrowed an erased private query retain their definitions and reference
+identity, with `unavailable_query_widgets` in their authorized read projection.
+Their saved-copy SQL/results and retained composition/rendition derivatives are
+erased; they cannot regenerate values from the tombstoned origin. Separately
+captured and reviewed blocks keep their independent authored lifecycle.
+
+The query origin registry and operation history contain only scoped identifiers
+and erasure timestamps. Live SQL/results/feedback are deleted, rather than leaving
+scrubbed query rows capable of satisfying an old proof. Existing reference and
+review-origin foreign keys retain only registry identity; new references require
+a live query. The tenant transaction fence orders deletion against query creation,
+Run updates, report-reference commits, composition checkpoints and rendition
+commits. Active read journals remain for cancellation reconciliation. Historical
+pre-registry read-operation keys no longer present in query/checkpoint evidence
+cannot be guessed; those content-free journals retain their existing bounded
+journal lifecycle. New operation history records every later Run key.
+
 
 ## Operational limits
 
@@ -131,3 +152,57 @@ implicitly or manufacture credentials in the example. See
 Reports/dashboards are API-first. Phase 29 does not provide drag-and-drop authoring,
 report schedules, the MCP Apps viewer, static chart rendering or export formats.
 Those remain owned by their later phases.
+
+Feedback-derived learning examples use immutable, content-free per-feedback
+contributions. An unreviewed example payload is erased only when contribution
+coverage equals its evidence count and every contributor's private query is
+proved erased. A shared or lineage-incomplete candidate is quarantined from
+serving until independent review; its SQL/question may remain protected for that
+review. Historical aggregate provenance was overwritten and cannot prove sole
+ownership, so those legacy candidates are quarantined rather than guessed away.
+Explicit requalification copies from unreviewed examples preserve contribution
+lineage/quarantine; independently reviewed examples retain their own lifecycle.
+Deletion responses report `erased_examples`, `quarantined_examples`, and the
+`learning_retention` limitation. These counts do not promise full erasure of
+legacy/shared learning payloads. Evidence counters remain historical; quarantine
+never silently converts them into fresh positive evidence.
+
+Quarantined examples are excluded from the ordinary example list and export as
+well as automatic generation. Existing known-ID review/requalification operations
+remain subject to their current authority and revalidation; this change does not
+add a quarantine-discovery endpoint. Retained legacy/shared payloads therefore
+require a known identity and explicit review, not implied administrative access.
+
+Pre-registry historical limit: ordinary composition expiry can already have erased
+its Plan/Result checkpoints while preserving child queries on their independent
+retention lifecycle. If a pre-074 query also lost its original operation key,
+no retained authoritative coordinate proves the old owner. Migration does not
+invent that ownership from a prefix. Deletion always reports
+`query_retention=legacy_expired_origins_unproven`; a zero erased-query count is
+not verification of complete historical erasure. Prospective registry ownership
+survives composition expiry and later Run-key changes, so newly registered owned
+queries are still erased when their document is deleted.
+
+### Saved derivation of reviewed query origins
+
+A session-bound saved operation may derive from an already resolved generation
+question or a complete reviewed-intent replacement. Its immutable
+`saved_copy_parent` and exact parent revision/digest identify the derivation;
+it does not copy the parent's direct submission seals or reserve the parent's
+Plan operation. Creation checks the exact copied executable and semantic payload
+while holding the existing retention fence and parent lock. The original
+protected record remains unchanged.
+
+Admission traverses a bounded, same-actor/session/context saved-copy chain,
+checks every exact parent pin and immutable semantic partition, and validates the
+original continuation/review evidence. Expiration of an already consumed answer
+form does not demand a new answer. Missing, changed, erased or foreign origins
+fail closed. This does not make a saved definition an execution capability.
+
+Ordinary source authorization and validation still apply. A terminal equivalent
+SQL correction is accepted only with identical parameters and fresh native
+parent/child validation followed by the existing structural equivalence proof;
+that source inspection runs after execution authorization. Changed nonterminal
+SQL or semantic meaning is rejected. Existing deletion ownership follows the
+explicit saved-copy relation, retaining independent reviewed assets according
+to their own lifecycle.

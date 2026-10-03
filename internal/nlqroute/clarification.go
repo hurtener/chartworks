@@ -53,7 +53,7 @@ type clarificationTopicPin struct {
 	BindingDigest string
 }
 
-func clarificationContext(e identity.Envelope, admitted []admittedTopic) string {
+func clarificationPins(admitted []admittedTopic) []clarificationTopicPin {
 	pins := make([]clarificationTopicPin, 0, len(admitted))
 	for _, item := range admitted {
 		pin := clarificationTopicPin{Topic: item.id, Version: item.publication.State.Version, Digest: item.publication.Digest, Revision: item.publication.State.Revision}
@@ -70,6 +70,11 @@ func clarificationContext(e identity.Envelope, admitted []admittedTopic) string 
 		pins = append(pins, pin)
 	}
 	sort.Slice(pins, func(i, j int) bool { return pins[i].Topic < pins[j].Topic })
+	return pins
+}
+
+func clarificationContext(e identity.Envelope, admitted []admittedTopic) string {
+	pins := clarificationPins(admitted)
 	return readexec.Hash(struct {
 		Schema                 int
 		Tenant, Actor, Session string
@@ -142,13 +147,17 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 	for _, index := range order {
 		item := &admitted[index]
 		input := inputs[item.id]
+		seed, seedErr := applicabilityForTopic(ctx, *item)
+		if seedErr != nil {
+			return seedErr
+		}
 		if !item.hasRules {
 			if len(input.Answers)+len(input.LegacyChoices) > 0 {
 				return clarificationFailure(in.Locale, "answers", "no_reviewed_policy")
 			}
 			continue
 		}
-		evaluation, err := rulesets.ResolvePublishedClarifications(item.publication, item.rules, input)
+		evaluation, err := rulesets.ResolvePublishedClarificationsWithTerms(item.publication, item.rules, input, seed)
 		if err != nil {
 			return err
 		}
@@ -214,7 +223,10 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 			}
 		}
 	}
-	safeQuestion := semantics.RedactClarificationText(in.Question, in.Answers, redactions)
+	maskAnswers, maskResolutions := inferenceRedactions(in, admitted)
+	result.protectedRedact = protectedTextRedactor(maskAnswers, append(semantics.CloneClarificationResolutions(redactions), maskResolutions...))
+	redactions = append(redactions, maskResolutions...)
+	safeQuestion := semantics.RedactClarificationText(in.Question, maskAnswers, redactions)
 	questionDigest := sha256.Sum256([]byte(safeQuestion))
 	for _, index := range order {
 		item := &admitted[index]
@@ -237,7 +249,7 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 	result.Request = cloneRouteRequest(in)
 	result.Request.Question = safeQuestion
 	for i := range result.Request.Examples {
-		result.Request.Examples[i].Text = semantics.RedactClarificationText(result.Request.Examples[i].Text, in.Answers, redactions)
+		result.Request.Examples[i].Text = semantics.RedactClarificationText(result.Request.Examples[i].Text, maskAnswers, redactions)
 	}
 	result.Request.Answers = semantics.CanonicalClarificationAnswers(result.Resolutions)
 	result.Request.AnswerContext = result.AnswerContext
@@ -247,6 +259,9 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 	}
 	if len(result.Resolutions) == 0 && !missing {
 		result.Request.AnswerContext = ""
+	}
+	if err := captureApplicability(ctx, in, admitted, result); err != nil {
+		return err
 	}
 	if err := crossTopicClarificationConflict(admitted, in.Locale); err != nil {
 		return err
@@ -358,6 +373,9 @@ func (r RouteResult) resolutionProof() string {
 	if r.Concepts != nil {
 		parts = append(parts, r.Concepts)
 	}
+	if r.GroupingIntent != nil {
+		parts = append(parts, r.GroupingIntent)
+	}
 	return readexec.Hash(parts)
 }
 
@@ -436,7 +454,7 @@ func (s *Service) preflightClarificationBudget(ctx context.Context, in RouteRequ
 	if err != nil {
 		return "", err
 	}
-	input := nlq.ContextInput{Locale: in.Locale, Strategy: result.Outcome, Topic: admitted[0].id, TopicVersion: admitted[0].publication.State.Version, Topics: topicRevisions(admitted), Question: in.Question, Constraints: constraints, Metrics: metrics}
+	input := nlq.ContextInput{MetricFormat: nlq.MetricFormatSharedV2, Locale: in.Locale, Strategy: result.Outcome, Topic: admitted[0].id, TopicVersion: admitted[0].publication.State.Version, Topics: topicRevisions(admitted), Question: in.Question, Constraints: constraints, Metrics: metrics}
 	var last error
 	for _, tier := range []nlq.Tier{nlq.TierLow, nlq.TierMedium, nlq.TierHigh} {
 		if _, err := s.assembler.Assemble(ctx, input, tier); err == nil {
@@ -474,6 +492,11 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 }
 
 func (s *Service) replayClarifications(ctx context.Context, e identity.Envelope, previous RouteResult, applications *[]MetricPeriodApplication) ([]readexec.BusinessConstraint, string, error) {
+	var err error
+	ctx, err = replayApplicabilityContext(ctx, e, previous)
+	if err != nil {
+		return nil, "", err
+	}
 	in := cloneRouteRequest(previous.Request)
 	ids, err := normalizeRequest(in)
 	if err != nil {
@@ -485,7 +508,7 @@ func (s *Service) replayClarifications(ctx context.Context, e identity.Envelope,
 		if err != nil {
 			return nil, "", err
 		}
-		item := admittedTopic{id: id, publication: contract.Publication}
+		item := admittedTopic{id: id, publication: contract.Publication, relations: contract.Relations}
 		item.rules, item.hasRules, err = s.readRules(ctx, e, id, contract.Publication.State.Version, contract.Publication.Digest)
 		if err != nil {
 			return nil, "", err
@@ -495,18 +518,38 @@ func (s *Service) replayClarifications(ctx context.Context, e identity.Envelope,
 	if !contextMatches(admitted, in.Context) {
 		return nil, "", readexec.ErrBinding
 	}
-	current := RouteResult{Outcome: previous.Outcome, conceptReplay: true}
+	// Replay uses the retained context as-is. It only reconstructs governed
+	// selections, never calls fresh Route/Assemble or upgrades an omitted format.
+	if previous.Context != nil && !previous.Context.MetricFormat.Valid() {
+		return nil, "", readexec.ErrBinding
+	}
+	current := RouteResult{Outcome: previous.Outcome, conceptReplay: true, groupingIntentReplay: true}
 	if previous.Concepts != nil {
 		value := previous.Concepts.clone()
 		current.Concepts = &value
 	}
+	if (in.GroupingIntentPolicy != "") != (previous.GroupingIntent != nil) {
+		return nil, "", readexec.ErrBinding
+	}
+	if previous.GroupingIntent != nil {
+		value := previous.GroupingIntent.clone()
+		current.GroupingIntent = &value
+		// Replay the original unspecified input through the deterministic
+		// temporal stage, then restore only the verified learned choice.
+		in.Grouping = nil
+	}
+	groupingRoots := previous.Selection != nil && previous.Selection.GroupingIntent != ""
 	modelRoots := false
 	if previous.Selection != nil {
 		for _, topic := range previous.Selection.Topics {
 			for _, root := range topic.Roots {
 				modelRoots = modelRoots || root.Reason == "grounded_model"
+				groupingRoots = groupingRoots || root.Reason == "grounded_grouping"
 			}
 		}
+	}
+	if groupingRoots && (in.GroupingIntentPolicy != GroundedGroupingIntentPolicy || previous.GroupingIntent == nil) {
+		return nil, "", readexec.ErrBinding
 	}
 	if modelRoots && (in.ConceptPolicy != GroundedConceptPolicy || previous.Concepts == nil) {
 		return nil, "", readexec.ErrBinding
@@ -523,7 +566,23 @@ func (s *Service) replayClarifications(ctx context.Context, e identity.Envelope,
 	if interpretation != nil {
 		current.SourceBindingDigest = interpretation.BindingDigest
 	}
-	if previous.Concepts != nil && previous.Selection == nil {
+	if err := s.selectGroupingIntent(ctx, e, &in, admitted, &current); err != nil {
+		return nil, "", err
+	}
+	if readexec.Hash(in.Grouping) != readexec.Hash(previous.Request.Grouping) || readexec.Hash(current.GroupingIntent) != readexec.Hash(previous.GroupingIntent) {
+		return nil, "", readexec.ErrBinding
+	}
+	current.Request = cloneRouteRequest(in)
+	if current.GroupingIntent != nil && current.GroupingIntent.Choice.Decision != "select" {
+		// This terminal producer outcome precedes semantic/rule resolution.
+		// Replaying it verifies only the same non-executable pending choice;
+		// it must not run the later stages or manufacture an answer-context pin.
+		if previous.Context != nil || previous.Selection != nil || previous.Concepts != nil || len(previous.Resolutions) != 0 || previous.AnswerContext != "" || readexec.Hash(previous.Clarification) != readexec.Hash(current.Clarification) || readexec.Hash(previous.Interpretation) != readexec.Hash(current.Interpretation) || previous.SourceBindingDigest != current.SourceBindingDigest {
+			return nil, "", readexec.ErrBinding
+		}
+		return nil, current.SourceBindingDigest, nil
+	}
+	if (previous.Concepts != nil || previous.GroupingIntent != nil && previous.GroupingIntent.Choice.Decision == "select") && previous.Selection == nil {
 		return nil, "", readexec.ErrBinding
 	}
 	if previous.Selection != nil {

@@ -739,6 +739,11 @@
       "docs/reviews/phase-24-evaluation.md",
       "test/acceptance/phase24_test.go",
       "internal/evaluation"
+    ],
+    "25": [
+      "docs/contracts/release-evidence-v1.md",
+      "internal/releasegate",
+      "test/acceptance/phase25_test.go"
     ]
   }
 }

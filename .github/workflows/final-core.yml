@@ -33,10 +33,12 @@ jobs:
       - run: make drift-audit
 
   build-test:
-    runs-on: ubuntu-24.04
+    # The full suite includes mandatory renderer isolation qualification.
+    runs-on: ${{ vars.CHARTWORKS_RENDER_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 90
     env:
       CGO_ENABLED: 1
+      CHARTWORKS_TEST_RENDER_CGROUP_ROOT: ${{ vars.CHARTWORKS_RENDER_CGROUP_ROOT }}
       GOFLAGS: -p=2
       CHARTWORKS_COVERAGE_OUTPUT: /tmp/chartworks-coverage.out
       CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin

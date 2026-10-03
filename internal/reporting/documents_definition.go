@@ -162,6 +162,10 @@ func validWidget(w Widget, limits config.ReportingComposition) bool {
 	case "text":
 		return w.Text != nil && w.Block == nil && w.Query == nil && len(w.Literals)+len(w.Bindings)+len(w.Overrides) == 0 && safeText(*w.Text, limits.MaxTextBytes)
 	case "query":
+		if IsCapturedQueryVariant(w) {
+			lowered, err := CapturedVariantBlock(w)
+			return err == nil && validWidget(lowered, limits)
+		}
 		return w.Query != nil && w.Block == nil && w.Text == nil && len(w.Literals)+len(w.Bindings)+len(w.Overrides) == 0 && validQuerySelections(*w.Query)
 	case "block":
 		if w.Block == nil || w.Block.Limits != nil && !w.Block.Limits.valid() || w.Query != nil || w.Text != nil || !identity.Identifier(w.Block.Block) || w.Block.Revision < 0 || w.Block.Revision > 256 || len(w.Block.Outputs) > 64 || !slices.Contains([]string{"", "published", "certified_only", "explicit_stale"}, w.Block.Policy) {

@@ -85,3 +85,61 @@ exact result IDs/decimals and zero-work replay. The earlier private-exclusion
 regression now checks that only the verified base is exported; annotation and
 known-value exclusions remain. Test inventory is not a passing/live gate; the
 tracker records observed results separately.
+
+## Scoped population reconstruction
+
+The reconstructed continuation also admits exact authenticated binding receipts
+2 (scalar owned populations), 3 (grouped owned populations), and 4 (final group
+selection). Each uses a distinct value-free origin policy:
+`current-owned-scalar-populations-v1`, `current-owned-grouped-populations-v1`, or
+`current-owned-group-selection-v1`. The policy participates in the digest, so
+substituting a binder family invalidates the example. Existing ordinary owned
+examples keep their original digest and policy. These policies use the existing
+version-3 owned portable envelope (version 4 for a domain-bearing model schema,
+version 5 when separately requalified); unsupported policy names fail closed.
+
+Learning still reconstructs the entire source-bound receipt through authenticated
+current router replay and the exact schema-specific binder before native dry
+validation of the original base. No period, final group value, NULL selection, or
+private alias becomes a model parameter or reusable default. A NULL-only final
+group predicate can have no positional values; that does not invalidate its
+separately proved schema-4 custody. Manually corrected bound SQL remains excluded.
+
+Consumption and protected import require a newly compiled matching analytical
+family from the current in-process route seal. Historical JSON, an origin marker,
+or a caller-supplied compiled contract cannot supply that seal. The current binder
+and native analytical validator still prove the generated query. Requalification
+passes the freshly compiled contract to the same binder before analytical review.
+These source changes require new native lifecycle and adversarial qualification;
+previously unpublished results do not establish their correctness or live quality.
+
+Example eligibility and ranking are not evidence of prompt use. The final token
+fit may omit an eligible scoped demonstration to preserve mandatory reviewed
+semantics. Qualification records actual `used` and `omitted` receipts separately.
+The full scalar activity fixture retains all amount-completeness outputs and
+explicitly proves budget omission with both two candidates and one isolated
+candidate; the scalar cohort and grouped current-year replacement cases separately
+prove actual use. No larger token cap or reduced semantic fixture substitutes for
+that distinction, and these recorded controls do not prove live learning gains.
+
+The distinct [v12 primary-fact contract](analytical-grouped-fact-predicates-v1.md)
+uses binding schema 5 and the separate
+`current-owned-grouped-fact-predicates-v1` policy. It follows the same exact
+reconstruction, known-literal/NULL scanner, current sealed-family applicability,
+review and native proof requirements. Its producer also re-proves the complete
+retained analytical receipt against the native-validated bound plan, including
+output ordinals; recomputed public hashes cannot substitute for that proof.
+Historical fact bounds, optional periods
+and final group values never enter its base, abstract model slots or neutral
+question. Every new request binds its own current reviewed values. Earlier owned
+families remain ineligible for v12; schema 6 scalar-entailment learning remains
+unsupported. An unknown schema cannot fall through to ordinary learning.
+
+Schema 5 uses the existing policy-discriminated portable envelopes and immutable
+origin columns, without relabeling historical rows or adding a migration. Current
+retrieval admits this policy only after fresh v12 compilation. Requalification
+binds the old value-free base with current schema-5 facts/periods/final selection
+before native analytical proof, creates a distinct candidate and requires a
+separate activation. Eligibility is still distinct from final prompt use; no token
+budget increase is part of this continuation. Exact local, hosted and live
+qualification status is recorded separately.

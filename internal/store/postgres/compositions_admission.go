@@ -76,6 +76,15 @@ func compositionDefinitionsTx(ctx context.Context, tx pgx.Tx, e identity.Envelop
 	current := reporting.Mutation{}
 	for _, group := range m.Groups {
 		if group.Kind == "query" {
+			if group.Origin != nil && group.Origin.Query != "" {
+				var live bool
+				if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.nlq_queries WHERE tenant_id=$1 AND actor_id=$2 AND session_id=$3 AND query_id=$4)`, e.Tenant(), group.Origin.Actor, group.Origin.Session, group.Origin.Query).Scan(&live); err != nil {
+					return err
+				}
+				if !live {
+					return reporting.ErrStale
+				}
+			}
 			if group.Origin == nil || len(group.Origin.Topics) == 0 || !group.Binding.Valid() ||
 				group.Binding.Tenant != e.Tenant() || group.Origin.Source != group.Binding.Source || group.Origin.Context != group.Binding.Context {
 				return store.ErrInvalid
@@ -191,6 +200,9 @@ func (d *DB) sealComposition(ctx context.Context, e identity.Envelope, task jobs
 	}
 	defer cancel()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := queryRetentionFence(ctx, tx, e.Tenant()); err != nil {
+			return err
+		}
 		if invocation != nil {
 			if _, err := requestFenceTx(ctx, tx, *invocation); err != nil {
 				return err

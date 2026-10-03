@@ -269,7 +269,7 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 	if err != nil {
 		return out, err
 	}
-	if name == "embedding" || name == "rerank" || schema == nil || schema.Name() == "" || prompt == "" || len(prompt)+len(system)+len(schema.Document()) > e.cfg.Limits.MaxInputBytes {
+	if name == "embedding" || name == "rerank" || schema == nil || schema.Name() == "" || prompt == "" {
 		return out, gateway.ErrInput
 	}
 	envelope, err := e.GenerationEnvelope(ctx, name, system, schema)
@@ -295,8 +295,8 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 	defer release()
 	ctx, cancel := e.bounded(ctx, call, b, r)
 	defer cancel()
-	var definition any
-	if json.Unmarshal(schema.Document(), &definition) != nil {
+	definition, err := gateway.DecodeJSON(envelope.SchemaDocument(), 64<<10)
+	if err != nil {
 		return out, gateway.ErrInput
 	}
 	format := any(map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": schema.Name(), "schema": definition, "strict": true}})
@@ -308,8 +308,11 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 			return out, err
 		}
 		bc, bcCancel := isolatedBifrostContext(ctx)
+		// The pinned SDK otherwise drops ExtraParams. Only this fixed, measured
+		// OpenRouter capability preference is supplied; no caller passthrough.
+		bc.SetValue(schemas.BifrostContextKeyPassthroughExtraParams, p.provider == schemas.OpenRouter)
 		start := time.Now()
-		response, be := p.client.ChatCompletionRequest(bc, &schemas.BifrostChatRequest{Provider: p.provider, Model: model, Input: []schemas.ChatMessage{{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: &system}}, {Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: &prompt}}}, Params: &schemas.ChatParameters{ResponseFormat: &format, MaxCompletionTokens: &r.MaxTokens, Store: core.Ptr(false)}})
+		response, be := p.client.ChatCompletionRequest(bc, &schemas.BifrostChatRequest{Provider: p.provider, Model: model, Input: []schemas.ChatMessage{{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: &system}}, {Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: &prompt}}}, Params: &schemas.ChatParameters{ResponseFormat: &format, ExtraParams: envelope.ExtraParameters(), MaxCompletionTokens: &r.MaxTokens, Store: core.Ptr(false)}})
 		bcCancel()
 		actual := ""
 		var raw any
@@ -348,7 +351,8 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 			return out, gateway.ErrOutput
 		}
 		result := []byte(*message.Content.ContentStr)
-		if err = schema.Validate(result, e.cfg.Limits.MaxOutputBytes); err != nil {
+		result, err = envelope.NormalizeOutput(result, e.cfg.Limits.MaxOutputBytes)
+		if err != nil {
 			return out, err
 		}
 		out.JSON = append([]byte(nil), result...)

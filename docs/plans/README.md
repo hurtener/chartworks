@@ -8,20 +8,25 @@ Existing shipped phase labels and historical defect-review results do not
 close this subsequent extension. No required behavior is discarded by this
 tracker correction; prior named acceptance criteria and historical evidence stay.
 
-Current hosted-qualified checkpoint: `c755ad3`. The subsequent runtime tree
-`0ce69bd875deb82df3d3276cbd1c060f815ebfbd` passed integrated local qualification,
-including finite S10/S11 domain/signature completion. Its final published head
-still needs hosted checks. S4/S5/S6 and the explicitly documented legacy predicate
-approval/resume path remain implementation work; Q1/Q2/Q3 are separate gates.
-The canonical tracker controls current scope; historical evidence below does not
-qualify later source.
+Current hosted-qualified SQL checkpoint: `9ada852c5a78490dff5ba9aeb300e9d927031522`.
+Its v9 continuation includes generated-topic acceptance, scoped fact populations,
+proof-bound amount companions and durable original Plan-operation replay. The
+recorded adversarial cohort passes eight answers, five exact clarifications and
+six rejections; it is not live-model or migration-parity evidence.
+
+The separate reporting continuation adds reviewed amount disclosure, exact private
+query ownership and bounded single-output PNG under D-091. Its current qualification
+is tracked separately: namespace launch and virtual-address compatibility remain
+renderer deployment blockers. Historical phase labels do not close these gates.
+S4/S5/S6 parent scopes and Q1/Q2/Q3 remain bounded by their documented supported
+matrices rather than being declared complete from a passing subset.
 
 
 The [behavioral gap analysis](../gap-analysis.md) records source-parity findings, expansion frontiers and closure evidence.
 
-Phases **01–22 and 32 are shipped**. Phases 23, 24, 26–31, 33 and 34 are in progress;
-phase 25 is the planned final release gate. The registry maps 224 criteria to
-planned, implemented or in-progress work. This is
+Phases **01–22 and 32 are shipped**. Phases 23–31, 33 and 34 are in progress.
+Phase 25 has five named criteria under development and lacks AC03 and final live
+evidence. The registry maps 224 criteria to implemented or in-progress work. This is
 bookkeeping, not evidence that every implementation has passed its release gates.
 
 The [phase-23 review](../reviews/phase-23-adversarial.md),
@@ -54,7 +59,7 @@ Keep functional cron/interval/manual scheduling and actual pipeline/saved-query/
 
 Read RFC-001, RFC-002, [COMMON.md](COMMON.md), then the owning phase. Each phase names packages, dependencies, concrete tasks, configuration/persistence, non-goals and individually testable criteria. `phase-registry.json` supplies the dependency/status/count ledger; `coverage.json` maps all source features and review gates to criteria. Neither file is runtime evidence.
 
-There are **34 workstreams and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. The current registry records 23 shipped phases (01–22 and 32), ten in progress (23, 24, 26–31, 33 and 34), and one planned (25). Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success. The phase 25 full-release gate remains unimplemented on main.
+There are **34 workstreams and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. The registry has 23 shipped and 11 in-progress phases. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success. Phase 25 remains an incomplete final-release gate.
 
 Numbers identify workstreams, not chronology. Phases21–23 extend the early transport/client registration seams; domain phases add concrete operations as they land. The six operational routes and matching SDK methods introduced in phases03/04 are real first consumers, not a claim that the later full HTTP/MCP/client phases are finished. Phase25 is the final release gate.
 
@@ -152,3 +157,13 @@ closure/rules, not SQL authority. Explicit choices and historical replay retain
 their behavior; unknown/ambiguous model choices cannot produce executable plans.
 No interpretation-confidence, live quality or full-recovery completion is inferred
 from these software changes. Historical results above retain their stated scope.
+
+Renderer deployment qualification uses the [D-095 protected outer job domain](../decisions/2026-10-03-renderer-protected-job-domain.md)
+and controller-free worker namespace leaf. Exact-source kernel and full Phase32
+gates remain required; prior single-leaf results do not qualify this topology.
+
+The fresh [bounded scalar equality continuation](../contracts/analytical-scalar-entailment-v1.md)
+is tracked separately from historical reconstruction. Its v13/schema6 family
+accounts for an exact request predicate only when every selected scalar SUM/COUNT
+occurrence already requires it. Qualification remains scoped to the named tests
+and source snapshots; this does not close broader recovery or release gates.

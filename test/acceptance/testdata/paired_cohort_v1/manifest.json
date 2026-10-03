@@ -1,0 +1,27 @@
+{
+  "format": "paired-cohort-offline-v1",
+  "mode": "recorded_provider_real_postgresql",
+  "seed": 20261003,
+  "source_commit": "8562a36023aa9892199c9c283759fab107c2f08a",
+  "source_fixtures_sha256": {
+    "warehouse.json": "606327ef22ac642b5ecc215fcf3adff74017dbfb8fb33545bf3fcf46e136acf4",
+    "authoring_inputs.json": "d64d13dad904ecb6c7d03296cf96d9ba35098c2188735455d93a87adc17f5801",
+    "net_business.json": "639282d4135f3679feeb43d118734ee7091aa51cdfcf44548d8c34d3ae482196",
+    "oracle.json": "1a4053286491f3b4479e0e2a09683c7e1da76d76da2757dcd4fc1e2ef82ae20f",
+    "held_out.json": "ce99455a986a08b982b4e39f6a8696d5c67782b29591cbd6bc31be51c8652827"
+  },
+  "cohort_files_sha256": {
+    "design-source.json": "de3cd0042cecfcb79facc2fa360d516f96a47909b388615f8b45c988ce55413c",
+    "held_out.json": "4e529fca7d1aea7fa45bf191e4c90ae5c40fa49548613519f329a89c6fb0af8f",
+    "training.json": "d0b071486f10a6cd6cf23f6d0e08aee323eca7a671af157d7d1f1e92e49e2298"
+  },
+  "quality_threshold": "unknown",
+  "review_status": "pending_independent_code_review",
+  "learning_arm": "reviewed_sql_example_learning",
+  "split": "Exact questions are disjoint; semantic families and source snapshot are shared. No claim of unseen business concepts.",
+  "training_count": 12,
+  "regression_count": 19,
+  "fresh_paraphrase_count": 12,
+  "required_supported_consumption_control": "C/cohort-known-net",
+  "measurement_scope": "Pinned metric IDs control SQL-consumer comparison. No claim of automatic metric selection, language-meaning equivalence or live improvement."
+}

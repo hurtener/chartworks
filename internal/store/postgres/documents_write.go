@@ -86,6 +86,21 @@ func insertDocumentLinks(ctx context.Context, tx pgx.Tx, e identity.Envelope, m 
 	}
 	queryCount := 0
 	for _, widget := range definition.Widgets {
+		if reporting.IsCapturedQueryVariant(widget) {
+			pin := widget.Query.Variant
+			lowered, err := reporting.CapturedVariantBlock(widget)
+			if err != nil {
+				return err
+			}
+			captured, err := blockTx(ctx, tx, e, pin.Block, reporting.Reference{Revision: pin.Revision}, reporting.Read)
+			if err != nil {
+				return err
+			}
+			if err = reporting.CheckCapturedQueryVariant(pin, captured); err != nil {
+				return err
+			}
+			widget = lowered
+		}
 		switch widget.Kind {
 		case "block":
 			w := widget.Block
@@ -267,6 +282,9 @@ func (d *DB) CommitDocument(ctx context.Context, e identity.Envelope, proof repo
 	}
 	defer cancel()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := queryRetentionFence(ctx, tx, e.Tenant()); err != nil {
+			return err
+		}
 		if _, err := proof.Checked(e); err != nil {
 			return err
 		}
@@ -348,6 +366,9 @@ func (d *DB) QuarantineDocument(ctx context.Context, e identity.Envelope, proof 
 	}
 	defer cancel()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := queryRetentionFence(ctx, tx, e.Tenant()); err != nil {
+			return err
+		}
 		if _, err := proof.Checked(e); err != nil {
 			return err
 		}

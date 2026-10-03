@@ -143,6 +143,7 @@ type SessionRecord struct {
 // QueryRecord contains protected generation and result metadata. It is never
 // returned directly from a public route; Response redacts SQL by default.
 type QueryRecord struct {
+	SavedCopyParent      string                       `json:"-"`
 	PlanOperation        string                       `json:"-"`
 	PlanRequestDigest    string                       `json:"-"`
 	IntentReview         *IntentReviewEvidence        `json:"intent_review,omitempty"`
@@ -269,10 +270,11 @@ type ExampleRecord struct {
 // QuestionRequest is shared by preflight and plan. The verified envelope
 // supplies tenant, actor and session; none of those are accepted from JSON.
 type QuestionRequest struct {
-	GenerationQuery   string                      `json:"generation_query,omitempty"`
-	GenerationContext string                      `json:"generation_context,omitempty"`
-	ConceptPolicy     string                      `json:"concept_policy,omitempty"`
-	Grouping          *nlqroute.GroupingSelection `json:"grouping,omitempty"`
+	GroupingIntentPolicy string                      `json:"grouping_intent_policy,omitempty"`
+	GenerationQuery      string                      `json:"generation_query,omitempty"`
+	GenerationContext    string                      `json:"generation_context,omitempty"`
+	ConceptPolicy        string                      `json:"concept_policy,omitempty"`
+	Grouping             *nlqroute.GroupingSelection `json:"grouping,omitempty"`
 	// ClarificationQuery anchors a typed submission to a retained preflight in
 	// the current actor/session. The ID grants no authority and is rechecked.
 	ClarificationQuery       string                             `json:"clarification_query,omitempty"`
@@ -482,6 +484,11 @@ type Service struct {
 func New(router Router, topicsReader TopicReader, sourcesReader SourceReader, validator PlanValidator, executor PlanExecutor, engine gateway.Engine, repo Repository) (*Service, error) {
 	if router == nil || topicsReader == nil || sourcesReader == nil || validator == nil || executor == nil || engine == nil || repo == nil {
 		return nil, store.ErrInvalid
+	}
+	if routed, ok := router.(*nlqroute.Service); ok {
+		if reader, ok := repo.(nlqroute.ApplicabilityReader); ok {
+			router = routed.WithApplicabilityReader(reader)
+		}
 	}
 	return &Service{router: router, topics: topicsReader, sources: sourcesReader, validator: validator, executor: executor, engine: engine, repo: repo}, nil
 }

@@ -154,7 +154,7 @@ func (s *Runs) selectRunOutputs(d Definition, in RunRequest) ([]Output, error) {
 		// Partial runs retain an explicit failed receipt for an unavailable
 		// optional narrative instead of discarding independent table/chart
 		// outputs. Opt-in and the full declared budget remain mandatory.
-		if in.PartialPolicy != "allow_partial" && (s.model == nil || n.ModelVersion != s.modelVersion || n.SchemaVersion != "grounded-narrative-v1") {
+		if in.PartialPolicy != "allow_partial" && (s.model == nil || n.ModelVersion != s.modelVersion || !narrativeSchemaSupported(*n)) {
 			return nil, ErrUnavailable
 		}
 		calls += n.MaxCalls

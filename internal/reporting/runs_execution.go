@@ -113,6 +113,15 @@ func (s *Runs) queryFrozen(ctx context.Context, e identity.Envelope, inv jobs.In
 	if err != nil {
 		return RunRecord{}, err
 	}
+	queryCtx, err = exec.WithAttemptReservation(queryCtx, func(callCtx context.Context, current identity.Envelope, options exec.Options) error {
+		if err := RequireRunManifest(current, m); err != nil {
+			return err
+		}
+		return s.repo.ReserveFrozenQuery(callCtx, inv, options)
+	})
+	if err != nil {
+		return RunRecord{}, err
+	}
 	report, executeErr := s.blocks.executor.Execute(queryCtx, e, plan, exec.Options{Operation: m.ID, Number: number,
 		Preview: m.Private, Rows: caps.MaxRows, Bytes: caps.MaxBytes})
 	if report.Attempt.ID != "" {
@@ -162,14 +171,23 @@ func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Inv
 	} else {
 		n := saved.Narrative
 		available := !m.NarrativePackUnavailable && (s.packSelector == nil || m.NarrativePack != nil) &&
-			n != nil && s.model != nil && m.Model == s.modelVersion && n.ModelVersion == s.modelVersion && n.SchemaVersion == "grounded-narrative-v1"
+			n != nil && s.model != nil && m.Model == s.modelVersion && n.ModelVersion == s.modelVersion && narrativeSchemaSupported(*n)
 		versioned := m.Revision.Definition.SchemaVersion == CurrentSchemaVersion || n != nil && n.PolicyVersion != ""
 		if n == nil || !available && !versioned {
 			// Preserve the legacy unavailable receipt. Versioned policies first
 			// resolve deterministic evidence exclusions, even without a model.
 			out.State, out.Code = "failed", "narrative_unavailable"
 		} else {
-			prepared, err := prepareNarrative(m, result, *n)
+			if n.PolicyVersion == StatisticalNarrativePolicyVersion {
+				// Local calculation and provider work share the authored deadline,
+				// intersected with accepted and current limits. No extra CPU window
+				// is granted before the gateway reservation.
+				duration := min(time.Duration(n.TimeoutMillis)*time.Millisecond, time.Duration(m.Limits.NarrativeTimeout), time.Duration(s.limits.NarrativeTimeout))
+				var stop context.CancelFunc
+				ctx, stop = context.WithTimeout(ctx, duration)
+				defer stop()
+			}
+			prepared, err := prepareOutputNarrative(ctx, m, result, saved)
 			if err != nil {
 				out.State, out.Code = "failed", "narrative_evidence_unavailable"
 				if errors.Is(err, ErrBudget) {
@@ -207,6 +225,9 @@ func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Inv
 				out.Narrative = &narrative
 			}
 		}
+	}
+	if out.State == "succeeded" {
+		out.AmountCompleteness = reviewedAmountDisclosures(m.Revision.Definition, m.Revision.Digest, saved, result)
 	}
 	out.Digest = digest(out)
 	return out, nil
@@ -258,6 +279,33 @@ func (s *Runs) continueFrozen(ctx context.Context, e identity.Envelope, inv jobs
 		}
 	}
 	if current.Result == nil {
+		// Durable custody is separate from completed-artifact reuse. Followers
+		// wait only under their own bounded request context; they never cancel
+		// or renew another operation, and never keep a transaction across I/O.
+		for {
+			owner, claimErr := s.repo.ClaimFrozenReuse(ctx, inv, m.ID, s.limits)
+			if claimErr != nil {
+				return claimErr
+			}
+			if owner {
+				break
+			}
+			timer := time.NewTimer(25 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+			var reused bool
+			current, reused, err = s.repo.ReuseFrozenRun(ctx, inv, m.ID, s.limits)
+			if err != nil {
+				return err
+			}
+			if reused {
+				return nil
+			}
+		}
 		current, err = s.queryFrozen(ctx, e, inv, m)
 		if err != nil {
 			return err

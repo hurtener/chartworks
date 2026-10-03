@@ -272,7 +272,7 @@ func tombstoneDocumentFeedbackOrigins(ctx context.Context, tx pgx.Tx, tenant str
  SELECT p.tenant_id,p.proposal_id,'document_deleted' FROM chartworks.topic_feedback_proposals p
  JOIN chartworks.nlq_feedback f ON(f.tenant_id,f.feedback_id)=(p.tenant_id,p.feedback_id)
  JOIN chartworks.nlq_queries q ON(q.tenant_id,q.actor_id,q.session_id,q.query_id)=(f.tenant_id,f.actor_id,f.session_id,f.query_id)
- WHERE q.tenant_id=$1 AND EXISTS(SELECT 1 FROM unnest($2::text[]) root WHERE q.operation LIKE 'composition:'||root||':%')
- ON CONFLICT DO NOTHING`, tenant, roots)
+ WHERE q.tenant_id=$1 AND EXISTS(SELECT 1 FROM chartworks.nlq_query_origins o WHERE (o.tenant_id,o.actor_id,o.session_id,o.query_id)=(q.tenant_id,q.actor_id,q.session_id,q.query_id) AND o.erased_at IS NOT NULL)
+ ON CONFLICT DO NOTHING`, tenant)
 	return err
 }

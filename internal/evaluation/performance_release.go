@@ -6,11 +6,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"reflect"
 	"sort"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/reporting"
 )
 
 var (
@@ -18,7 +22,20 @@ var (
 	ErrPerformanceEvidence = errors.New("evaluation: performance evidence unavailable")
 	// ErrPerformanceAuthority rejects a profile that does not match current verified reach.
 	ErrPerformanceAuthority = errors.New("evaluation: performance authority mismatch")
+	// ErrPerformanceAuthorityWindow is the explicit unmet-evidence result when
+	// verified Pengui authority cannot cover final_stress and cleanup.
+	ErrPerformanceAuthorityWindow = fmt.Errorf("%w: final stress requires fresh authority through cleanup", ErrPerformanceAuthority)
 )
+
+// A release profile may run for one hour and selection cleanup has a separate
+// five-second timeout. Keep additional room for the verifier's configured
+// clock skew (at most one minute) and scheduling delay. This is a conservative
+// fail-closed bound, not a local renewal of Pengui authority.
+const performanceAuthorityCleanupReserve = 2 * time.Minute
+
+func performanceAuthorityCovers(e identity.Envelope, end time.Time) bool {
+	return e.Valid() && !end.IsZero() && e.Deadline().After(end.Add(performanceAuthorityCleanupReserve))
+}
 
 // PerformanceReleaseEvidence is the exact accepted Phase 24 suite, its passing
 // report, the selected case and the independently reviewed runtime pack. It is
@@ -42,7 +59,9 @@ type PerformanceScenarioEvidence struct {
 // current release snapshot. The phase-34 composition supplies this from the
 // selected migration head and actual source/topic/context stores.
 type PerformanceRevisionEvidence struct {
-	TargetTenant   string
+	TargetTenant string
+	// WorkloadReport is the protected execution target; frozen consumers use
+	// their published block ID and signed block.execute reach.
 	WorkloadReport string
 	SourceID       string
 	ContextID      string
@@ -51,6 +70,14 @@ type PerformanceRevisionEvidence struct {
 	TopicRevision  string
 	DatasetDigest  string
 	DatasetRows    int64
+	// The following raw pins are protected current-store evidence for the
+	// frozen-run adapter. Profile bindings retain only their digests.
+	BlockID       string
+	BlockRevision int64
+	BlockDigest   string
+	SourceHead    int64
+	TopicPins     []reporting.TopicPin
+	RulePins      []reporting.RulePin
 }
 
 // PerformanceRevisionResolver reads current source and semantic revisions
@@ -77,6 +104,22 @@ type PerformanceReleaseAdapterFactory interface {
 	NewPerformanceReleaseAdapter(context.Context, identity.Envelope, PerformanceManifest, map[string]PerformanceScenarioEvidence) (PerformanceReleaseAdapter, error)
 }
 
+// PerformanceRevisionTransition is an operator-composed, authorized product
+// transition. It must make the selected accepted consumer's owner pins current;
+// the resolver checks those pins after the transition and after measurement.
+// An absent transition cannot stand in for an owner publication or cutover.
+type PerformanceRevisionTransition interface {
+	PreparePerformanceRevision(context.Context, identity.Envelope, PerformanceStep, PerformanceReleaseEvidence) error
+}
+
+type orderedPerformanceAdapterFactory interface {
+	NewOrderedPerformanceReleaseAdapter(context.Context, identity.Envelope, PerformanceManifest, map[string]PerformanceReleaseEvidence) (PerformanceReleaseAdapter, error)
+}
+
+type performanceScenarioBinder interface {
+	BindPerformanceScenario(context.Context, PerformanceStep, PerformanceScenarioEvidence) error
+}
+
 type performanceTokenVerifier interface {
 	Verify(context.Context, string, auth.Surface) (identity.Envelope, error)
 }
@@ -85,11 +128,12 @@ type performanceTokenVerifier interface {
 // bearer is verified independently of the profile, and no manifest value can
 // construct or replace its envelope.
 type PerformanceReleaseRuntime struct {
-	Verifier  performanceTokenVerifier
-	Service   *Service
-	Revisions PerformanceRevisionResolver
-	Adapters  PerformanceReleaseAdapterFactory
-	Clock     Clock
+	Verifier   performanceTokenVerifier
+	Service    *Service
+	Revisions  PerformanceRevisionResolver
+	Transition PerformanceRevisionTransition
+	Adapters   PerformanceReleaseAdapterFactory
+	Clock      Clock
 }
 
 // Measure resolves the immutable current evidence and executes a final profile
@@ -109,6 +153,13 @@ func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer, actionN
 	if manifest.Validate() != nil {
 		return PerformanceReport{}, ErrInvalid
 	}
+	// The default Pengui bearer is shorter than final_stress. Do not enter any
+	// mutable pack-selection path unless both verified snapshots can survive
+	// the entire bounded run and the cleanup window.
+	authorityEnd := time.Now().Add(time.Duration(manifest.MaxDurationMS) * time.Millisecond)
+	if !performanceAuthorityCovers(envelope, authorityEnd) {
+		return PerformanceReport{}, ErrPerformanceAuthorityWindow
+	}
 	actionStep, ok := performanceStep(manifest.Steps, "actions_negative")
 	if !ok || actionStep.AuthorityOverride == nil {
 		return PerformanceReport{}, ErrInvalid
@@ -116,6 +167,9 @@ func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer, actionN
 	actionEnvelope, err := r.Verifier.Verify(ctx, actionNegativeBearer, auth.HTTP)
 	if err != nil || !actionEnvelope.Valid() || actionEnvelope.Tenant() != envelope.Tenant() || actionEnvelope.User() != envelope.User() || actionEnvelope.Session() != envelope.Session() || !sameStrings(actionEnvelope.Scopes(), actionStep.AuthorityOverride.Scopes) || actionEnvelope.Has(actionStep.DeniedAction) {
 		return PerformanceReport{}, ErrPerformanceAuthority
+	}
+	if !performanceAuthorityCovers(actionEnvelope, authorityEnd) {
+		return PerformanceReport{}, ErrPerformanceAuthorityWindow
 	}
 	host := RuntimePerformanceEnvironment(manifest.Environment.RunnerLabel)
 	if manifest.Environment.OS != host.OS || manifest.Environment.Architecture != host.Architecture || manifest.Environment.CPUs != host.CPUs || manifest.Environment.GoVersion != host.GoVersion {
@@ -135,6 +189,9 @@ func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer, actionN
 	if performanceCurrentBinding(actionEnvelope, revisions.ContextID, evidence, revisions) != actionStep.Binding {
 		return PerformanceReport{}, ErrPerformanceEvidence
 	}
+	if r.Transition != nil {
+		return r.measureOrdered(ctx, envelope, actionEnvelope, manifest, evidence, revisions)
+	}
 	scenarios, err := r.resolvePerformanceScenarios(ctx, envelope, manifest, evidence, revisions)
 	if err != nil {
 		return PerformanceReport{}, err
@@ -149,8 +206,16 @@ func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer, actionN
 	if err != nil || adapter == nil || adapter.EvidenceMode() != manifest.EvidenceMode || adapter.SourceMode() != manifest.Environment.SourceMode || adapter.ModelMode() != manifest.Environment.ModelMode {
 		return PerformanceReport{}, ErrMode
 	}
-	bound := &authorityBoundPerformanceRunner{envelope: envelope, actionEnvelope: actionEnvelope, manifest: manifest, next: adapter}
+	bound := &authorityBoundPerformanceRunner{envelope: envelope, actionEnvelope: actionEnvelope, manifest: manifest, targetKind: performanceTargetKind(revisions), scenarios: scenarios, next: adapter}
 	report, err := MeasurePerformance(ctx, manifest, bound, r.Clock)
+	if restore, ok := adapter.(interface{ RestorePerformanceSelection(context.Context) error }); ok {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		restoreErr := restore.RestorePerformanceSelection(cleanup)
+		cancel()
+		if restoreErr != nil {
+			return report, errors.Join(err, restoreErr)
+		}
+	}
 	if err != nil {
 		return report, err
 	}
@@ -158,6 +223,182 @@ func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer, actionN
 		return report, ErrPerformanceEvidence
 	}
 	return report, nil
+}
+
+func (r *PerformanceReleaseRuntime) measureOrdered(ctx context.Context, envelope, actionEnvelope identity.Envelope, manifest PerformanceManifest, base PerformanceReleaseEvidence, baseRevisions PerformanceRevisionEvidence) (PerformanceReport, error) {
+	if !validOrderedPerformanceSteps(manifest.Steps) {
+		return PerformanceReport{}, ErrInvalid
+	}
+	factory, ok := r.Adapters.(orderedPerformanceAdapterFactory)
+	if !ok {
+		return PerformanceReport{}, ErrMode
+	}
+	evidence, err := r.resolvePerformanceScenarioReports(ctx, envelope, manifest, base)
+	if err != nil {
+		return PerformanceReport{}, err
+	}
+	adapter, err := factory.NewOrderedPerformanceReleaseAdapter(ctx, envelope, manifest, evidence)
+	if err != nil || adapter == nil {
+		if err != nil {
+			return PerformanceReport{}, err
+		}
+		return PerformanceReport{}, ErrMode
+	}
+	if adapter.EvidenceMode() != manifest.EvidenceMode || adapter.SourceMode() != manifest.Environment.SourceMode || adapter.ModelMode() != manifest.Environment.ModelMode {
+		return PerformanceReport{}, ErrMode
+	}
+	binder, ok := adapter.(performanceScenarioBinder)
+	if !ok {
+		return PerformanceReport{}, ErrMode
+	}
+	baseStep, _ := performanceStep(manifest.Steps, "cold")
+	baseScenario := PerformanceScenarioEvidence{Evidence: base, Revisions: baseRevisions}
+	if err := validatePerformanceScenarioStep(envelope, manifest, base, baseRevisions, baseStep, baseScenario); err != nil {
+		return PerformanceReport{}, err
+	}
+	runner := &orderedPerformanceRunner{
+		authorityBoundPerformanceRunner: authorityBoundPerformanceRunner{envelope: envelope, actionEnvelope: actionEnvelope, manifest: manifest, targetKind: performanceTargetKind(baseRevisions), scenarios: map[string]PerformanceScenarioEvidence{}, next: adapter},
+		transition:                      r.Transition, revisions: r.Revisions, evidence: evidence, base: baseScenario, binder: binder,
+	}
+	report, runErr := MeasurePerformanceOrdered(ctx, manifest, runner, r.Clock)
+	if restore, ok := adapter.(interface{ RestorePerformanceSelection(context.Context) error }); ok {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		restoreErr := restore.RestorePerformanceSelection(cleanup)
+		cancel()
+		if restoreErr != nil {
+			return report, errors.Join(runErr, restoreErr)
+		}
+	}
+	if runErr != nil {
+		return report, runErr
+	}
+	if report.Validate(manifest) != nil {
+		return report, ErrPerformanceEvidence
+	}
+	return report, nil
+}
+
+func validOrderedPerformanceSteps(steps []PerformanceStep) bool {
+	want := []string{"cold", "warm", "repeat", "concurrent", "tenant_negative", "context_negative", "actions_negative", "runtime_pack_changed", "rule_changed", "topic_changed", "source_changed", "context_changed"}
+	if len(steps) != len(want) {
+		return false
+	}
+	for i, step := range steps {
+		if step.Kind != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+type orderedPerformanceRunner struct {
+	authorityBoundPerformanceRunner
+	transition PerformanceRevisionTransition
+	revisions  PerformanceRevisionResolver
+	evidence   map[string]PerformanceReleaseEvidence
+	base       PerformanceScenarioEvidence
+	binder     performanceScenarioBinder
+}
+
+func (r *orderedPerformanceRunner) PreparePerformanceStep(ctx context.Context, step PerformanceStep) error {
+	if r == nil || ctx == nil || r.transition == nil || r.revisions == nil || r.binder == nil {
+		return ErrMode
+	}
+	if !step.Allowed {
+		return r.authorityBoundPerformanceRunner.PreparePerformanceStep(ctx, step)
+	}
+	evidence, ok := r.evidence[step.ID]
+	if !ok {
+		return ErrPerformanceEvidence
+	}
+	if err := r.transition.PreparePerformanceRevision(ctx, r.envelope, step, evidence); err != nil {
+		return err
+	}
+	revisions, err := r.revisions.ResolvePerformanceRevisions(ctx, r.envelope, evidence)
+	if err != nil {
+		return ErrPerformanceEvidence
+	}
+	scenario := PerformanceScenarioEvidence{Evidence: evidence, Revisions: revisions}
+	if err := validatePerformanceScenarioStep(r.envelope, r.manifest, r.base.Evidence, r.base.Revisions, step, scenario); err != nil {
+		return err
+	}
+	if step.Kind == "cold" && !reflect.DeepEqual(revisions, r.base.Revisions) {
+		return ErrPerformanceEvidence
+	}
+	if err := r.binder.BindPerformanceScenario(ctx, step, scenario); err != nil {
+		return err
+	}
+	r.scenarios[step.ID] = scenario
+	return r.authorityBoundPerformanceRunner.PreparePerformanceStep(ctx, step)
+}
+
+func (r *orderedPerformanceRunner) CurrentPerformanceTransition(step PerformanceStep) (PerformanceTransitionEvidence, error) {
+	if r == nil || !step.Allowed {
+		return PerformanceTransitionEvidence{}, ErrPerformanceEvidence
+	}
+	scenario, ok := r.scenarios[step.ID]
+	if !ok || !frozenRevisionsComplete(scenario.Revisions) {
+		return PerformanceTransitionEvidence{}, ErrPerformanceEvidence
+	}
+	rev := scenario.Revisions
+	return PerformanceTransitionEvidence{
+		StepID: step.ID, BindingDigest: step.Binding.digest(), SourceID: rev.SourceID, ContextID: rev.ContextID,
+		SourceHead: rev.SourceHead, BlockID: rev.BlockID, BlockRevision: rev.BlockRevision, BlockDigest: rev.BlockDigest,
+		TopicPinsDigest: performanceValueDigest(rev.TopicPins), RulePinsDigest: performanceValueDigest(rev.RulePins),
+	}, nil
+}
+
+func (r *orderedPerformanceRunner) PostPerformanceStep(ctx context.Context, step PerformanceStep) error {
+	if r == nil || ctx == nil {
+		return ErrPerformanceEvidence
+	}
+	if !step.Allowed {
+		return nil
+	}
+	scenario, ok := r.scenarios[step.ID]
+	if !ok {
+		return ErrPerformanceEvidence
+	}
+	current, err := r.revisions.ResolvePerformanceRevisions(ctx, r.envelope, scenario.Evidence)
+	if err != nil || !reflect.DeepEqual(current, scenario.Revisions) {
+		return ErrPerformanceEvidence
+	}
+	return nil
+}
+
+func (r *PerformanceReleaseRuntime) resolvePerformanceScenarioReports(ctx context.Context, e identity.Envelope, manifest PerformanceManifest, base PerformanceReleaseEvidence) (map[string]PerformanceReleaseEvidence, error) {
+	out := make(map[string]PerformanceReleaseEvidence, len(manifest.Steps))
+	type evidenceKey struct{ caseID, reportID, reportHash string }
+	baseKey := evidenceKey{manifest.Environment.WorkloadCaseID, manifest.Environment.EvaluationReportID, manifest.Environment.EvaluationReport}
+	cache := map[evidenceKey]PerformanceReleaseEvidence{baseKey: base}
+	for _, step := range manifest.Steps {
+		if !step.Allowed {
+			continue
+		}
+		key := baseKey
+		if step.EvidenceCaseID != "" {
+			key.caseID = step.EvidenceCaseID
+		}
+		if step.EvidenceReportID != "" {
+			key.reportID, key.reportHash = step.EvidenceReportID, step.EvidenceReport
+		}
+		selected, ok := cache[key]
+		if !ok {
+			environment := manifest.Environment
+			environment.WorkloadCaseID, environment.EvaluationReportID, environment.EvaluationReport = key.caseID, key.reportID, key.reportHash
+			var err error
+			selected, err = r.Service.ResolvePerformanceEvidence(ctx, e, environment)
+			if err != nil {
+				return nil, err
+			}
+			cache[key] = selected
+		}
+		if !validPerformanceScenarioRecord(base, step, selected) {
+			return nil, ErrPerformanceEvidence
+		}
+		out[step.ID] = selected
+	}
+	return out, nil
 }
 
 func (r *PerformanceReleaseRuntime) resolvePerformanceScenarios(ctx context.Context, e identity.Envelope, manifest PerformanceManifest, base PerformanceReleaseEvidence, baseRevisions PerformanceRevisionEvidence) (map[string]PerformanceScenarioEvidence, error) {
@@ -265,7 +506,7 @@ func performanceExpected(expected []Expected, observation Observation) bool {
 }
 
 func validatePerformanceReleaseInputs(e identity.Envelope, m PerformanceManifest, evidence PerformanceReleaseEvidence, revisions PerformanceRevisionEvidence) error {
-	if !e.Valid() || evidence.Suite.State != Accepted || evidence.Report.Status != "passed" || revisions.TargetTenant != e.Tenant() || revisions.WorkloadReport == "" || revisions.SourceID != m.Authority.SourceID || revisions.ContextID != m.Authority.ContextID || revisions.WorkloadReport != m.Authority.ReportID || revisions.DatasetDigest != m.Environment.DatasetDigest || revisions.DatasetRows != m.Environment.DatasetRows || !validDigest(revisions.SourceRevision) || !validDigest(revisions.RuleRevision) || !validDigest(revisions.TopicRevision) || !validDigest(evidence.CaseResult.Observation.SemanticDigest) {
+	if !e.Valid() || evidence.Suite.State != Accepted || evidence.Report.Status != "passed" || revisions.TargetTenant != e.Tenant() || revisions.WorkloadReport == "" || revisions.BlockID != "" && revisions.WorkloadReport != revisions.BlockID || revisions.SourceID != m.Authority.SourceID || revisions.ContextID != m.Authority.ContextID || revisions.WorkloadReport != m.Authority.ReportID || revisions.DatasetDigest != m.Environment.DatasetDigest || revisions.DatasetRows != m.Environment.DatasetRows || !validDigest(revisions.SourceRevision) || !validDigest(revisions.RuleRevision) || !validDigest(revisions.TopicRevision) || !validDigest(evidence.CaseResult.Observation.SemanticDigest) {
 		return ErrPerformanceEvidence
 	}
 	coldStep, found := performanceStep(m.Steps, "cold")
@@ -290,6 +531,14 @@ func validatePerformanceReleaseInputs(e identity.Envelope, m PerformanceManifest
 }
 
 func validatePerformanceScenarioEvidence(e identity.Envelope, m PerformanceManifest, base PerformanceReleaseEvidence, scenarios map[string]PerformanceScenarioEvidence) error {
+	cold, found := performanceStep(m.Steps, "cold")
+	if !found {
+		return ErrPerformanceEvidence
+	}
+	baseScenario, ok := scenarios[cold.ID]
+	if !ok {
+		return ErrPerformanceEvidence
+	}
 	for _, step := range m.Steps {
 		if !step.Allowed {
 			continue
@@ -298,27 +547,91 @@ func validatePerformanceScenarioEvidence(e identity.Envelope, m PerformanceManif
 		if !ok {
 			return ErrPerformanceEvidence
 		}
-		ev, rev := scenario.Evidence, scenario.Revisions
-		if ev.Suite.State != Accepted || ev.Suite.Digest != base.Suite.Digest || ev.Suite.Suite.ID != base.Suite.Suite.ID || ev.Suite.Suite.Revision != base.Suite.Suite.Revision || ev.Case.ID != step.Workload || ev.Case.ID != ev.CaseResult.ID || ev.Case.ID == "" || ev.Case.Stage != StageConsumer || ev.Case.Critical || !ev.CaseResult.Passed || !performanceExpected(ev.Case.Expected, ev.CaseResult.Observation) || ev.CaseResult.Observation.SemanticDigest != step.ExpectedDigest {
-			return ErrPerformanceEvidence
-		}
-		if rev.TargetTenant != e.Tenant() || !identifier(rev.WorkloadReport) || !identifier(rev.SourceID) || !identifier(rev.ContextID) || rev.DatasetDigest != m.Environment.DatasetDigest || rev.DatasetRows != m.Environment.DatasetRows || !validDigest(rev.SourceRevision) || !validDigest(rev.RuleRevision) || !validDigest(rev.TopicRevision) {
-			return ErrPerformanceEvidence
-		}
-		request := access.Execution{
-			Target:       access.Resource{Tenant: rev.TargetTenant, Kind: "report", Permission: "execute", ID: rev.WorkloadReport},
-			Dependencies: []access.Resource{{Tenant: rev.TargetTenant, Kind: "source", Permission: "query", ID: rev.SourceID}},
-			Contexts:     []access.Resource{{Tenant: rev.TargetTenant, Kind: "execution_context", Permission: "use", ID: rev.ContextID}},
-		}
-		if err := access.RequireExecution(e, request); err != nil {
-			return ErrPerformanceAuthority
-		}
-		actual := performanceCurrentBinding(e, rev.ContextID, ev, rev)
-		if actual != step.Binding {
-			return ErrPerformanceEvidence
+		if err := validatePerformanceScenarioStep(e, m, base, baseScenario.Revisions, step, scenario); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func validPerformanceScenarioRecord(base PerformanceReleaseEvidence, step PerformanceStep, ev PerformanceReleaseEvidence) bool {
+	return ev.Suite.State == Accepted && ev.Suite.Digest == base.Suite.Digest && ev.Suite.Suite.ID == base.Suite.Suite.ID && ev.Suite.Suite.Revision == base.Suite.Suite.Revision && ev.Case.ID == step.Workload && ev.Case.ID == ev.CaseResult.ID && ev.Case.ID != "" && ev.Case.Stage == StageConsumer && !ev.Case.Critical && ev.CaseResult.Passed && performanceExpected(ev.Case.Expected, ev.CaseResult.Observation) && ev.CaseResult.Observation.SemanticDigest == step.ExpectedDigest
+}
+
+func validatePerformanceScenarioStep(e identity.Envelope, m PerformanceManifest, base PerformanceReleaseEvidence, baseRevisions PerformanceRevisionEvidence, step PerformanceStep, scenario PerformanceScenarioEvidence) error {
+	ev, rev := scenario.Evidence, scenario.Revisions
+	if !validPerformanceScenarioRecord(base, step, ev) {
+		return ErrPerformanceEvidence
+	}
+	targetKind := performanceTargetKind(baseRevisions)
+	if rev.TargetTenant != e.Tenant() || !identifier(rev.WorkloadReport) || rev.BlockID != "" && rev.WorkloadReport != rev.BlockID || performanceTargetKind(rev) != targetKind || !identifier(rev.SourceID) || !identifier(rev.ContextID) || rev.DatasetDigest != m.Environment.DatasetDigest || rev.DatasetRows != m.Environment.DatasetRows || !validDigest(rev.SourceRevision) || !validDigest(rev.RuleRevision) || !validDigest(rev.TopicRevision) {
+		return ErrPerformanceEvidence
+	}
+	request := access.Execution{
+		Target:       access.Resource{Tenant: rev.TargetTenant, Kind: targetKind, Permission: "execute", ID: rev.WorkloadReport},
+		Dependencies: []access.Resource{{Tenant: rev.TargetTenant, Kind: "source", Permission: "query", ID: rev.SourceID}},
+		Contexts:     []access.Resource{{Tenant: rev.TargetTenant, Kind: "execution_context", Permission: "use", ID: rev.ContextID}},
+	}
+	if err := access.RequireExecution(e, request); err != nil {
+		return ErrPerformanceAuthority
+	}
+	if performanceCurrentBinding(e, rev.ContextID, ev, rev) != step.Binding || targetKind == "block" && !validFrozenDependencyClosure(baseRevisions, rev, step.Kind) {
+		return ErrPerformanceEvidence
+	}
+	return nil
+}
+
+// The current resolver proves each block pin against its owner. This check
+// requires the candidate's raw owner pins to change in the same dependency
+// closure as the declared primary axis, so a profile-only cohort hash cannot
+// stand in for an actual published block/source transition.
+func validFrozenDependencyClosure(base, next PerformanceRevisionEvidence, kind string) bool {
+	if !frozenRevisionsComplete(base) || !frozenRevisionsComplete(next) || base.TargetTenant != next.TargetTenant || base.WorkloadReport != next.WorkloadReport || base.BlockID != next.BlockID || len(base.TopicPins) != len(next.TopicPins) || len(base.RulePins) != len(next.RulePins) {
+		return false
+	}
+	for i := range base.TopicPins {
+		if base.TopicPins[i].Topic != next.TopicPins[i].Topic || base.RulePins[i].Topic != next.RulePins[i].Topic {
+			return false
+		}
+	}
+	context := base.ContextID != next.ContextID
+	sourceID := base.SourceID != next.SourceID
+	sourceHead := base.SourceHead != next.SourceHead
+	topic := !reflect.DeepEqual(base.TopicPins, next.TopicPins)
+	rule := !reflect.DeepEqual(base.RulePins, next.RulePins)
+	block := base.BlockRevision != next.BlockRevision || base.BlockDigest != next.BlockDigest
+	switch kind {
+	case "source_changed":
+		// Sources derive their context from both ID and revision. Moving to a
+		// different current source must carry its context and republish the
+		// dependent topic, rules and block. Head numbers may both be one.
+		return sourceID && context && topic && rule && block
+	case "rule_changed":
+		return rule && block && !context && !sourceID && !sourceHead && !topic
+	case "context_changed":
+		// Rotating one source increments its head and changes its context.
+		return !sourceID && context && sourceHead && topic && rule && block
+	case "topic_changed":
+		return topic && rule && block && !context && !sourceID && !sourceHead
+	case "runtime_pack_changed", "cold", "warm", "repeat", "concurrent":
+		return !context && !sourceID && !sourceHead && !topic && !rule && !block
+	default:
+		return false
+	}
+}
+
+func performanceTargetKind(revisions PerformanceRevisionEvidence) string {
+	if revisions.BlockID != "" {
+		return "block"
+	}
+	return "report"
+}
+
+func (r *authorityBoundPerformanceRunner) workloadKind() string {
+	if r.targetKind == "block" {
+		return "block"
+	}
+	return "report"
 }
 
 func performanceStep(steps []PerformanceStep, kind string) (PerformanceStep, bool) {
@@ -373,6 +686,8 @@ type authorityBoundPerformanceRunner struct {
 	envelope       identity.Envelope
 	actionEnvelope identity.Envelope
 	manifest       PerformanceManifest
+	targetKind     string
+	scenarios      map[string]PerformanceScenarioEvidence
 	next           PerformanceReleaseAdapter
 }
 
@@ -392,6 +707,23 @@ func (r *authorityBoundPerformanceRunner) Reset(ctx context.Context) error {
 		return ErrPerformanceAuthority
 	}
 	return r.next.Reset(ctx)
+}
+
+func (r *authorityBoundPerformanceRunner) PreparePerformanceStep(ctx context.Context, step PerformanceStep) error {
+	if r == nil || ctx == nil || !r.envelope.Valid() || r.next == nil {
+		return ErrPerformanceAuthority
+	}
+	if !step.Allowed {
+		return nil
+	}
+	denied, err := r.authorize(step)
+	if err != nil || denied {
+		return ErrPerformanceAuthority
+	}
+	if preparer, ok := r.next.(performanceStepPreparer); ok {
+		return preparer.PreparePerformanceStep(ctx, step)
+	}
+	return nil
 }
 
 func (r *authorityBoundPerformanceRunner) Run(ctx context.Context, step PerformanceStep, iteration int) (PerformanceAdapterResult, error) {
@@ -429,11 +761,20 @@ func (r *authorityBoundPerformanceRunner) authorize(step PerformanceStep) (bool,
 		return false, ErrPerformanceAuthority
 	}
 	fixture := r.manifest.Authority
-	if step.AuthorityOverride != nil {
+	if step.Allowed {
+		scenario, ok := r.scenarios[step.ID]
+		if !ok || scenario.Revisions.TargetTenant != r.envelope.Tenant() || performanceTargetKind(scenario.Revisions) != r.workloadKind() {
+			return false, ErrPerformanceAuthority
+		}
+		fixture.TargetTenant = scenario.Revisions.TargetTenant
+		fixture.ReportID = scenario.Revisions.WorkloadReport
+		fixture.SourceID = scenario.Revisions.SourceID
+		fixture.ContextID = scenario.Revisions.ContextID
+	} else if step.AuthorityOverride != nil {
 		fixture = *step.AuthorityOverride
 	}
 	request := access.Execution{
-		Target:       access.Resource{Tenant: fixture.TargetTenant, Kind: "report", Permission: "execute", ID: fixture.ReportID},
+		Target:       access.Resource{Tenant: fixture.TargetTenant, Kind: r.workloadKind(), Permission: "execute", ID: fixture.ReportID},
 		Dependencies: []access.Resource{{Tenant: fixture.TargetTenant, Kind: "source", Permission: "query", ID: fixture.SourceID}},
 		Contexts:     []access.Resource{{Tenant: fixture.TargetTenant, Kind: "execution_context", Permission: "use", ID: fixture.ContextID}},
 	}

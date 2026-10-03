@@ -101,6 +101,9 @@ func CheckFrozenOutput(m RunManifest, o RetainedOutput, starting bool) error {
 	if saved == nil || saved.Kind != o.Kind || saved.Intent != nil && !saved.Intent.Enabled {
 		return ErrInvalid
 	}
+	if err := checkAmountDisclosures(m, *saved, o, starting); err != nil {
+		return err
+	}
 	if m.Selection != nil {
 		if digest(o.Intent) != digest(saved.Intent) || digest(o.ResultPolicy) != digest(m.ResultPolicy) {
 			return ErrInvalid
@@ -192,6 +195,9 @@ func CheckFrozenPolicies(m RunManifest) error {
 			return ErrInvalid
 		}
 		for _, output := range m.Outputs {
+			if output.Narrative != nil && output.Narrative.PolicyVersion == StatisticalNarrativePolicyVersion {
+				return ErrInvalid
+			}
 			if output.Intent != nil && !output.Intent.Enabled {
 				return selectionError("output_disabled")
 			}
@@ -231,6 +237,13 @@ func hasNarrativeOutput(outputs []Output) bool {
 // syntactically valid model-selected claim. The repository calls this against
 // its own retained normalized result before exposing newly generated narratives.
 func CheckFrozenNarrativeEvidence(m RunManifest, output RetainedOutput, result exec.Result) error {
+	return CheckFrozenNarrativeEvidenceContext(context.Background(), m, output, result)
+}
+
+// CheckFrozenNarrativeEvidenceContext is the cancellable repository boundary.
+// The compatibility wrapper above preserves existing callers; production reads
+// and writes use their already-bounded metadata context for local calculation.
+func CheckFrozenNarrativeEvidenceContext(ctx context.Context, m RunManifest, output RetainedOutput, result exec.Result) error {
 	if m.Selection == nil || output.Kind != "narrative" || output.State != "succeeded" {
 		return nil
 	}
@@ -238,7 +251,7 @@ func CheckFrozenNarrativeEvidence(m RunManifest, output RetainedOutput, result e
 		if saved.ID != output.ID || saved.Narrative == nil {
 			continue
 		}
-		prepared, err := prepareNarrative(m, result, *saved.Narrative)
+		prepared, err := prepareOutputNarrative(ctx, m, result, saved)
 		if err != nil {
 			return err
 		}

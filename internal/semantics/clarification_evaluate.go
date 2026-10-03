@@ -48,9 +48,20 @@ type rankedClarificationPattern struct {
 // Services remain responsible for admitting its current reviewed publication and
 // complete source-context reach before calling this function.
 func ResolveClarifications(model RuleModel, input ClarificationInput) ClarificationEvaluation {
+	return resolveClarifications(model, input, nil)
+}
+
+// ResolveClarificationsWithTermContext is an internal service seam. The matches
+// are a separate argument, never a field in the public JSON input DTO. Routing
+// must establish protected query custody before calling it.
+func ResolveClarificationsWithTermContext(model RuleModel, input ClarificationInput, matches []ClarificationTermMatch) ClarificationEvaluation {
+	return resolveClarifications(model, input, append([]ClarificationTermMatch(nil), matches...))
+}
+
+func resolveClarifications(model RuleModel, input ClarificationInput, termContext []ClarificationTermMatch) ClarificationEvaluation {
 	out := ClarificationEvaluation{SchemaVersion: ClarificationSchemaVersion, Outcome: ClarificationNotApplicable, Slots: []ClarificationSlotOutcome{}}
 	definition := model.Definition()
-	if model.Digest() == "" || (input.Locale != "en" && input.Locale != "es") || !validClarificationText(input.Question, 16<<10) || len(input.Answers)+len(input.LegacyChoices) > 64 || len(input.References) > 128 {
+	if !validClarificationTermContext(definition, termContext) || model.Digest() == "" || (input.Locale != "en" && input.Locale != "es") || !validClarificationText(input.Question, 16<<10) || len(input.Answers)+len(input.LegacyChoices) > 64 || len(input.References) > 128 {
 		out.Outcome = ClarificationInvalid
 		out.Errors = []ClarificationFieldError{*clarificationError(input.Locale, "question", "invalid_union")}
 		return out
@@ -91,7 +102,7 @@ func ResolveClarifications(model RuleModel, input ClarificationInput) Clarificat
 	// independent user choices for automatic reference-slot resolution.
 	facts := append([]Reference(nil), input.References...)
 	for pass := 0; pass <= 128; pass++ {
-		out = resolveClarificationPass(model, definition, input, facts, choiceReferences, answers, origins, false)
+		out = resolveClarificationPass(model, definition, input, facts, choiceReferences, answers, origins, termContext, false)
 		if out.Outcome == ClarificationInvalid || out.Outcome == ClarificationConflicting {
 			return out
 		}
@@ -113,9 +124,9 @@ func ResolveClarifications(model RuleModel, input ClarificationInput) Clarificat
 			changed = true
 		}
 		if !changed {
-			out = resolveClarificationPass(model, definition, input, facts, choiceReferences, answers, origins, true)
+			out = resolveClarificationPass(model, definition, input, facts, choiceReferences, answers, origins, termContext, true)
 			if out.Outcome != ClarificationInvalid && out.Outcome != ClarificationConflicting {
-				out.mayRequireSourceBinding = possibleClarificationBinding(definition, input, answers)
+				out.mayRequireSourceBinding = possibleClarificationBinding(definition, input, answers, termContext)
 			}
 			return out
 		}
@@ -127,11 +138,11 @@ func ResolveClarifications(model RuleModel, input ClarificationInput) Clarificat
 	return out
 }
 
-func resolveClarificationPass(model RuleModel, definition RuleSetDefinition, input ClarificationInput, facts, choiceReferences []Reference, answers map[clarificationKey]ClarificationAnswer, origins map[clarificationKey]string, final bool) ClarificationEvaluation {
+func resolveClarificationPass(model RuleModel, definition RuleSetDefinition, input ClarificationInput, facts, choiceReferences []Reference, answers map[clarificationKey]ClarificationAnswer, origins map[clarificationKey]string, termContext []ClarificationTermMatch, final bool) ClarificationEvaluation {
 	out := ClarificationEvaluation{SchemaVersion: ClarificationSchemaVersion, Outcome: ClarificationNotApplicable, Slots: []ClarificationSlotOutcome{}}
 	patterns := make([]rankedClarificationPattern, 0, len(definition.Patterns))
 	for _, pattern := range definition.Patterns {
-		active, specificity := matchClarificationPattern(pattern, input.Question, facts)
+		active, specificity := matchClarificationInputPattern(pattern, input, facts, termContext)
 		required := false
 		for _, slot := range pattern.Slots {
 			required = required || slot.Required
@@ -411,7 +422,7 @@ func matchClarificationPattern(pattern ClarificationPattern, question string, re
 	specificity := 0
 	question = clarificationTokens(question)
 	for _, term := range pattern.Policy.When.AnyTerms {
-		if strings.Contains(question, clarificationTokens(term)) {
+		if containsClarificationTerm(question, term) {
 			score := len(strings.Fields(term))
 			if score > specificity {
 				specificity = score

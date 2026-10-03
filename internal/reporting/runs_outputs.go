@@ -34,5 +34,8 @@ func (s *Runs) buildRetainedChart(ctx context.Context, m RunManifest, result exe
 			data.Rows[rowIndex][column] = row[index]
 		}
 	}
+	if len(m.Revision.Definition.AmountCompleteness) > 0 {
+		return charts.BuildWithSourceRows(ctx, data, mapping, limits)
+	}
 	return charts.Build(ctx, data, mapping, limits)
 }

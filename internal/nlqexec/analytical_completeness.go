@@ -100,7 +100,7 @@ func compiledKnownAmountCompleteness(c *exec.AnalyticalContract) *exec.Analytica
 }
 
 func (s *Service) verifyAnalyticalOutputReplay(ctx context.Context, e identity.Envelope, q QueryRecord, a admission) error {
-	if q.AnalyticalVersion != analyticalScopedRecordVersion {
+	if q.AnalyticalVersion != analyticalScopedRecordVersion && q.AnalyticalVersion != analyticalGroupedOwnedRecordVersion && q.AnalyticalVersion != analyticalGroupedSelectionRecordVersion && q.AnalyticalVersion != analyticalGroupedFactsRecordVersion && q.AnalyticalVersion != analyticalScalarEntailmentRecordVersion {
 		return nil
 	}
 	contract, err := s.expectedAnalytical(ctx, e, q, a)

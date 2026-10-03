@@ -504,6 +504,32 @@ function selectControl(label,items,current,onchange,locale='en') {
 }
 // Display order and accepted execution order are different contracts. A new,
 // explicitly requested filter run retains the latter and the accepted caps.
+// Reviewed completeness is independent of transport truncation and display labels.
+export function amountDisclosureLines(disclosures, locale='en') {
+  const es=locale.toLowerCase().startsWith('es'), lines=[], seen=new Set(), input=array(disclosures);
+  if(input.length>128)throw fail('unavailable');
+  for(const d of input){
+    const r=d?.result??{}, key=[text(d?.declaration),text(r.metric),text(r.unknown_count_metric)].join('\u0000');
+    const validOrigin=(d?.evidence==='reviewed_definition'&&r.policy==='reviewed-amount-completeness-v1')||(d?.evidence==='analytical_receipt'&&r.policy==='proved-known-amount-result-v1');
+    if(!validOrigin||r.scope!=='returned_query_rows'||!['returned_query_rows','visible_source_rows'].includes(d?.rows_scope)||!['amount','unknown_count'].includes(d?.role)||(d?.role==='unknown_count'&&d?.unit!=='count'))throw fail('unavailable');
+    if(seen.has(key))continue;seen.add(key);
+    const label=shorten(text(d?.label)|| (es?'Importe conocido':'Known amount'),256);
+    const status=!d?.truncation&&['complete','incomplete'].includes(r.status)?r.status:'unknown';
+    const translated=es?({complete:'completo',incomplete:'incompleto',unknown:'desconocido'})[status]:status;
+    const evidence=d?.evidence==='reviewed_definition'?(es?'definición revisada':'reviewed definition'):d?.evidence==='analytical_receipt'?(es?'evidencia analítica':'analytical receipt'):(es?'desconocida':'unknown');
+    lines.push(label+': '+translated,(es?'Evidencia: ':'Evidence: ')+evidence,es?'Alcance: filas devueltas por la consulta':'Scope: returned query rows');
+    const rows=array(r.rows);let known=rows.length>0||(d?.query_outcome==='empty'&&status==='complete'), total=0n;
+    if(rows.length>100000)throw fail('unavailable');
+    for(const row of rows){const value=text(row?.unknown_count);if(row?.status==='unknown'||value.length>4096||!/^(0|[1-9][0-9]*)$/.test(value)){known=false;break;}total+=BigInt(value);}
+    const scope=d?.rows_scope==='visible_source_rows'?(es?'filas mostradas':'displayed rows'):(es?'filas devueltas':'returned rows');
+    const count=known&&!d?.truncation?total.toString():(es?'desconocido':'unknown');
+    lines.push((es?'Cantidad de importes desconocidos':'Unknown amount count')+' ('+scope+'): '+count);
+    if(d?.truncation)lines.push(es?'Resultado truncado; la completitud del importe es desconocida':'Result truncated; amount completeness is unknown');
+    if(d?.role==='unknown_count')lines.push(es?'Unidad de la métrica mostrada: cantidad':'Displayed metric unit: count');
+  }
+  return lines;
+}
+
 function retainedRunOutputs(v) {
   const choices=array(v.outputs),selected=v.accepted_selection?.selected;
   if(selected!==undefined){
@@ -561,6 +587,7 @@ export class Viewer {
         if(v.output.table){const t=v.output.table;renderTable(content,array(t.columns),array(t.rows),w,w.table,array(t.totals),[],v.timezone);for(const warning of array(t.warnings))content.append(element('p',text(warning),'metadata'));const b=v.page_bounds;const pager=element('div',undefined,'pager');pager.append(element('span',`${b.offset+Math.min(1,array(t.rows).length)}–${b.offset+array(t.rows).length} / ${b.total}`));const prev=button(w.previous,()=>this.navigate({offset:Math.max(0,b.offset-b.limit)}));prev.disabled=b.offset===0;const next=button(w.next,()=>this.navigate({offset:b.next}));next.disabled=!integer(b.next,b.offset+1,b.total);pager.append(prev,next);content.append(pager);}
         else if(v.output.chart)renderChart(content,v.output.chart,this.locale,v.timezone);
         else if(v.output.narrative){content.append(element('p',text(v.output.narrative.text),'narrative'));for(const caveat of array(v.output.narrative.caveats))content.append(element('p',text(caveat),'notice'));content.append(element('p',`${text(v.output.narrative.model_version)} · ${text(v.output.narrative.prompt_version)} · ${text(v.output.narrative.locale)}`,'metadata'));}
+        for(const line of amountDisclosureLines(v.output.amount_completeness,this.locale))content.append(element('p',line,'metadata'));
       }else content.append(element('p',`${text(v.output?.state)||text(v.summary.state)} ${text(v.output?.code)}`,'notice'));
       if(!['succeeded','completed','partial','expired'].includes(v.summary.state))content.append(button(w.refresh,()=>this.navigate({})));
       if(!v.summary.private)this.filters(v);

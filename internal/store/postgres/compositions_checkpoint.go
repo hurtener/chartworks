@@ -89,6 +89,9 @@ func (d *DB) CheckpointComposition(ctx context.Context, inv jobs.Invocation, pro
 	}
 	defer cancel()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := queryRetentionFence(ctx, tx, e.Tenant()); err != nil {
+			return err
+		}
 		if _, err := requestFenceTx(ctx, tx, inv); err != nil {
 			return err
 		}

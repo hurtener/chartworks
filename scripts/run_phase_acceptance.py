@@ -54,8 +54,9 @@ def validate_events(lines, phase: str, count: int, exit_code: int) -> list[str]:
     return sorted(passed)
 
 
-def run(root: Path, phase: str, row: dict, release: bool) -> bool:
-    """Return True for passed runtime acceptance; False for an explicit planned skip."""
+def run(root: Path, phase: str, row: dict, release: bool,
+        prior_receipts: dict[str, list[str]] | None = None) -> list[str] | None:
+    """Return strict Go pass events, or None for an explicit planned skip."""
     if release and row["status"] != "shipped":
         raise ValueError(f"phase {phase} is {row['status']}, not reviewed shipped")
     files = list((root / "test/acceptance").glob("*_test.go"))
@@ -66,7 +67,7 @@ def run(root: Path, phase: str, row: dict, release: bool) -> bool:
             raise ValueError(f"phase {phase} has acceptance code but is still marked planned")
         if not release and os.environ.get("CHARTWORKS_ALLOW_PLANNED_SKIP") == "1":
             print(f"SKIP: phase {phase} unimplemented; planning is not acceptance")
-            return False
+            return None
         raise ValueError(f"phase {phase} is unimplemented; no runtime acceptance")
     if not (root / "go.mod").is_file() or not declared:
         raise ValueError(f"phase {phase}: Go module or named acceptance tests missing")
@@ -76,6 +77,16 @@ def run(root: Path, phase: str, row: dict, release: bool) -> bool:
     command = ["go", "test", "-race", "-count=1", "-json", f"-timeout={seconds}s",
                "./test/acceptance", "-run", f"^TestPhase{phase}$"]
     environment = dict(os.environ, CGO_ENABLED="1")
+    if release:
+        environment["CHARTWORKS_RELEASE_MODE"] = "1"
+        # These names come only from validated uncached Go JSON events in this
+        # process. Phase 25 consumes the previous phases; its own result is
+        # validated by this runner after it exits.
+        environment["CHARTWORKS_RELEASE_PHASE_RECEIPTS"] = json.dumps(
+            prior_receipts or {}, sort_keys=True)
+    else:
+        environment.pop("CHARTWORKS_RELEASE_MODE", None)
+        environment.pop("CHARTWORKS_RELEASE_PHASE_RECEIPTS", None)
     with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output:
         process = subprocess.Popen(command, cwd=root, env=environment, stdout=output,
                                    stderr=subprocess.PIPE, text=True, start_new_session=True)
@@ -96,7 +107,7 @@ def run(root: Path, phase: str, row: dict, release: bool) -> bool:
             raise
     for test in passed:
         print(f"OK: {test}")
-    return True
+    return passed
 
 
 def main() -> int:
@@ -110,13 +121,18 @@ def main() -> int:
     try:
         root = args.root.resolve()
         phases = read_json(root / "docs/plans/phase-registry.json")["phases"]
+        if args.release and args.phase is not None and str(args.phase).zfill(2) == "25":
+            raise ValueError("phase 25 release requires the complete --all run")
         selected = topological(phases) if args.all else [str(args.phase).zfill(2)]
         passed = skipped = 0
+        receipts: dict[str, list[str]] = {}
         for phase in selected:
             if phase not in phases:
                 raise ValueError(f"unknown phase {phase}")
-            if run(root, phase, phases[phase], args.release):
+            events = run(root, phase, phases[phase], args.release, receipts)
+            if events is not None:
                 passed += 1
+                receipts[phase] = events
             else:
                 skipped += 1
         print(f"ACCEPTANCE: passed_phases={passed} unimplemented_skips={skipped}")

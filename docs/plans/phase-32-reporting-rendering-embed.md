@@ -24,7 +24,7 @@ Render jobs contain artifact/spec/data/theme/viewport/version only. The renderer
 
 ## Non-goals
 
-No standalone page builder, headless browser for every chart, arbitrary remote URLs/CSS/JavaScript, embed-auth service or implied PDF/PNG export support.
+No standalone page builder, headless browser for every chart, arbitrary remote URLs/CSS/JavaScript, embed-auth service, PDF, or full-report PNG layout. Bounded single-output PNG is explicitly included by D-091.
 
 ## Config and persistence
 
@@ -39,7 +39,7 @@ No standalone page builder, headless browser for every chart, arbitrary remote U
 5. **AC05** — CPU/memory/time/concurrency/output limits, crash isolation and cancellation protect the Go service and retain honest failure states.
 6. **AC06** — Viewer/static renditions agree on exact values, ordering, units, omissions and provenance across the full output catalog.
 7. **AC07** — Renderer/theme version and artifact retention/deletion are coupled; a newly rendered rendition does not pretend to be a historical byte-identical output.
-8. **AC08** — JSON/CSV/HTML/SVG exports enforce explicit export reach and spreadsheet/text safety; PDF/PNG/page-layout support is not falsely advertised.
+8. **AC08** — JSON/CSV/HTML/SVG and bounded single-output PNG exports enforce explicit export reach and text/binary safety; PDF and full-report PNG/page-layout support are not advertised.
 
 ## Tests, coverage and smoke
 
@@ -63,3 +63,60 @@ Non-Linux construction fails closed unless tests explicitly select development m
 The worker embeds the IANA timezone database so non-UTC and DST formatting remains
 deterministic inside the empty chroot. HTML/SVG output crosses a parsed element and
 attribute allowlist before the parent accepts it.
+
+
+## Current continuation qualification — 2026-10-01
+
+[D-091](../decisions/2026-10-01-bounded-png-renditions.md) adds bounded single-output
+PNG without changing the registry's owner or AC count. The original matrix above
+is historical evidence. Current functional tests cover decoded binary identity,
+HTTP/SDK/MCP/expiry, visible amount disclosure, result state and viewport bounds.
+The dedicated reporting continuation workflow requires the named tests.
+
+The historical shipped registry label does not establish current deployment
+qualification: the isolated worker still has reproduced virtual-address pressure
+under the unchanged cap, and the current hosted runner rejects namespace launch.
+The isolation acceptance tests remain mandatory. Recorded rendering tests do not
+replace that gate or the separate live-model qualification.
+
+## Charged-memory continuation — 2026-10-01
+
+[D-093](../decisions/2026-10-01-renderer-charged-memory.md) supersedes the former
+address-space-only memory limit. Production requires a preconfigured cgroup v2
+nsdelegate hierarchy, atomic clone3 membership, an aggregate charged-memory limit
+of at most 1 GiB with swap/HugeTLB disabled, and a separate 3 GiB virtual ceiling.
+Missing enforcement has no fallback. Host provisioning remains separate approval.
+`TestRendererKernelMemoryContract` under the `renderer_integration` tag is a
+mandatory deployment gate alongside the existing AC01–AC08; absence is failure,
+not a planning skip. Pure tests and recorded functional rendering do not qualify
+a host that cannot provide the boundary.
+
+## Worker startup continuation — 2026-10-03
+
+The first disposable-host kernel run at source `e08af54` passed cgroup admission
+but every launched probe received an immediate SIGKILL without an OOM receipt.
+That pattern matches the upstream Linux `CLONE_INTO_CGROUP` kill-sequence defect
+documented in [fix 8e3599202166](https://kernel.googlesource.com/pub/scm/linux/kernel/git/tip/tip/+/8e359920216689b3b79e0fe8961a77fe312a511f):
+the previous admission check wrote `cgroup.kill` on the future worker leaf.
+Admission now verifies that write on a distinct disposable empty sibling, removes
+it, and creates the untouched launch leaf afterward. Failed probe cleanup remains
+an explicit supervisor-poisoning failure; writable retained controls, limits,
+atomic namespace placement and cancellation/cleanup assertions are unchanged.
+
+`TestRendererKernelMemoryContract/startup-after-kill-probe` requires two successful
+healthy launches after admission, with no OOM and successful cleanup. Local
+containment tests and compilation cannot confirm behavior on the deployment
+kernel. The complete kernel and Phase32 gates at the fixed exact source remain
+required before claiming the startup cause or deployment qualification resolved.
+
+## Protected resource domain continuation — 2026-10-03
+
+The next exact-source host run at `0629745` passed the startup regression and all
+100 stable catalog renders. It exposed the separate `memory.oom.group` delegation
+gap and child probes opening absent `/dev/null`. [D-095](../decisions/2026-10-03-renderer-protected-job-domain.md)
+places all resource controls on a protected outer job domain with a controller-free
+inner namespace leaf. The adversarial gate now requires outer limit readback,
+absent inner controls, failed controller activation/escape, and whole-job OOM
+evidence before manager cleanup. Child probes reuse the inherited stdin. The
+existing namespace, memory, cancellation and cleanup requirements remain; the
+updated exact-source kernel and full Phase32 gates are still pending.

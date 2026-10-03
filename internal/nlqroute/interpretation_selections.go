@@ -195,7 +195,11 @@ func (s *Service) mergeRetainedInterpretation(ctx context.Context, in RouteReque
 					period = *edit.Period
 				}
 			}
-			grouping, err := requestedGroupingGrain(normalizedPhrase(in.Question), in.Locale)
+			surface := questionInferenceSurface(in, admitted)
+			grouping, err := requestedGroupingGrain(surface.text, in.Locale)
+			if grouping != "" && !surface.stableTemporalPolarity() {
+				return protectedMeaningFailure(in.Locale)
+			}
 			if err != nil {
 				return err
 			}

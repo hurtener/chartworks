@@ -74,7 +74,7 @@ func (s *PipelineService) Propose(ctx context.Context, e identity.Envelope, r Pi
 	if err != nil {
 		return PipelineVersion{}, err
 	}
-	schema, err := gateway.NewSchema("pipeline_draft", []byte(`{"type":"object","additionalProperties":false,"required":["sql","columns"],"properties":{"sql":{"type":"string","minLength":1,"maxLength":65536},"columns":{"type":"array","minItems":1,"maxItems":128,"items":{"type":"object","additionalProperties":false,"required":["name","type","primary_key"],"properties":{"name":{"type":"string","minLength":1,"maxLength":63},"type":{"enum":["bigint","numeric","text","boolean","date","timestamp","timestamptz","bytea"]},"primary_key":{"type":"boolean"}}}}}}`))
+	schema, err := pipelineProposalSchema()
 	if err != nil {
 		return PipelineVersion{}, err
 	}
@@ -105,4 +105,8 @@ func (s *PipelineService) Propose(ctx context.Context, e identity.Envelope, r Pi
 		return PipelineVersion{}, err
 	}
 	return record.PipelineVersion, nil
+}
+
+func pipelineProposalSchema() (*gateway.Schema, error) {
+	return gateway.NewSchema("pipeline_draft", []byte(`{"type":"object","additionalProperties":false,"required":["sql","columns"],"properties":{"sql":{"type":"string","minLength":1,"maxLength":65536},"columns":{"type":"array","minItems":1,"maxItems":128,"items":{"type":"object","additionalProperties":false,"required":["name","type","primary_key"],"properties":{"name":{"type":"string","minLength":1,"maxLength":63},"type":{"enum":["bigint","numeric","text","boolean","date","timestamp","timestamptz","bytea"]},"primary_key":{"type":"boolean"}}}}}}`))
 }

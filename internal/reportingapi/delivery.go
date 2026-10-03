@@ -26,6 +26,7 @@ func deliveryEntry[I, O any](path, id, summary string, call func(context.Context
 
 func deliveryEntries(service *reporting.Delivery, execution bool, renderer ...*rendering.Service) []runtimeEndpoint {
 	entries := []runtimeEndpoint{
+		deliveryEntry("/v1/reporting/query-variant", "prepareCapturedQueryVariant", "Prepare an immutable reviewed captured-query widget and its typed parameter catalog without SQL disclosure", service.PrepareQueryVariant),
 		deliveryEntry("/v1/reporting/search", "reportingSearch", "Search authorized published reporting metadata without SQL or values", service.Search),
 		deliveryEntry("/v1/reporting/describe", "reportingDescribe", "Describe published outputs and typed business filters without execution", service.Describe),
 		deliveryEntry("/v1/reporting/runs", "reportingRuns", "List authorized retained reporting artifact metadata", service.Runs),
@@ -138,6 +139,9 @@ func DeliveryMCPBindings(service *reporting.Delivery, execution bool, renderer .
 	if err := appendBinding(mcpserver.Bind(registry, "reportingRuns", "reporting_runs", "reporting", "List currently authorized retained reporting artifacts, including private or expired state where authorized. Does not run schedules.", service.Runs, mapper)); err != nil {
 		return nil, err
 	}
+	if err := appendBinding(mcpserver.Bind(registry, "prepareCapturedQueryVariant", "prepare_captured_query_variant", "reporting", "Prepare an exact published captured-query variant with reviewed parameter slots. No SQL, source query IDs, execution or publication authority is returned.", service.PrepareQueryVariant, mapper)); err != nil {
+		return nil, err
+	}
 	resource, err := mcpserver.NewAppResource(reportviewer.URI, "Chartworks report viewer", "Bounded read viewer for authorized retained reporting outputs", reportviewer.HTML())
 	if err != nil {
 		return nil, err
@@ -152,7 +156,7 @@ func DeliveryMCPBindings(service *reporting.Delivery, execution bool, renderer .
 	}
 	out = append(out, view)
 	if len(renderer) == 1 && renderer[0] != nil {
-		export, err := mcpserver.Bind(registry, "reportingExport", "reporting_export", "reporting", "Export one retained output as bounded JSON, CSV, static HTML or static SVG. Performs no source or model work.", renderer[0].Export, mapper)
+		export, err := mcpserver.Bind(registry, "reportingExport", "reporting_export", "reporting", "Export one retained output as bounded JSON, CSV, static HTML, SVG or single-output PNG. Performs no source or model work.", renderer[0].Export, mapper)
 		if err != nil {
 			return nil, err
 		}

@@ -173,6 +173,12 @@ func (s *Service) Preflight(ctx context.Context, e identity.Envelope, in Preflig
 	if err := s.validateClarificationOrigin(ctx, e, in.QuestionRequest, "query.preflight"); err != nil {
 		return PreflightResult{}, err
 	}
+	if observedParent != nil {
+		ctx, err = s.withQueryApplicability(ctx, e, *observedParent, in.routeRequest(), "query.preflight", "reply")
+		if err != nil {
+			return PreflightResult{}, err
+		}
+	}
 	admitted, err := s.admit(ctx, e, in.QuestionRequest, false)
 	if err != nil {
 		return PreflightResult{}, err
@@ -184,12 +190,15 @@ func (s *Service) Preflight(ctx context.Context, e identity.Envelope, in Preflig
 	if err != nil {
 		return PreflightResult{}, err
 	}
-	record := queryRecord(e, id, "preflight", in.ClarificationQuery, in.QuestionRequest, admitted)
+	record, err := queryRecord(e, id, "preflight", in.ClarificationQuery, in.QuestionRequest, admitted)
+	if err != nil {
+		return PreflightResult{}, err
+	}
 	bindParentLineage(&record, observedParent)
 	if err = s.repo.CreateQuery(ctx, mustScope(e), record); err != nil {
 		return PreflightResult{}, err
 	}
-	return PreflightResult{QueryID: id, SessionID: e.Session(), Route: admitted.route, Confidence: admitted.route.Confidence, Assumptions: assumptions(admitted.route), Ambiguities: ambiguities(admitted.route)}, nil
+	return PreflightResult{QueryID: id, SessionID: e.Session(), Route: record.Route, Confidence: admitted.route.Confidence, Assumptions: assumptions(admitted.route), Ambiguities: ambiguities(admitted.route)}, nil
 }
 
 // Plan generates one bounded candidate and validates it through the existing read core.
@@ -370,6 +379,22 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 		if err := s.verifyQueryClarificationBinding(ctx, e, old, parent); err != nil {
 			return PlanResult{}, err
 		}
+		// V13 refinement consumes a parent with occurrence and output evidence.
+		// Reprove its ordinals before routing can spend model work or expose a
+		// retained base. Structural receipt equality cannot establish ordinals.
+		if old.AnalyticalVersion == analyticalScalarEntailmentRecordVersion {
+			if err := s.verifyAnalyticalOutputReplay(ctx, e, old, parent); err != nil {
+				return PlanResult{}, err
+			}
+		}
+	}
+	if isScalarEntailmentRecord(old) || isScalarPeriodRecord(old) || isGroupedPeriodRecord(old) || (isGroupedSelectionRecord(old) || isGroupedFactRecord(old)) {
+		// Grouping continuation reconstructs the parent contract from current
+		// authenticated period applications, never from stored route JSON.
+		parent, parentConstraints, err = s.scalarPeriodAdmission(ctx, e, old, parent)
+		if err != nil {
+			return PlanResult{}, err
+		}
 	}
 	reviewErr := s.reviewLegacyAnalyticalContinuation(ctx, e, old, parent, parentConstraints)
 	if in.IntentReview != nil {
@@ -504,6 +529,9 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 			if admissionErr = gatewayRequirement(e, "query.execute", admitted.resources); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
+			if admissionErr = s.verifySavedDerivationExecution(ctx, e, record, admitted); admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
 			if admissionErr = s.verifyQueryClarificationBinding(ctx, e, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
@@ -550,6 +578,9 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		return RunResult{}, err
 	}
 	if err := gatewayRequirement(e, "query.execute", current.resources); err != nil {
+		return RunResult{}, err
+	}
+	if err := s.verifySavedDerivationExecution(ctx, e, record, current); err != nil {
 		return RunResult{}, err
 	}
 	if err := s.verifyQueryClarificationBinding(ctx, e, record, current); err != nil {
@@ -657,6 +688,9 @@ func (s *Service) waitForRun(ctx context.Context, e identity.Envelope, queryID, 
 				return RunResult{}, admissionErr
 			}
 			if admissionErr = gatewayRequirement(e, "query.execute", admitted.resources); admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
+			if admissionErr = s.verifySavedDerivationExecution(ctx, e, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
 			if admissionErr = s.verifyQueryClarificationBinding(ctx, e, record, admitted); admissionErr != nil {
@@ -1094,8 +1128,11 @@ func (s *Service) reusablePlanResult(ctx context.Context, record QueryRecord, e 
 		return PlanResult{}, store.ErrConflict
 	}
 	if record.GenerationPending != nil && generationContinuationState(ctx).pendingOrigin() == nil {
-		if record.Parent != parent || exec.Hash(question) != exec.Hash(record.GenerationPending.Request) {
+		if record.Parent != parent || !generationSubmissionEqual(e, record, question) {
 			return PlanResult{}, store.ErrConflict
+		}
+		if err := s.authenticateGenerationQuestion(ctx, e, record, question, "query.plan"); err != nil {
+			return PlanResult{}, err
 		}
 		if err := s.checkGenerationPending(ctx, e, record); err != nil {
 			return PlanResult{}, err
@@ -1172,7 +1209,22 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 		}
 		groundedParent = &origin
 	}
-	if groundedParent != nil && (question.ClarificationQuery != "" || groundedParent != observedParent) && groundedParent.Route.Concepts != nil {
+	applicabilityParent := groundedParent
+	if origin := generationContinuationState(ctx).pendingOrigin(); origin != nil {
+		applicabilityParent = origin
+	}
+	if applicabilityParent != nil {
+		transition := "refine"
+		if question.ClarificationQuery != "" && applicabilityParent.Status == "preflight" {
+			transition = "reply"
+		}
+		var originErr error
+		ctx, originErr = s.withQueryApplicability(ctx, e, *applicabilityParent, question.routeRequest(), action, transition)
+		if originErr != nil {
+			return PlanResult{}, originErr
+		}
+	}
+	if groundedParent != nil && (question.ClarificationQuery != "" || groundedParent != observedParent) && (groundedParent.Route.Concepts != nil || groundedParent.Route.GroupingIntent != nil) {
 		keeper, ok := s.router.(interface {
 			GroundedOrigin(context.Context, identity.Envelope, nlqroute.RouteResult) (context.Context, error)
 		})
@@ -1264,7 +1316,10 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	if err := sealClarificationCandidate(&candidate, validated, previous, admitted.route.Resolutions); err != nil {
 		return PlanResult{}, err
 	}
-	record := queryRecord(e, id, "planned", parent, question, admitted)
+	record, err := queryRecord(e, id, "planned", parent, question, admitted)
+	if err != nil {
+		return PlanResult{}, err
+	}
 	bindParentLineage(&record, observedParent)
 	bindGenerationContinuation(ctx, &record)
 	bindIntentReview(ctx, &record)
@@ -1279,7 +1334,7 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	if err = s.repo.CreateQuery(ctx, mustScope(e), record); err != nil {
 		return PlanResult{}, err
 	}
-	out := PlanResult{Analytical: cloneAnalyticalReceipt(record.Analytical), Bindings: publicClarificationBinding(record.Clarification), AnswerChanges: publicClarificationChanges(record.Clarification), QueryID: id, SessionID: e.Session(), Status: "planned", Route: admitted.route, Confidence: admitted.route.Confidence, Generation: string(generation.Strategy), ValidationFixes: fixes, Assumptions: append([]string(nil), record.Assumptions...), Ambiguities: append([]string(nil), record.Ambiguities...), Receipt: receipt, validated: validated}
+	out := PlanResult{Analytical: cloneAnalyticalReceipt(record.Analytical), Bindings: publicClarificationBinding(record.Clarification), AnswerChanges: publicClarificationChanges(record.Clarification), QueryID: id, SessionID: e.Session(), Status: "planned", Route: record.Route, Confidence: admitted.route.Confidence, Generation: string(generation.Strategy), ValidationFixes: fixes, Assumptions: append([]string(nil), record.Assumptions...), Ambiguities: append([]string(nil), record.Ambiguities...), Receipt: receipt, validated: validated}
 	if canInspect(e) {
 		out.SQL = candidate.SQL
 	}
@@ -1402,8 +1457,9 @@ func (s *Service) admissionForQuery(ctx context.Context, e identity.Envelope, q 
 func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest {
 	request := old.Route.Request
 	base := QuestionRequest{
-		ConceptPolicy: request.ConceptPolicy,
-		Topic:         request.Topic, Topics: append([]string(nil), request.Topics...), Context: request.Context, Locale: request.Locale,
+		ConceptPolicy:        request.ConceptPolicy,
+		GroupingIntentPolicy: request.GroupingIntentPolicy,
+		Topic:                request.Topic, Topics: append([]string(nil), request.Topics...), Context: request.Context, Locale: request.Locale,
 		Question: request.Question, Templates: append([]rulesets.TemplateSelection(nil), request.Templates...), Kinds: append([]string(nil), request.Kinds...), LimitPerKind: request.LimitPerKind,
 		References: append([]semantics.Reference(nil), request.References...), OmittedRoots: append([]semantics.Reference(nil), request.OmittedRoots...), Choices: append([]nlqroute.ChoiceSelection(nil), request.Choices...),
 		Joins: append([]nlqroute.JoinChoice(nil), request.JoinChoices...), MetricIDs: append([]string(nil), request.MetricIDs...),
@@ -1424,6 +1480,17 @@ func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest 
 	if delta.ConceptPolicy != "" {
 		base.ConceptPolicy = delta.ConceptPolicy
 	}
+	if old.Route.GroupingIntent != nil && delta.Question != "" && delta.Question != old.Question && delta.Grouping == nil {
+		// Changed language requires a fresh model choice, not inherited intent.
+		base.Grouping = nil
+		base.GroupingIntentPolicy = nlqroute.GroundedGroupingIntentPolicy
+	}
+	if delta.GroupingIntentPolicy != "" {
+		base.GroupingIntentPolicy = delta.GroupingIntentPolicy
+		if delta.Grouping == nil {
+			base.Grouping = nil
+		}
+	}
 	if delta.Question != "" {
 		base.Question = delta.Question
 	}
@@ -1440,6 +1507,7 @@ func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest 
 	base.Rerank = base.Rerank || delta.Rerank
 	if delta.Grouping != nil {
 		base.Grouping = nlqroute.CloneGrouping(delta.Grouping)
+		base.GroupingIntentPolicy = ""
 	}
 	if delta.InterpretationPolicy != "" {
 		base.InterpretationPolicy = delta.InterpretationPolicy
@@ -1568,6 +1636,9 @@ func canonicalizeQuestion(question *QuestionRequest) {
 	if question == nil {
 		return
 	}
+	if question.Grouping != nil && question.ClarificationQuery == "" && question.GroupingIntentPolicy == nlqroute.GroundedGroupingIntentPolicy {
+		question.GroupingIntentPolicy = ""
+	}
 	question.References = append([]semantics.Reference(nil), question.References...)
 	question.MetricIDs = append([]string(nil), question.MetricIDs...)
 	question.OmittedRoots = append([]semantics.Reference(nil), question.OmittedRoots...)
@@ -1646,9 +1717,10 @@ func QueryLineageDigest(q QueryRecord) string {
 		Clarification     *ClarificationEvidence `json:"clarification,omitempty"`
 		SQL               string                 `json:"sql"`
 		Parameters        []exec.Parameter       `json:"parameters"`
+		SavedCopyParent   string                 `json:"saved_copy_parent,omitempty"`
 		PlanOperation     string                 `json:"plan_operation,omitempty"`
 		PlanRequestDigest string                 `json:"plan_request_digest,omitempty"`
-	}{Record: q, Clarification: q.Clarification, SQL: q.SQL, Parameters: q.Parameters, PlanOperation: q.PlanOperation, PlanRequestDigest: q.PlanRequestDigest})
+	}{Record: q, Clarification: q.Clarification, SQL: q.SQL, Parameters: q.Parameters, PlanOperation: q.PlanOperation, PlanRequestDigest: q.PlanRequestDigest, SavedCopyParent: q.SavedCopyParent})
 }
 
 func bindParentLineage(child *QueryRecord, parent *QueryRecord) {
@@ -1788,6 +1860,9 @@ func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord, a admis
 	if q.Route.Context == nil || len(a.relations) == 0 || !reflect.DeepEqual(q.Route.Context.Relations, a.relations) || !reflect.DeepEqual(q.RelationScope, a.relationScope) {
 		return nlq.AssembledContext{}, exec.ErrBinding
 	}
+	if err := validateRetainedMetricFormat(q); err != nil {
+		return nlq.AssembledContext{}, err
+	}
 	persisted := q.Generation.Context
 	if persisted.Tier == "" || persisted.Question == "" {
 		if q.Route.Context == nil {
@@ -1795,9 +1870,9 @@ func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord, a admis
 		}
 		view := q.Route.Context
 		persisted = nlq.AssembledContext{
-			Tier: view.Tier, Budget: view.Budget, Tokens: view.Tokens, Locale: view.Locale, Strategy: view.Strategy,
+			MetricFormat: view.MetricFormat, Tier: view.Tier, Budget: view.Budget, Tokens: view.Tokens, Locale: view.Locale, Strategy: view.Strategy,
 			Topic: view.Topic, TopicVersion: view.TopicVersion, Topics: append([]nlq.TopicRevision(nil), view.Topics...),
-			Question: view.Question, Relations: cloneRelations(view.Relations), Evidence: append([]nlq.Evidence(nil), view.Evidence...), Constraints: view.Constraints,
+			Question: view.Question, Prompt: view.Prompt, Relations: cloneRelations(view.Relations), Evidence: append([]nlq.Evidence(nil), view.Evidence...), Constraints: view.Constraints,
 			Metrics: append([]nlq.PinnedMetric(nil), view.Metrics...), Advisory: append([]nlq.OptionalItem(nil), view.Advisory...), Examples: append([]nlq.OptionalItem(nil), view.Examples...),
 		}
 	}
@@ -1825,12 +1900,18 @@ func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord, a admis
 		return nlq.AssembledContext{}, err
 	}
 	assembled, err := assembler.Assemble(ctx, nlq.ContextInput{
-		Locale: persisted.Locale, Strategy: persisted.Strategy, Topic: persisted.Topic, TopicVersion: persisted.TopicVersion,
+		MetricFormat: persisted.MetricFormat, Locale: persisted.Locale, Strategy: persisted.Strategy, Topic: persisted.Topic, TopicVersion: persisted.TopicVersion,
 		Topics: append([]nlq.TopicRevision(nil), persisted.Topics...), Question: persisted.Question, Relations: cloneRelations(persisted.Relations),
 		Evidence: append([]nlq.Evidence(nil), persisted.Evidence...), Constraints: persisted.Constraints,
 		Metrics: append([]nlq.PinnedMetric(nil), persisted.Metrics...), Advisory: append([]nlq.OptionalItem(nil), persisted.Advisory...), Examples: append([]nlq.OptionalItem(nil), persisted.Examples...),
 	}, persisted.Tier)
 	if err != nil || assembled.Question != q.Question || assembled.Strategy != q.Route.Outcome {
+		return nlq.AssembledContext{}, exec.ErrBinding
+	}
+	// Explicit v2 is canonical, including on JSON restoration. Historical omitted
+	// format preserves the prior structured-context reseal behavior; prompt text
+	// cannot select a version or establish retained authority.
+	if persisted.MetricFormat == nlq.MetricFormatSharedV2 && (persisted.Prompt != assembled.Prompt) {
 		return nlq.AssembledContext{}, exec.ErrBinding
 	}
 	if len(q.Topics) != len(q.TopicVersions) {
@@ -1901,6 +1982,9 @@ func validateResealedRelations(relations []nlq.SourceRelation, topics []string, 
 }
 
 func (s *Service) currentAdmission(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {
+	if err := s.verifySavedDerivation(ctx, e, q); err != nil {
+		return admission{}, err
+	}
 	if err := s.verifyIntentReview(ctx, e, q); err != nil {
 		return admission{}, err
 	}
@@ -1972,6 +2056,9 @@ func (s *Service) resolveCurrentAdmission(ctx context.Context, e identity.Envelo
 	if err != nil {
 		return admission{}, exec.ErrBinding
 	}
+	if err := validateRetainedMetricFormat(q); err != nil {
+		return admission{}, err
+	}
 	return result, nil
 }
 
@@ -1980,6 +2067,9 @@ func (s *Service) resolveCurrentAdmission(ctx context.Context, e identity.Envelo
 // active pointers, while a query whose rule evidence was invalidated must
 // replay only against the immutable retained definitions it originally used.
 func (s *Service) retainedAdmission(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {
+	if err := s.verifySavedDerivation(ctx, e, q); err != nil {
+		return admission{}, err
+	}
 	if err := s.verifyIntentReview(ctx, e, q); err != nil {
 		return admission{}, err
 	}
@@ -2027,6 +2117,9 @@ func (s *Service) retainedAdmission(ctx context.Context, e identity.Envelope, q 
 	result.relationScope, result.relations, err = reviewedProjection(result.reviewed, result.binding)
 	if err != nil || len(q.RelationScope) == 0 || !reflect.DeepEqual(q.RelationScope, result.relationScope) {
 		return admission{}, exec.ErrBinding
+	}
+	if err := validateRetainedMetricFormat(q); err != nil {
+		return admission{}, err
 	}
 	return result, nil
 }
@@ -2469,12 +2562,17 @@ func tokenSet(value string) map[string]bool {
 	return result
 }
 
-func queryRecord(e identity.Envelope, id, status, parent string, in QuestionRequest, a admission) QueryRecord {
-	return QueryRecord{ID: id, Session: e.Session(), Parent: parent, Topic: a.route.Topic, Topics: append([]string(nil), a.route.Topics...), TopicVersions: append([]string(nil), a.route.TopicVersions...), RuleVersions: append([]string(nil), a.route.RuleVersions...), Templates: append([]rulesets.TemplateSelection(nil), a.route.Templates...), Context: in.Context, Locale: in.Locale, Question: a.route.Request.Question, Route: a.route, RelationScope: cloneRelationScope(a.relationScope), Status: status, Assumptions: assumptions(a.route), Ambiguities: ambiguities(a.route), Created: time.Now().UTC(), Updated: time.Now().UTC(), Revision: 1}
+func queryRecord(e identity.Envelope, id, status, parent string, in QuestionRequest, a admission) (QueryRecord, error) {
+	route, err := a.route.BindApplicabilityQuery(e, id)
+	if err != nil {
+		return QueryRecord{}, err
+	}
+	a.route = route
+	return QueryRecord{ID: id, Session: e.Session(), Parent: parent, Topic: a.route.Topic, Topics: append([]string(nil), a.route.Topics...), TopicVersions: append([]string(nil), a.route.TopicVersions...), RuleVersions: append([]string(nil), a.route.RuleVersions...), Templates: append([]rulesets.TemplateSelection(nil), a.route.Templates...), Context: in.Context, Locale: in.Locale, Question: a.route.Request.Question, Route: a.route, RelationScope: cloneRelationScope(a.relationScope), Status: status, Assumptions: assumptions(a.route), Ambiguities: ambiguities(a.route), Created: time.Now().UTC(), Updated: time.Now().UTC(), Revision: 1}, nil
 }
 
 func (r QuestionRequest) routeRequest() nlqroute.RouteRequest {
-	return nlqroute.RouteRequest{ConceptPolicy: r.ConceptPolicy, Grouping: nlqroute.CloneGrouping(r.Grouping), Answers: semantics.CloneClarificationAnswers(r.Answers), AnswerContext: r.AnswerContext, Topic: r.Topic, Topics: append([]string(nil), r.Topics...), Context: r.Context, Locale: r.Locale, Question: r.Question, Templates: append([]rulesets.TemplateSelection(nil), r.Templates...), Kinds: append([]string(nil), r.Kinds...), LimitPerKind: r.LimitPerKind, References: append([]semantics.Reference(nil), r.References...), OmittedRoots: append([]semantics.Reference(nil), r.OmittedRoots...), Choices: append([]nlqroute.ChoiceSelection(nil), r.Choices...), JoinChoices: append([]nlqroute.JoinChoice(nil), r.Joins...), MetricIDs: append([]string(nil), r.MetricIDs...), Examples: cloneRouteExamples(r.Examples), Rerank: r.Rerank, InterpretationPolicy: r.InterpretationPolicy, InterpretationAnchor: r.InterpretationAnchor, InterpretationEdits: nlqroute.CloneInterpretationEdits(r.InterpretationEdits), InterpretationSelections: nlqroute.CloneInterpretationSelections(r.InterpretationSelections)}
+	return nlqroute.RouteRequest{GroupingIntentPolicy: r.GroupingIntentPolicy, ConceptPolicy: r.ConceptPolicy, Grouping: nlqroute.CloneGrouping(r.Grouping), Answers: semantics.CloneClarificationAnswers(r.Answers), AnswerContext: r.AnswerContext, Topic: r.Topic, Topics: append([]string(nil), r.Topics...), Context: r.Context, Locale: r.Locale, Question: r.Question, Templates: append([]rulesets.TemplateSelection(nil), r.Templates...), Kinds: append([]string(nil), r.Kinds...), LimitPerKind: r.LimitPerKind, References: append([]semantics.Reference(nil), r.References...), OmittedRoots: append([]semantics.Reference(nil), r.OmittedRoots...), Choices: append([]nlqroute.ChoiceSelection(nil), r.Choices...), JoinChoices: append([]nlqroute.JoinChoice(nil), r.Joins...), MetricIDs: append([]string(nil), r.MetricIDs...), Examples: cloneRouteExamples(r.Examples), Rerank: r.Rerank, InterpretationPolicy: r.InterpretationPolicy, InterpretationAnchor: r.InterpretationAnchor, InterpretationEdits: nlqroute.CloneInterpretationEdits(r.InterpretationEdits), InterpretationSelections: nlqroute.CloneInterpretationSelections(r.InterpretationSelections)}
 }
 
 func cloneRouteExamples(items []nlq.OptionalItem) []nlq.OptionalItem {
@@ -2491,6 +2589,9 @@ func cloneRouteExamples(items []nlq.OptionalItem) []nlq.OptionalItem {
 
 func validateQuestion(in QuestionRequest) error {
 	if in.GenerationQuery != "" || in.GenerationContext != "" {
+		return ErrInvalid
+	}
+	if in.GroupingIntentPolicy != "" && in.GroupingIntentPolicy != nlqroute.GroundedGroupingIntentPolicy {
 		return ErrInvalid
 	}
 	if in.ConceptPolicy != "" && in.ConceptPolicy != nlqroute.GroundedConceptPolicy {

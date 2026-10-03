@@ -133,16 +133,16 @@ own exact entry; it cannot inherit a different model's window. Unknown overrides
 fail before dispatch. Entries are operator-owned configuration, not query inputs or
 a model-discovery service. No real model capacities are inferred from names.
 
-The versioned `utf8-json-byte-bound-v1` admission policy counts the normalized JSON
-chat payload's UTF-8 bytes, including escaped system/user messages, model ID, strict
-response schema and output/store parameters, plus the configured protocol reserve.
+The versioned `utf8-json-wire-byte-bound-v2` admission policy counts the SDK-style
+indented JSON chat payload's UTF-8 bytes, including escaped system/user messages, model ID, strict projected
+response schema, capability-routing preferences and output/store parameters, plus the configured protocol reserve.
 It then reserves the complete role output ceiling. This is deliberately conservative
 for byte-based remote tokenizers and is NOT a claim of exact provider tokenization.
 Operators must qualify their tokenizer/adapter framing and reserve; the accepted
 remote routes use the existing OpenAI/OpenRouter adapter. This does not replace the
 pinned cl100k semantic-tier budget or create a second semantic pruner.
 
-If no model-window policy is configured, normalized request-byte and operation limits
+If no model-window policy is configured, indented request-byte and operation limits
 still apply and optional content is refitted, but model capacity remains explicitly
 unknown. No guessed context size is inserted for legacy installations. The default
 protocol reservation for this legacy mode remains 1,024 units. With explicit windows,
@@ -152,12 +152,15 @@ reservation/dispatch; a preparation object never grants permission to execute.
 Runtime model override slices are copied when installed to prevent configuration
 changes between fitting and dispatch.
 
-Each actual attempt may carry `Usage.envelope` (`prompt-envelope-v1`): policy,
-effective-input/policy digest, normalized bytes, input upper bound, protocol/output
+Each actual attempt may carry `Usage.envelope` (`prompt-envelope-v2`): policy,
+effective-input/policy digest, indented bytes, input upper bound, protocol/output
 reserves and configured context limit. It contains no raw system/prompt/schema or
 private scalar values. Estimated admission counts remain distinct from nullable
 provider-reported `input_tokens`/`output_tokens`. Zero context limit means unconfigured,
 not unlimited verified capacity. Old receipts without envelope evidence stay unknown.
+The [strict transport contract](strict-provider-schemas-v1.md) adds projection policy,
+original/wire schema digests and explicit local assertions to this redacted receipt.
+Legacy v1 receipts retain their original normalized-byte meaning.
 Retries reserve the same complete envelope per attempt. Errors and preparation logs
 remain redacted; failure before dispatch creates no fabricated model-attempt receipt.
 
@@ -166,3 +169,43 @@ join keys into new mandatory rendering; its current qualification is in the
 completion tracker. Actual model-window/tokenizer qualification remains open. Recorded wire and synthetic fits do not establish live language
 quality, vendor capacity calibration, cloud-dialect parity or performance. Frozen
 report refresh adds no model work.
+
+## Explicit metric-wrapper format and retained compatibility
+
+`ContextInput`, sealed `AssembledContext`, and retained `ContextView` carry the
+optional `metric_format` presentation discriminator. Omitted/empty means the
+historical renderer: both `shared-versioned-v1` and nonshared prompt bytes,
+protected JSON serialization, context seals, and query-lineage digests remain
+unchanged. The version is never inferred from a prompt marker. Unknown explicit
+values fail closed, including empty metric lanes.
+
+Fresh authenticated routing and its mandatory clarification-budget preflight
+select `shared-versioned-v2`. No public request field enables this format.
+The new format changes only redundant shared-definition wrappers. Every selected
+root text, ordered root-to-dependency edge, exact topic/version/kind/entity ID,
+unscoped-root namespace, and raw definition body is retained. A shared body still
+requires byte equality at the same typed versioned identity; conflicts fail before
+sealing. Nonshared rendering remains byte-identical. `dN` entries encode
+`[namespace,kind,entity_id,utf8_bytes]` followed by one separator space and exactly
+that many raw UTF-8 body bytes. Length framing does not normalize or parse bodies,
+and does not relax the assembler's existing text validation.
+
+The explicit version is bound by the normal context/generation seals. Generation
+precedence and provider-envelope refits carry it through the context owner rather
+than silently defaulting to the newest renderer. Retained current/immutable-source
+admission checks recognized versions and agreement between present generation and
+route contexts. Clarification/metric-period replay keeps the retained route and
+reconstructs governed selections without routing, assembling, or model work.
+Execution-repair resealing uses the retained format, including the historical
+route-context fallback. Explicit v2 prompts must match their canonical structured
+context; omitted legacy retains its existing structured-context reconstruction
+behavior, including compatibility with earlier prompt layouts. A newly requested
+Refine child uses fresh v2 context while the legacy parent's JSON and lineage stay
+unchanged.
+
+Semantic bodies, selection digests, SQL, parameters, analytical proof versions,
+source/publication pins, database schema, and the 1500/3000/6500 token tiers do not
+change. This is not permission to omit a COUNT leaf, key, population, filter,
+relationship, or other mandatory meaning. Unfit raw mandatory bodies still fail
+as a whole with typed insufficiency. Formatter/round-trip and recorded native
+compatibility tests are software evidence, not live-model quality qualification.

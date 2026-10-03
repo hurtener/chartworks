@@ -119,6 +119,33 @@ class PlanningToolsTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "missing"):
                 run(Path(temp), "05", {"status": "shipped", "acceptance_count": 2}, True)
 
+    def test_release_passes_only_validated_prior_receipts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            directory = root / "test/acceptance"
+            directory.mkdir(parents=True)
+            (root / "go.mod").write_text("module example\n")
+            (directory / "phase05_test.go").write_text("func TestPhase05(t *testing.T) {}")
+            captured = {}
+
+            class Process:
+                returncode = 0
+
+                def communicate(self, timeout):
+                    return None, ""
+
+            def launch(command, cwd, env, stdout, stderr, text, start_new_session):
+                captured.update(env)
+                stdout.write("\n".join(events()) + "\n")
+                return Process()
+
+            prior = {"04": ["TestPhase04/AC01"]}
+            with patch("run_phase_acceptance.subprocess.Popen", launch):
+                actual = run(root, "05", {"status": "shipped", "acceptance_count": 2}, True, prior)
+            self.assertEqual(actual, ["TestPhase05/AC01", "TestPhase05/AC02"])
+            self.assertEqual(captured["CHARTWORKS_RELEASE_MODE"], "1")
+            self.assertEqual(json.loads(captured["CHARTWORKS_RELEASE_PHASE_RECEIPTS"]), prior)
+
 
 if __name__ == "__main__":
     unittest.main()

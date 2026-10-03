@@ -243,9 +243,17 @@ func testCW02SavedChartLifecycle(t *testing.T) {
 	m := sealed.Manifest
 	reuseKey := func(buildVersion int) string {
 		t.Helper()
-		wire, err := json.Marshal([]any{reporting.FrozenVersion, buildVersion, m.Tenant, m.Block, m.Revision.Digest,
-			m.Outputs, m.Resolved.Parameters, m.Resolved.Timezone, m.Locale, readexec.Hash(m.Binding), m.Private, "",
-			m.Policy, m.Trust, m.Model, "reporting-output-policy-v2", m.Selection, m.QueryLimits, m.ResultPolicy, m.Limits})
+		privacyActor := ""
+		if m.Private {
+			privacyActor = m.Actor
+		}
+		parts := []any{"frozen-result-reuse-v2", reporting.FrozenVersion, buildVersion, m.Tenant, m.Block, m.Revision.Digest, m.Definitions, m.Rules, m.Dependencies, m.References, m.Outputs, m.Resolved.Values, m.Resolved.Parameters, m.Resolved.Timezone, m.Locale, readexec.Hash(m.Binding), m.Private, privacyActor, m.Policy, m.PartialPolicy, m.Trust, m.Model, "reporting-output-policy-v2", m.Selection, m.QueryLimits, m.ResultPolicy, m.Limits}
+		if m.NarrativePack != nil {
+			parts = append(parts, "reviewed-narrative-pack-v1", m.NarrativePack)
+		} else if m.NarrativePackUnavailable {
+			parts = append(parts, "reviewed-narrative-pack-unavailable-v1")
+		}
+		wire, err := json.Marshal(parts)
 		if err != nil {
 			t.Fatal(err)
 		}

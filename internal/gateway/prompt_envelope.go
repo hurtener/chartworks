@@ -11,19 +11,23 @@ import (
 )
 
 // PromptEnvelopeUsage is estimated admission evidence, never reported model usage.
-// InputUpperBound counts normalized UTF-8 JSON bytes plus a reviewed protocol
+// InputUpperBound counts SDK-style indented UTF-8 JSON bytes plus a reviewed protocol
 // reserve. This deliberately conservative policy does not assume cl100k matches
 // every remote tokenizer. ContextTokens zero means no model window was configured.
 type PromptEnvelopeUsage struct {
-	Version         string `json:"version"`
-	Policy          string `json:"policy"`
-	Digest          string `json:"digest"`
-	RequestBytes    int    `json:"request_bytes"`
-	MaxRequestBytes int    `json:"max_request_bytes"`
-	InputUpperBound int    `json:"input_upper_bound"`
-	ProtocolReserve int    `json:"protocol_reserve"`
-	OutputReserve   int    `json:"output_reserve"`
-	ContextTokens   int    `json:"context_tokens,omitempty"`
+	Version            string `json:"version"`
+	SchemaProjection   string `json:"schema_projection,omitempty"`
+	DomainSchemaDigest string `json:"domain_schema_digest,omitempty"`
+	WireSchemaDigest   string `json:"wire_schema_digest,omitempty"`
+	LocalAssertions    string `json:"local_assertions,omitempty"`
+	Policy             string `json:"policy"`
+	Digest             string `json:"digest"`
+	RequestBytes       int    `json:"request_bytes"`
+	MaxRequestBytes    int    `json:"max_request_bytes"`
+	InputUpperBound    int    `json:"input_upper_bound"`
+	ProtocolReserve    int    `json:"protocol_reserve"`
+	OutputReserve      int    `json:"output_reserve"`
+	ContextTokens      int    `json:"context_tokens,omitempty"`
 }
 
 // PromptEnvelope is immutable local preparation, not authority or a dispatch token.
@@ -31,6 +35,8 @@ type PromptEnvelopeUsage struct {
 type PromptEnvelope struct {
 	model, system, provider, configuration                  string
 	schema                                                  json.RawMessage
+	strict                                                  *StrictSchema
+	requireParameters                                       bool
 	schemaName                                              string
 	maxBytes, contextTokens, protocolReserve, outputReserve int
 }
@@ -53,12 +59,16 @@ func NewPromptEnvelope(provider, model, system, configuration string, schema *Sc
 	if contextTokens != 0 && contextTokens <= protocolReserve+outputReserve {
 		return PromptEnvelope{}, ErrInput
 	}
-	return PromptEnvelope{provider: provider, model: model, system: system, configuration: configuration, schema: schema.Document(), schemaName: schema.Name(), maxBytes: maxBytes, contextTokens: contextTokens, protocolReserve: protocolReserve, outputReserve: outputReserve}, nil
+	strict, err := NewStrictSchema(schema)
+	if err != nil {
+		return PromptEnvelope{}, err
+	}
+	return PromptEnvelope{strict: strict, provider: provider, model: model, system: system, configuration: configuration, schema: strict.Document(), schemaName: schema.Name(), maxBytes: maxBytes, contextTokens: contextTokens, protocolReserve: protocolReserve, outputReserve: outputReserve}, nil
 }
 
-// Measure checks a complete normalized chat payload with strict output schema,
+// Measure checks a complete SDK-style indented chat payload with strict output schema,
 // effective system/model, JSON escaping and the full output ceiling. The protocol
-// reserve covers adapter framing not represented in this normalized payload.
+// reserve covers adapter framing not represented in this effective payload.
 // No prompt text or schema is returned in this admission receipt.
 func (e PromptEnvelope) Measure(prompt string) (PromptEnvelopeUsage, bool, error) {
 	if e.maxBytes == 0 || prompt == "" || !utf8.ValidString(prompt) || strings.ContainsRune(prompt, 0) {
@@ -77,12 +87,19 @@ func (e PromptEnvelope) Measure(prompt string) (PromptEnvelopeUsage, bool, error
 		ResponseFormat      any       `json:"response_format"`
 		MaxCompletionTokens int       `json:"max_completion_tokens"`
 		Store               bool      `json:"store"`
-	}{e.model, []message{{"system", e.system}, {"user", prompt}}, map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": e.schemaName, "strict": true, "schema": e.schema}}, e.outputReserve, false}
-	raw, err := json.Marshal(body)
+		Provider            any       `json:"provider,omitempty"`
+	}{e.model, []message{{"system", e.system}, {"user", prompt}}, map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": e.schemaName, "strict": true, "schema": e.schema}}, e.outputReserve, false, e.providerPreferences()}
+	raw, err := json.MarshalIndent(body, "", "  ")
 	if err != nil {
 		return PromptEnvelopeUsage{}, false, ErrInput
 	}
-	out := PromptEnvelopeUsage{Version: "prompt-envelope-v1", Policy: "utf8-json-byte-bound-v1", RequestBytes: len(raw), MaxRequestBytes: e.maxBytes, InputUpperBound: len(raw) + e.protocolReserve, ProtocolReserve: e.protocolReserve, OutputReserve: e.outputReserve, ContextTokens: e.contextTokens}
+	out := PromptEnvelopeUsage{Version: "prompt-envelope-v2", Policy: "utf8-json-wire-byte-bound-v2", RequestBytes: len(raw), MaxRequestBytes: e.maxBytes, InputUpperBound: len(raw) + e.protocolReserve, ProtocolReserve: e.protocolReserve, OutputReserve: e.outputReserve, ContextTokens: e.contextTokens}
+	out.SchemaProjection = "strict-optional-v1"
+	domainHash, wireHash := sha256.Sum256(e.strict.domain.document), sha256.Sum256(e.schema)
+	out.DomainSchemaDigest, out.WireSchemaDigest = hex.EncodeToString(domainHash[:]), hex.EncodeToString(wireHash[:])
+	if e.strict.localUnique {
+		out.LocalAssertions = "uniqueItems"
+	}
 	identity, _ := json.Marshal([]any{e.provider, e.configuration, out, json.RawMessage(raw)})
 	digest := sha256.Sum256(identity)
 	out.Digest = hex.EncodeToString(digest[:])
@@ -98,3 +115,32 @@ func (e PromptEnvelope) GoString() string { return e.String() }
 
 // LogValue prevents accidental system/schema logging.
 func (e PromptEnvelope) LogValue() slog.Value { return slog.StringValue(e.String()) }
+
+// SchemaDocument returns the detached effective strict provider schema.
+func (e PromptEnvelope) SchemaDocument() json.RawMessage { return append([]byte(nil), e.schema...) }
+
+// NormalizeOutput decodes only this envelope's admitted transport projection.
+func (e PromptEnvelope) NormalizeOutput(raw []byte, maxBytes int) (json.RawMessage, error) {
+	return e.strict.Normalize(raw, maxBytes)
+}
+
+// RequireStructuredParameters restricts OpenRouter to endpoints supporting every
+// supplied parameter. This routing policy is included in measured bytes/digests.
+func (e PromptEnvelope) RequireStructuredParameters() PromptEnvelope {
+	e.requireParameters = true
+	return e
+}
+func (e PromptEnvelope) providerPreferences() any {
+	if !e.requireParameters {
+		return nil
+	}
+	return map[string]any{"require_parameters": true}
+}
+
+// ExtraParameters returns detached SDK parameters from the measured envelope.
+func (e PromptEnvelope) ExtraParameters() map[string]any {
+	if !e.requireParameters {
+		return nil
+	}
+	return map[string]any{"provider": e.providerPreferences()}
+}

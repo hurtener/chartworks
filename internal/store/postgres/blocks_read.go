@@ -96,7 +96,7 @@ func blockTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, ref
 	err = tx.QueryRow(ctx, `SELECT `+blockHeadColumns+`,r.revision,r.revision_id,r.definition_version,
  CASE WHEN $9 THEN r.definition ELSE r.definition-'sql' END,
  r.digest,r.execution_digest,r.actor_id,r.created_at,
- CASE WHEN $9 THEN r.provenance ELSE '{}'::jsonb END,
+ CASE WHEN $9 THEN r.provenance ELSE jsonb_build_object('capture_digest',COALESCE(r.provenance->>'capture_digest','')) END,
  (SELECT COALESCE(jsonb_agg(jsonb_build_object('kind',rr.kind,'permission',rr.permission,'id',rr.resource_id) ORDER BY rr.kind,rr.permission,rr.resource_id),'[]'::jsonb)
   FROM chartworks.block_revision_references rr WHERE (rr.tenant_id,rr.block_id,rr.revision)=(r.tenant_id,r.block_id,r.revision)),
  v.record,a.attestation,w.withdrawal,p.created_at,(`+blockCurrent+`),bh.observation

@@ -224,7 +224,7 @@ func (s *Delivery) appendReportDescription(ctx context.Context, e identity.Envel
 		out.Filters = append(out.Filters, ViewerFilter{Page: page, Label: f.Label, Parameter: f.Parameter})
 	}
 	for _, w := range d.Widgets {
-		if w.Kind == "query" {
+		if w.Kind == "query" && !IsCapturedQueryVariant(w) {
 			out.Dynamic = true
 		}
 	}
@@ -356,7 +356,7 @@ func (s *Delivery) requireRunOptIns(ctx context.Context, e identity.Envelope, t 
 		return err
 	}
 	for _, w := range d.Widgets {
-		if w.Kind == "query" && !dynamic || w.Block != nil && w.Block.Narrative && !narrative {
+		if w.Kind == "query" && !IsCapturedQueryVariant(w) && !dynamic || w.Block != nil && w.Block.Narrative && !narrative {
 			return ErrInvalid
 		}
 	}

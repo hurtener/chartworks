@@ -26,3 +26,6 @@ func sandboxCommand(ctx context.Context, path, mode string) (*exec.Cmd, func(), 
 	cmd.Dir = dir
 	return cmd, func() { _ = os.RemoveAll(dir) }, nil
 }
+
+func admitMemoryRoot(Options) error                { return ErrInvalid }
+func bindMemoryGroup(*exec.Cmd, memoryGroup) error { return ErrInvalid }

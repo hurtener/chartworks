@@ -90,7 +90,7 @@ The shared read viewer consumes versioned specs and artifacts through the establ
 
 Iframe uses an authenticated Pengui/client BFF which forwards a scoped JWT server-side. Chartworks returns authorized HTML/SVG/data. No local embed grants/bootstrap codes/cookies/token minting or bearer URLs. The serving BFF controls approved ancestors and user session behavior.
 
-Go renders tables/KPIs/text; a pinned isolated ECharts worker renders SVG from sealed typed data, with no network/arbitrary URLs/scripts/source/model credentials. Bound resources and sanitize output. SSR must show promised chart content with client chart JavaScript disabled. Authorized JSON/CSV/HTML/SVG export is explicit; PDF/PNG/paginated document generation is later scope, not implied.
+Go renders tables/KPIs/text; a pinned isolated Go worker renders SVG and bounded single-output PNG from sealed typed data, with no network/arbitrary URLs/scripts/source/model credentials. Bound resources and sanitize output. SSR must show promised chart content with client chart JavaScript disabled. Authorized JSON/CSV/HTML/SVG export and the explicit [D-091 PNG contract](docs/decisions/2026-10-01-bounded-png-renditions.md) preserve retained meaning. Full-report PNG, PDF and paginated document generation remain separate scope.
 
 ## 9. Delivery and closure
 
@@ -114,3 +114,9 @@ bounded phase-10 execution consumer, exact transport, attempt evidence and
 cancellation/reconciliation. Reporting and scheduler consumers must reuse it and
 its ceilings. It introduces no new reporting target, retained result cache,
 identity-policy owner or model dependency.
+
+Renderer memory enforcement follows [D-093](docs/decisions/2026-10-01-renderer-charged-memory.md) and the [D-095 protected job topology](docs/decisions/2026-10-03-renderer-protected-job-domain.md): a preconfigured cgroup v2
+charged-memory boundary of at most 1 GiB and a separate fixed 3 GiB virtual-address
+ceiling. Missing controller or namespace enforcement fails closed; the application
+does not provision the host or substitute in-process rendering. Deployment
+qualification remains separate from pure functional tests.

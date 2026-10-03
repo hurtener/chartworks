@@ -235,9 +235,16 @@ type NLQGroupingKey = nlqroute.GroupingKey
 // when explicit references or metrics have not already fixed the intended roots.
 const NLQGroundedConceptPolicy = nlqroute.GroundedConceptPolicy
 
+// NLQGroundedGroupingIntentPolicy enables bounded reviewed grouping choice on
+// ordinary Route/Preflight/Plan requests; manual grouping makes no model call.
+const NLQGroundedGroupingIntentPolicy = nlqroute.GroundedGroupingIntentPolicy
+
 // NLQConceptEvidence identifies reviewed candidates selected for a paraphrase.
 // It is descriptive provenance, not authority or calibrated model confidence.
 type NLQConceptEvidence = nlqroute.ConceptEvidence
 
 // NLQConceptOption carries a current reviewed reference for explicit replanning.
 type NLQConceptOption = nlqroute.ConceptOption
+
+// NLQGroundedCalendarPolicy enables versioned grounded calendar and zone assertions.
+const NLQGroundedCalendarPolicy = nlqroute.GroundedCalendarPolicy

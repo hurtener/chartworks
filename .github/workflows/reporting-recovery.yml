@@ -1,0 +1,31 @@
+name: Reporting recovery
+on:
+  pull_request:
+    paths:
+      - 'internal/reporting/**'
+      - 'internal/reportingapi/**'
+      - 'internal/rendering/**'
+      - 'internal/config/rendering*'
+      - 'internal/foundation/documents.go'
+      - 'cmd/chartworks-renderer/**'
+      - 'internal/nlqexec/**'
+      - 'internal/exec/**'
+      - 'internal/charts/**'
+      - 'internal/chartservice/**'
+      - 'internal/store/postgres/**'
+      - 'sdk/chartworks/**'
+      - 'web/report-viewer/**'
+      - 'test/acceptance/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'scripts/native-patches/**'
+      - 'scripts/native-build-env.sh'
+      - '.github/workflows/reporting*.yml'
+  push:
+    branches: ['codex/report-captured-variants']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    uses: ./.github/workflows/reporting.yml

@@ -129,6 +129,17 @@ func (a *analyticalChecker) checkGroupedDomain(q map[string]any) error {
 	if !a.groupedLaneProof {
 		return nil
 	}
+	if a.queryPopulation != nil && len(a.queryPopulation.Constraints) > 0 {
+		// The owned grouped policy composes the same exact positive domain proof
+		// as ordinary grouped inputs, inside this independently proved lane.
+		a.ordinaryGroupProof = true
+		a.ordinaryGroupDomain = &AnalyticalGroupDomain{Policy: AnalyticalGroupDomainPolicy, Domain: a.groupedDomain}
+		if err := a.checkOrdinaryGroupDomain(q); err != nil {
+			return err
+		}
+		a.groupedDomainProved = a.ordinaryDomainProved
+		return nil
+	}
 	if len(a.leaves) == 0 || len(a.leaves) > 1024 {
 		return ErrLimit
 	}

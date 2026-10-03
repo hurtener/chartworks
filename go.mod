@@ -15,6 +15,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tiktoken-go/tokenizer v0.8.0
 	github.com/wasilibs/go-pgquery v0.0.0-20260904020512-b511bb3bfd6e
+	golang.org/x/image v0.45.0
 	golang.org/x/text v0.41.0
 )
 

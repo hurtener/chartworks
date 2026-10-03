@@ -20,6 +20,7 @@ import (
 // Zero means retained legacy evidence, not a claim of analytical correctness.
 const analyticalRecordVersion = 8
 const analyticalScopedRecordVersion = 9
+const analyticalGroupedOwnedRecordVersion = 10
 
 func analyticalUnsupported(code string) error {
 	return &exec.AnalyticalError{Code: code, Unsupported: true}
@@ -33,13 +34,22 @@ func compileAnalytical(ctx context.Context, a admission) (*exec.AnalyticalContra
 }
 
 func compileAnalyticalVersion(ctx context.Context, a admission, version int, queryConstraints ...[]exec.BusinessConstraint) (*exec.AnalyticalContract, error) {
+	if version == analyticalScalarEntailmentRecordVersion {
+		return compileAnalyticalScalarEntailment(ctx, a, queryConstraints)
+	}
+	if version == analyticalGroupedFactsRecordVersion {
+		return compileAnalyticalGroupedFacts(ctx, a, queryConstraints)
+	}
+	if version == analyticalGroupedSelectionRecordVersion {
+		return compileAnalyticalGroupedSelection(ctx, a, queryConstraints)
+	}
 	if len(queryConstraints) > 1 {
 		return nil, exec.ErrBinding
 	}
 	if len(queryConstraints) == 1 {
 		a.calendarConstraints = append([]exec.BusinessConstraint(nil), queryConstraints[0]...)
 	}
-	if version < 1 || version > analyticalScopedRecordVersion {
+	if version < 1 || version > analyticalGroupedOwnedRecordVersion {
 		return nil, exec.ErrBinding
 	}
 	proofVersion := exec.AnalyticalVersion
@@ -63,6 +73,9 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 	}
 	if version >= 8 {
 		proofVersion = exec.AnalyticalGroupedProgramsVersion
+	}
+	if version >= analyticalScopedRecordVersion && selectedKnownAmountCompleteness(a) && (selectedMetricPeriods(a) || len(a.metricPeriods) != 0) {
+		return nil, analyticalUnsupported("analytical_completeness_scope_unsupported")
 	}
 	if selectedMetricPeriods(a) && len(a.metricPeriods) == 0 {
 		return nil, analyticalUnsupported(AnalyticalMetricPeriodReviewCode)
@@ -92,7 +105,7 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 		if pick.Topic != def.Topic || pick.TopicVersion != def.Version || pick.PackDigest != publication.Digest || !topics.DigestValid(publication.Digest) || len(pick.Roots) > 128 {
 			return nil, exec.ErrBinding
 		}
-		compiler := &analyticalCompiler{scopedPopulations: version == analyticalScopedRecordVersion && !selectedKnownAmountCompleteness(a), reviewedNullPolicy: version >= 7, expandedExpressions: version >= 6, joins: version >= 6, ctx: ctx, definition: def, binding: a.binding, visiting: map[semantics.Reference]bool{}}
+		compiler := &analyticalCompiler{scopedPopulations: version >= analyticalScopedRecordVersion && !selectedKnownAmountCompleteness(a), reviewedNullPolicy: version >= 7, expandedExpressions: version >= 6, joins: version >= 6, ctx: ctx, definition: def, binding: a.binding, visiting: map[semantics.Reference]bool{}}
 		for _, root := range pick.Roots {
 			if root.Reference.Kind != semantics.KindMeasure && root.Reference.Kind != semantics.KindKPI || root.Reason == "required_rule" {
 				continue
@@ -163,8 +176,11 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 		out.QueryPopulation = &exec.AnalyticalQueryPopulation{Policy: exec.AnalyticalQueryPopulationPolicy}
 	}
 	ordinaryCompleteness := out != nil && version == analyticalScopedRecordVersion && selectedKnownAmountCompleteness(a)
-	if out != nil && version == analyticalScopedRecordVersion && !ordinaryCompleteness {
+	if out != nil && version >= analyticalScopedRecordVersion && !ordinaryCompleteness {
 		out.Version = exec.AnalyticalScopedPopulationsVersion
+		if version == analyticalGroupedOwnedRecordVersion && out.Grain != nil && len(out.Grain.Columns)+len(out.Grain.Buckets) > 0 {
+			out.Version = exec.AnalyticalGroupedOwnedPopulationsVersion
+		}
 		handled, err := compileAnalyticalScalarPopulations(ctx, a, out)
 		if err != nil {
 			return nil, err
@@ -204,6 +220,8 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 }
 
 type analyticalCompiler struct {
+	scalarCapture       func(semantics.Measure, []scalarFilterOrigin, exec.AnalyticalExpression, string) error
+	scalarOrigins       []scalarFilterOrigin
 	scopedPopulations   bool
 	reviewedNullPolicy  bool
 	expandedExpressions bool
@@ -329,7 +347,17 @@ func (c *analyticalCompiler) metric(ref semantics.Reference, inherited []semanti
 			if op == "" {
 				return bad, exec.ErrBinding
 			}
-			return exec.AnalyticalExpression{Op: op, Column: col.SourceName, Filters: filters}, nil
+			leaf := exec.AnalyticalExpression{Op: op, Column: col.SourceName, Filters: filters}
+			if c.scalarCapture != nil {
+				origins := append([]scalarFilterOrigin(nil), c.scalarOrigins...)
+				for _, filter := range m.Filters {
+					origins = append(origins, scalarFilterOrigin{Kind: semantics.KindMeasure, Owner: m.ID, Filter: filter})
+				}
+				if err := c.scalarCapture(m, origins, leaf, c.dataset); err != nil {
+					return bad, err
+				}
+			}
+			return leaf, nil
 		}
 	case semantics.KindKPI:
 		for _, k := range c.definition.KPIs {
@@ -359,6 +387,13 @@ func (c *analyticalCompiler) metric(ref semantics.Reference, inherited []semanti
 			}
 			used := map[string]bool{}
 			inherited = append(append([]semantics.SemanticFilter(nil), inherited...), k.Filters...)
+			if c.scalarCapture != nil {
+				previous := len(c.scalarOrigins)
+				defer func() { c.scalarOrigins = c.scalarOrigins[:previous] }()
+				for _, filter := range k.Filters {
+					c.scalarOrigins = append(c.scalarOrigins, scalarFilterOrigin{Kind: semantics.KindKPI, Owner: k.ID, Filter: filter})
+				}
+			}
 			result, err := c.expression(expr, inputs, used, inherited, depth+1)
 			if err != nil {
 				return bad, err
@@ -460,7 +495,7 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission, queryCo
 		}
 		return nil, nil
 	}
-	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalScopedRecordVersion {
+	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalScalarEntailmentRecordVersion {
 		return nil, exec.ErrBinding
 	}
 	contract, err := compileAnalyticalVersion(ctx, a, q.AnalyticalVersion, queryConstraints...)
@@ -506,6 +541,20 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission, queryCo
 	if contract.GroupedPopulations != nil {
 		want.Scope = strings.ReplaceAll(want.Scope, "single_base_relation", "independent_grouped_populations")
 	}
+	if contract.Version == exec.AnalyticalGroupedOwnedPopulationsVersion {
+		want.Scope = strings.ReplaceAll(want.Scope, "independent_grouped_populations", "independent_owned_grouped_populations")
+	}
+	if contract.ScalarEntailment != nil {
+		want.ScalarEntailment = exec.AnalyticalScalarEntailmentPolicy
+		want.ScalarEntailmentCoverage = exec.Hash(contract.ScalarEntailment)
+		want.Scope = strings.ReplaceAll(want.Scope, "independent_scoped_singleton_populations", "independent_entailed_scoped_singleton_populations")
+	}
+	if contract.Version == exec.AnalyticalGroupedFactsVersion {
+		want.Scope = strings.ReplaceAll(want.Scope, "independent_grouped_populations", "independent_filtered_grouped_populations")
+	}
+	if contract.Version == exec.AnalyticalGroupedSelectionVersion {
+		want.Scope = strings.ReplaceAll(want.Scope, "independent_grouped_populations", "independent_selected_grouped_populations")
+	}
 	if completeness := compiledKnownAmountCompleteness(contract); completeness != nil {
 		want.Completeness = completeness
 		want.Scope += exec.AnalyticalCompletenessScope
@@ -542,7 +591,7 @@ func analyticalDiagnostic(err error) string {
 		return ""
 	}
 	switch e.Code {
-	case "analytical_join_mismatch", "analytical_order_mismatch", "analytical_limit_mismatch", "analytical_query_population_mismatch", "analytical_grain_mismatch", "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy":
+	case "analytical_fact_predicate_unsupported", "analytical_group_selection_unsupported", "analytical_join_mismatch", "analytical_order_mismatch", "analytical_limit_mismatch", "analytical_query_population_mismatch", "analytical_grain_mismatch", "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy":
 		return e.Code
 	default:
 		return "analytical_shape_unsupported"
@@ -552,10 +601,16 @@ func analyticalDiagnostic(err error) string {
 // AnalyticalRecordValid validates only durable evidence shape/integrity. It does
 // not authorize access or replace native/semantic proof reconstruction on Run.
 func AnalyticalRecordValid(q QueryRecord) bool {
+	if q.Clarification != nil && (q.Clarification.Binding.SchemaVersion == 6 || q.Clarification.Binding.Entailments != nil) && q.AnalyticalVersion != analyticalScalarEntailmentRecordVersion {
+		return false
+	}
+	if q.AnalyticalVersion == analyticalScalarEntailmentRecordVersion && !clarificationBindingSchemaValid(q) {
+		return false
+	}
 	if q.AnalyticalVersion == 0 {
 		return q.Analytical == nil
 	}
-	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalScopedRecordVersion {
+	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalScalarEntailmentRecordVersion {
 		return false
 	}
 	selected := false
@@ -609,6 +664,18 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 	if q.AnalyticalVersion == analyticalScopedRecordVersion {
 		version = exec.AnalyticalScopedPopulationsVersion
 	}
+	if q.AnalyticalVersion == analyticalGroupedOwnedRecordVersion {
+		version = exec.AnalyticalGroupedOwnedPopulationsVersion
+	}
+	if q.AnalyticalVersion == analyticalGroupedSelectionRecordVersion {
+		version = exec.AnalyticalGroupedSelectionVersion
+	}
+	if q.AnalyticalVersion == analyticalGroupedFactsRecordVersion {
+		version = exec.AnalyticalGroupedFactsVersion
+	}
+	if q.AnalyticalVersion == analyticalScalarEntailmentRecordVersion {
+		version = exec.AnalyticalScalarEntailmentVersion
+	}
 	if r == nil || q.SQL == "" || r.Version != version || !analyticalReceiptScopeValid(r) || !topics.DigestValid(r.Contract) || !topics.DigestValid(r.Query) || r.Query != exec.AnalyticalQueryDigest(q.SQL, q.Parameters) || len(r.Metrics) == 0 || len(r.Metrics) > 32 {
 		return false
 	}
@@ -623,6 +690,46 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 func analyticalReceiptScopeValid(r *exec.AnalyticalReceipt) bool {
 	if !exec.AnalyticalOutputsValid(r) {
 		return false
+	}
+	if r.Version == exec.AnalyticalScalarEntailmentVersion {
+		if r.Intent != exec.AnalyticalIntentPolicy || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy || r.Completeness != nil || len(r.Grouping) != 0 || r.ScalarEntailment != exec.AnalyticalScalarEntailmentPolicy || !topics.DigestValid(r.ScalarEntailmentCoverage) || !strings.HasSuffix(r.Scope, ";independent_entailed_scoped_singleton_populations") {
+			return false
+		}
+		copy := *r
+		copy.Version = exec.AnalyticalScopedPopulationsVersion
+		copy.ScalarEntailment, copy.ScalarEntailmentCoverage = "", ""
+		copy.Scope = strings.ReplaceAll(r.Scope, "independent_entailed_scoped_singleton_populations", "independent_scoped_singleton_populations")
+		r = &copy
+	}
+	if r.Version == exec.AnalyticalGroupedFactsVersion {
+		if r.Intent != exec.AnalyticalIntentPolicy || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy || r.Completeness != nil || !strings.HasSuffix(r.Scope, ";independent_filtered_grouped_populations") {
+			return false
+		}
+		copy := *r
+		copy.Version = exec.AnalyticalGroupedProgramsVersion
+		copy.Outputs = nil
+		copy.Scope = strings.ReplaceAll(r.Scope, "independent_filtered_grouped_populations", "independent_grouped_populations")
+		r = &copy
+	}
+	if r.Version == exec.AnalyticalGroupedSelectionVersion {
+		if r.Intent != exec.AnalyticalIntentPolicy || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy || r.Completeness != nil || !strings.HasSuffix(r.Scope, ";independent_selected_grouped_populations") {
+			return false
+		}
+		copy := *r
+		copy.Version = exec.AnalyticalGroupedProgramsVersion
+		copy.Outputs = nil
+		copy.Scope = strings.ReplaceAll(r.Scope, "independent_selected_grouped_populations", "independent_grouped_populations")
+		r = &copy
+	}
+	if r.Version == exec.AnalyticalGroupedOwnedPopulationsVersion {
+		if r.Intent != exec.AnalyticalIntentPolicy || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy || r.Completeness != nil || !strings.HasSuffix(r.Scope, ";independent_owned_grouped_populations") {
+			return false
+		}
+		copy := *r
+		copy.Version = exec.AnalyticalGroupedProgramsVersion
+		copy.Outputs = nil
+		copy.Scope = strings.ReplaceAll(r.Scope, "independent_owned_grouped_populations", "independent_grouped_populations")
+		r = &copy
 	}
 	if r.Version == exec.AnalyticalScopedPopulationsVersion {
 		if r.Intent != exec.AnalyticalIntentPolicy || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy {

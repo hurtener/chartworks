@@ -73,6 +73,9 @@ func TestRequestIsolationRoutingHeaders(t *testing.T) {
 func TestRequestIsolationCannotBeSkippedByParentContext(t *testing.T) {
 	deadline := time.Now().Add(time.Minute)
 	parent, cancel := context.WithDeadline(context.WithValue(context.Background(), schemas.BifrostContextKeySkipPluginPipeline, true), deadline)
+	parent = context.WithValue(parent, schemas.BifrostContextKeyPassthroughExtraParams, true)
+	parent = context.WithValue(parent, schemas.BifrostContextKeyUseRawRequestBody, true)
+	parent = context.WithValue(parent, schemas.BifrostContextKeyLargePayloadMode, true)
 	ctx, closeCtx := isolatedBifrostContext(parent)
 	defer closeCtx()
 	if got, ok := ctx.Deadline(); !ok || !got.Equal(deadline) {
@@ -80,6 +83,14 @@ func TestRequestIsolationCannotBeSkippedByParentContext(t *testing.T) {
 	}
 	if skipped, ok := ctx.Value(schemas.BifrostContextKeySkipPluginPipeline).(bool); !ok || skipped {
 		t.Fatal("inherited SDK flag bypassed isolation")
+	}
+	if passthrough, _ := ctx.Value(schemas.BifrostContextKeyPassthroughExtraParams).(bool); passthrough {
+		t.Fatal("inherited passthrough flag")
+	}
+	for _, key := range []schemas.BifrostContextKey{schemas.BifrostContextKeyUseRawRequestBody, schemas.BifrostContextKeyLargePayloadMode} {
+		if flag, _ := ctx.Value(key).(bool); flag {
+			t.Fatal("inherited body substitution flag")
+		}
 	}
 	cancel()
 	select {
