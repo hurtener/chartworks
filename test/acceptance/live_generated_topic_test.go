@@ -65,7 +65,7 @@ func runLiveGeneratedTopic(t *testing.T, paid bool) {
 	if !engine.RoleEnabled("topic_review") {
 		t.Fatal("topic review unavailable before generation admission")
 	}
-	observed := &liveReceiptEngine{Engine: engine, traceEnabled: os.Getenv("CHARTWORKS_LIVE_SYNTHETIC_TRACE") == "1"}
+	observed := &liveReceiptEngine{Engine: engine, callLimit: 32, traceEnabled: os.Getenv("CHARTWORKS_LIVE_SYNTHETIC_TRACE") == "1"}
 	report := &generatedTopicReport{GeneratedOnly: true, Stage: "not_started", Unsupported: []string{"Paid-only and refund populations require explicit admitted business vocabulary; no authored filters are injected by this baseline"}}
 	defer func() {
 		report.ModelUsage = observed.since(0)
