@@ -130,3 +130,19 @@ wire suites, and `TestNarrativeHTMLPreservesInertCaveats`. Source fixtures use r
 profiled and reviewed temporal fields and recorded providers. They do not qualify
 live models or the separately blocked isolated renderer deployment. No new phase,
 acceptance count, execution authority or resource-policy fallback is introduced.
+
+## Durable cold reuse continuation
+
+AC05/AC06/AC07/AC08 now distinguish completed-artifact copying from durable
+canonical-key cold ownership. Migration 079 and the first reporting/store
+consumers reserve each physical source start before native journal insertion,
+retain owner/attempt fences across erasure, and require definite settlement
+before replacement. Followers are bounded and independently cancellable.
+`TestFrozenConcurrentColdReusePostgres`,
+`TestFrozenColdOwnershipBoundariesPostgres` and
+`TestFrozenColdNativeUncertaintyPostgres` exercise cold concurrency, reservation
+loss, stale invocation fencing, retained continuation and real native reply loss
+plus observed reconciliation. Pure settlement and zero-authority tests qualify
+fail-closed classification. Reservation gaps with no authoritative native evidence
+remain blocked; this does not claim universal exactly-once or complete recovery.
+See the [runtime contract](../contracts/reviewed-engineering-and-frozen-runs.md).

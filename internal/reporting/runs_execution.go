@@ -113,6 +113,15 @@ func (s *Runs) queryFrozen(ctx context.Context, e identity.Envelope, inv jobs.In
 	if err != nil {
 		return RunRecord{}, err
 	}
+	queryCtx, err = exec.WithAttemptReservation(queryCtx, func(callCtx context.Context, current identity.Envelope, options exec.Options) error {
+		if err := RequireRunManifest(current, m); err != nil {
+			return err
+		}
+		return s.repo.ReserveFrozenQuery(callCtx, inv, options)
+	})
+	if err != nil {
+		return RunRecord{}, err
+	}
 	report, executeErr := s.blocks.executor.Execute(queryCtx, e, plan, exec.Options{Operation: m.ID, Number: number,
 		Preview: m.Private, Rows: caps.MaxRows, Bytes: caps.MaxBytes})
 	if report.Attempt.ID != "" {
@@ -270,6 +279,33 @@ func (s *Runs) continueFrozen(ctx context.Context, e identity.Envelope, inv jobs
 		}
 	}
 	if current.Result == nil {
+		// Durable custody is separate from completed-artifact reuse. Followers
+		// wait only under their own bounded request context; they never cancel
+		// or renew another operation, and never keep a transaction across I/O.
+		for {
+			owner, claimErr := s.repo.ClaimFrozenReuse(ctx, inv, m.ID, s.limits)
+			if claimErr != nil {
+				return claimErr
+			}
+			if owner {
+				break
+			}
+			timer := time.NewTimer(25 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+			var reused bool
+			current, reused, err = s.repo.ReuseFrozenRun(ctx, inv, m.ID, s.limits)
+			if err != nil {
+				return err
+			}
+			if reused {
+				return nil
+			}
+		}
 		current, err = s.queryFrozen(ctx, e, inv, m)
 		if err != nil {
 			return err

@@ -151,3 +151,41 @@ pause or unrelated change cannot be adopted as that replacement. Multi-object
 compensation remains explicitly blocked rather than claiming to undo schedule or
 warehouse effects atomically. Service execution obtains fresh platform authority;
 no user bearer is persisted in either proposal or schedule.
+
+## Durable cold frozen-result ownership
+
+Completed-artifact reuse remains the value-copy path. After a cold miss, eligible
+canonical manifests elect one PostgreSQL custodian per tenant/reuse identity;
+private previews also partition ownership by original session. The shared
+operation ledger still supplies all invocation fences, cancellation and retries.
+The custody row supplies neither authority nor a second lease or queue.
+
+Every initial and resumed physical query installs the existing executor's
+attempt-reservation guard. Under the current operation fence, current signed
+reach and current definition/source pins, the guard persists the exact owner,
+physical number and invocation fence before `BeginRead` or native dispatch.
+Metadata transactions end before source execution. A follower rechecks completed
+reuse under its own bounded, cancellable invocation; it never cancels the owner.
+A follower without current artifact-read authority fails explicitly rather than
+waiting for an unreadable result or bypassing custody.
+
+An owner that stopped before reserving source work may be replaced atomically.
+Its paused invocation cannot reserve after replacement. Once a reservation
+exists, missing native evidence, unresolved dispatch and uncertain termination
+all fail closed, including an original owner's explicit resume. Elapsed lease,
+artifact expiry and erased receipts are not termination proof. Reconciliation
+of the exact native attempt must prove a stopped/not-issued failed outcome
+before a new owner or the original owner's next numbered attempt can execute.
+A successful receipt whose values were lost returns incomplete, never a replay.
+The original owner can resume already retained normalized values to finish outputs
+without another query; its original physical reservation fence stays intact.
+
+Content-free terminal settlement and successful artifact completion are copied
+into custody independently of payload and native-journal retention. Only that
+settled completion, not expiry by itself, permits a fresh operation after a
+completed artifact ages out of reuse. Unresolved custody has no TTL, cascade
+erasure or delete path. A reservation lost before journal insertion cannot be
+transparently recovered, and a retained but unfinished/partial origin does not
+authorize a follower to re-execute: these cases remain typed fail-closed results
+until the original operation can safely continue. No automatic administrative
+clearance or complete crash-recovery lifecycle is claimed.

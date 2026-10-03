@@ -320,6 +320,8 @@ type RunRepository interface {
 	SealFrozenRun(context.Context, identity.Envelope, jobs.RequestTask, PreparedRun) (RunRecord, error)
 	CheckpointFrozenRun(context.Context, jobs.Invocation, PreparedRunWrite) (RunRecord, error)
 	ReuseFrozenRun(context.Context, jobs.Invocation, string, config.ReportingExecution) (RunRecord, bool, error)
+	ClaimFrozenReuse(context.Context, jobs.Invocation, string, config.ReportingExecution) (bool, error)
+	ReserveFrozenQuery(context.Context, jobs.Invocation, exec.Options) error
 	ListFrozenArtifacts(context.Context, identity.Envelope, string, int) (ArtifactList, error)
 	CancelFrozenRun(context.Context, identity.Envelope, string) (RunView, error)
 	ExpireFrozenArtifacts(context.Context, identity.Envelope, int) (int64, error)

@@ -369,6 +369,9 @@ func (d *DB) CheckpointFrozenRun(ctx context.Context, inv jobs.Invocation, proof
 		if readErr != nil {
 			return readErr
 		}
+		if readErr = frozenReuseCheckpointTx(ctx, tx, inv, w); readErr != nil {
+			return readErr
+		}
 		if readErr = frozenAudit(ctx, tx, e, action, w.Manifest.ID); readErr != nil {
 			return readErr
 		}
