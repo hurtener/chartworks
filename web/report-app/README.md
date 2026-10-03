@@ -16,10 +16,10 @@ parent origins. Neither entrypoint falls back to the other. Both mount the same
   12-column move/resize grid with keyboard/numeric alternatives and explicit arrangement; declared block-parameter filters and bindings;
   full-report CAS save; narrow selected-widget text/presentation save; reload;
   explicit private preview and independent retained read.
-- No chart-mapping replacement, arbitrary query, dynamic generation, narrative
+- No arbitrary query, dynamic generation, narrative
   generation, publication, multi-selection layout operations or export in this checkpoint.
   Existing unsupported documents are inspection-only. Source execution occurs
-  only after an explicit run/preview action.
+  only after an explicit data-validation or run/preview action.
 
 Capabilities come from current server checks. The UI does not decide authority.
 For creation the host first allocates/authorizes an exact report ID; the app
@@ -58,6 +58,38 @@ Consumer tabs use exact retained page IDs without editing chrome or queries.
 Page-aware compatibility includes every page's semantic settings. Empty initial
 retained pages are verified metadata, not cached payloads. Healthy sibling pages
 remain readable under the original fanout, buffer and lifetime bounds.
+
+## Staged chart mappings
+
+On version 3 pages, **Edit chart** opens exact SQL-free block metadata and the
+native chart catalog. Type, field, variant, sort, KPI and table settings are
+staged locally with **Save chart** and **Cancel chart edits**. All fourteen
+native kinds retain their real slot requirements. Field IDs come from the
+selected output's server-owned candidates; units, aggregation and provenance
+cannot be invented. Table column order/visibility/page size/totals and supported
+KPI row/comparison/target/sparkline controls remain explicit metadata.
+
+Public or noncurrent revisions use a private copy with a distinct host-authorized
+new block ID. A current private draft is amended under version/revision/digest
+CAS. Successful save immediately stages only the selected report widget's exact
+`private_preview` revision/digest reference and labels it unvalidated. **Save
+report** can preserve it without any source read. Other widgets keep their pins.
+**Validate data** is a separate explicit native source read. Validation uses typed
+widget literals and the selected page's bound defaults; result rows are not sent
+through this authoring lane. **Check chart status** is metadata-only. Private
+preview requires fresh exact validation evidence and still rechecks access and
+dependencies server-side. No publication occurs in this editor.
+
+Unknown save or validation outcomes stay fenced, including after editor close or
+a status read. An inspection does not attribute a hidden definition to an earlier
+request or authorize execution replay. Closing the app fences late replies and
+clears editor metadata. Changing a staged mapping makes retained values visibly
+stale; Cancel restores compatible values without a new query.
+
+The bridge must allow `chart_catalog` and the four `reporting_authoring_block_*_v1`
+operations; native action and dependency checks remain decisive. Dataset-first
+chart creation is a separate increment and is not implemented by this output
+mapping editor.
 
 ## Saved report canvas
 

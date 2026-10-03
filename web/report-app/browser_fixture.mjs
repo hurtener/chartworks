@@ -1942,7 +1942,7 @@ export function initializeSyntheticHost(samples, embedded) {
   const clone=value=>JSON.parse(JSON.stringify(value));
   const wrap=value=>({structuredContent:{result:clone(value)}});
   const failure=code=>({isError:true,structuredContent:{error:{code,outcome:'not_started'}}});
-  Object.assign(window,{calls:[],lastResizeAt:0,resizeCount:0,resizeMessages:[],saveDelay:0,viewDelay:0,rejectSave:false,denyPrivate:false,consumerOnly:false,denial:'',privateRuns:new Set(),waiting:[]});
+  Object.assign(window,{calls:[],lastResizeAt:0,resizeCount:0,resizeMessages:[],saveDelay:0,viewDelay:0,rejectSave:false,denyPrivate:false,consumerOnly:false,compactCatalog:false,denial:'',privateRuns:new Set(),waiting:[]});
   window.state={id:'report-a',kind:'report',version:4,draft_revision:3,published_revision:2};
   window.definition={schema_version:2,metadata:[{locale:'en-US',title:'Weekly operations'}],locale:'en-US',timezone:'UTC',partial_failure:'fail_closed',widgets:[{id:'intro',kind:'text',grid:{column:0,row:0,width:12,height:1},presentation:{},text:{format:'plain',text:'Synthetic weekly overview'}}],filters:[]};
   const target={kind:'report',id:'report-a',revision:2};
@@ -1953,7 +1953,12 @@ export function initializeSyntheticHost(samples, embedded) {
     id:widget.id,kind:'block',grid:clone(widget.grid),presentation:{title:outputTitles[widget.outputs[0]]},
     block:{block:'approved-block',revision:7,outputs:clone(widget.outputs),policy:'published',narrative:false}
   });
-  const runDefinitions=new Map([['retained-one',{definition:clone(publishedDefinition),revision:2,private:false}]]);
+  // This visual host keeps the real recorded output shapes, with a separate
+  // deterministic presentation revision sized for the fixed logical grid.
+  const visualGrid=[{column:0,row:0,width:12,height:1},{column:0,row:1,width:4,height:5},{column:4,row:1,width:8,height:5},{column:0,row:6,width:12,height:4}];
+  publishedDefinition.widgets.forEach((widget,index)=>widget.grid=clone(visualGrid[index]));
+  window.compactDefinition=clone(publishedDefinition);compactDefinition.widgets.forEach(widget=>widget.grid.height=1);
+  const runDefinitions=new Map([['retained-one',{definition:clone(publishedDefinition),revision:2,private:false}],['retained-compact',{definition:clone(compactDefinition),revision:1,private:false}]]);
   const sampleFor=output=>output==='kpi-main'?samples.kpi:output==='trend-main'?samples.trend:samples.table;
   const disclosure=()=>({label:'Synthetic known revenue',evidence:'reviewed_definition',definition_digest:'b'.repeat(64),declaration:'synthetic-known-revenue',value_field:'amount',unknown_count_field:'unknown_amount_count',query_outcome:'succeeded',rows_scope:'returned_query_rows',role:'amount',unit:'USD',result:{policy:'reviewed-amount-completeness-v1',scope:'returned_query_rows',metric:'synthetic:known_revenue',value_column:1,unknown_count_metric:'synthetic:unknown_amount_count',unknown_count_column:2,status:'incomplete',rows:[{row:0,status:'incomplete',unknown_count:'2'}]}});
   window.makeView=request=>{
@@ -1988,7 +1993,7 @@ export function initializeSyntheticHost(samples, embedded) {
     if(name==='reporting_authoring_create_v1'){state={id:a.id,kind:'report',version:1,draft_revision:1,published_revision:0};definition=clone(a.definition);return wrap(state);}
     if(name==='reporting_authoring_save_v1'){if(rejectSave){rejectSave=false;return failure('conflict');}if(a.expected_version!==state.version)return failure('conflict');state={...state,version:state.version+1,draft_revision:state.draft_revision+1};definition=clone(a.definition);return wrap(state);}
     if(name==='reporting_describe')return wrap(a.target.kind==='block'?{version:'reporting-view-v1',resource:{target:a.target,title:'Approved business metrics'},outputs:[{id:'kpi-main',kind:'kpi',title:outputTitles['kpi-main'],enabled:true,selected:true},{id:'trend-main',kind:'chart',title:outputTitles['trend-main'],enabled:true,selected:true},{id:'table-main',kind:'table',title:'<img src=x onerror=alert(1)>',enabled:true,selected:true},{id:'story',kind:'narrative',title:'Narrative',enabled:true,selected:true}],filters:[filter],dynamic:false,timezone:'UTC'}:{version:'reporting-view-v1',resource:{target,title:'Weekly operations'},outputs:[],filters:[filter],pages:[],dynamic:false,timezone:'UTC'});
-    if(name==='reporting_runs')return wrap({version:'reporting-view-v1',items:[{kind:'report',run:'retained-one',target,state:'completed',private:false,created_at:'2026-10-03T12:00:00Z',expires_at:'2099-01-01T00:00:00Z'}],next:''});
+    if(name==='reporting_runs')return wrap({version:'reporting-view-v1',items:[{kind:'report',run:compactCatalog?'retained-compact':'retained-one',target:{...target,revision:compactCatalog?1:2},state:'completed',private:false,created_at:'2026-10-03T12:00:00Z',expires_at:'2099-01-01T00:00:00Z'}],next:''});
     if(name==='reporting_run'){runDefinitions.set('new-run',{definition:clone(publishedDefinition),revision:2,private:false});return wrap({version:'reporting-view-v1',kind:'report',run:'new-run',state:'completed',code:'',target});}
     if(name==='reporting_authoring_preview_v1'){privateRuns.add('private-one');runDefinitions.set('private-one',{definition:clone(definition),revision:a.revision,private:true});return wrap({id:'private-one',kind:'report',document:a.report,revision:a.revision,private:true,state:'admitted',pages:[]});}
     if(name==='reporting_authoring_execute_v1')return wrap({id:a.run,kind:'report',document:state.id,revision:state.draft_revision,private:true,state:'completed',pages:[]});
