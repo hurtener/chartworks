@@ -27,6 +27,11 @@ export function layoutWidgets(widgets, columns=1) {
   if (![1,2,3].includes(columns)) throw appError('invalid_request');
   return widgets.map((widget,index) => ({...widget,grid:{column:index%columns*(12/columns),row:Math.floor(index/columns),width:12/columns,height:1}}));
 }
+export function layoutPreset(widgets) {
+  if(!Array.isArray(widgets))return 'custom';
+  for(const columns of [1,2,3])if(widgets.every((widget,index)=>{const g=widget.grid;return g&&g.column===index%columns*(12/columns)&&g.row===Math.floor(index/columns)&&g.width===12/columns&&g.height===1;}))return String(columns);
+  return 'custom';
+}
 export function validateManualDefinition(definition) {
   boundedJSON(definition, 1 << 20);
   if (!manualDocument(definition) || definition.widgets.length < 1 || definition.widgets.length > 100 || (definition.filters?.length || 0) > 100 || !titleFor(definition.metadata,definition.locale).trim()) throw appError('invalid_request');
