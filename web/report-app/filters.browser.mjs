@@ -30,7 +30,7 @@ const origin = mode === 'embedded' ? 'https://report-host.example' : `http://127
 const directory = await mkdtemp(join(tmpdir(), 'chartworks-filter-browser-'));
 const browser = spawn(process.env.CHARTWORKS_CHROME_BIN || 'chromium', ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--disable-background-networking', '--disable-component-update', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0', '--user-data-dir=' + directory, 'about:blank'], {stdio: ['ignore', 'ignore', 'pipe']});
 const closed = new Promise(resolve => browser.once('close', resolve)), pending = new Map(), contexts = new Map();
-const errors = [], requests = [], assertions = [], writes = () => fixture.calls.filter(call => ['reporting_authoring_save_v1'].includes(call.name));
+const errors = [], requests = [], assertions = [], inspectorGeometry = [], writes = () => fixture.calls.filter(call => ['reporting_authoring_save_v1'].includes(call.name));
 const snapshot = () => fixture.snapshot();
 const original = snapshot();
 
@@ -66,6 +66,8 @@ async function until(fn, message) {
 }
 const root = "document.getElementById('app')?.contentDocument?.getElementById('report-app')";
 const editor = `${root}.querySelector('.filter-value-editor')`;
+const inspector = `${root}.querySelector('.filter-inspector')`;
+const activeElement = "document.getElementById('app').contentDocument.activeElement";
 const field = label => `Array.from(${root}.querySelectorAll('input')).find(e=>e.getAttribute('aria-label')===${JSON.stringify(label)})`;
 
 const button = label => `Array.from(${root}.querySelectorAll('button')).find(e=>e.textContent===${JSON.stringify(label)})`;
@@ -83,6 +85,19 @@ function filterPointerReady(current, previous) {
     current.geometry.every((value,index)=>Math.abs(value-previous.geometry[index])<=0.5);
 }
 // End pointer readiness contract.
+// Fixed-desktop compact-inspector contract. Pure tests execute this predicate
+// without importing the hosted-only runner or starting a browser.
+function filterInspectorFits(value) {
+  if(!value||!Object.values(value).every(Number.isFinite))return false;
+  return value.viewportWidth===1440&&value.viewportHeight===1000&&
+    value.rootHeight>0&&value.rootHeight<=1000&&value.rootWidth>0&&value.rootWidth<=1440&&
+    value.panelWidth>0&&value.panelWidth<=360&&value.panelHeight>0&&value.panelHeight<=800&&
+    value.inspectorHeight>0&&value.inspectorHeight<=760&&value.editorHeight>0&&value.editorHeight<=660&&
+    value.inspectorTopOffset>=0&&value.inspectorTopOffset<=32&&
+    value.editorLeft>=value.panelLeft&&value.editorRight<=value.panelRight+1&&value.editorWidth>0&&value.editorWidth<=360&&
+    value.inspectorScrollWidth<=value.inspectorClientWidth+1&&value.editorScrollWidth<=value.editorClientWidth+1;
+}
+// End compact inspector contract.
 async function clickElement(expression) {
   await until(()=>evaluate(`(()=>{const e=${expression};return !!e&&!e.disabled&&e.getClientRects().length>0;})()`),'Expected control did not become enabled and visible: '+expression);
   // Scrolling can resize the host iframe and change both document viewports.
@@ -166,6 +181,11 @@ async function noSource(message, action) {
   await action();
   equal(fixture.counts(), before, message);
 }
+async function noCalls(message, action) {
+  const before=structuredClone(fixture.calls);
+  await action();
+  equal(fixture.calls,before,message);
+}
 async function setInput(label, value) {
   await evaluate(`(()=>{const e=${field(label)};if(!e||e.disabled)throw new Error('Missing enabled input');e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await ready();
@@ -181,6 +201,24 @@ async function openFilter(label, mode='default') {
   await clickElement(cardButton(label, mode==='default'?'Change saved default':'Choose temporary preview value'));
   const legend=label+' · '+(mode==='default'?'saved default':'temporary selection');
   await until(()=>evaluate(`(()=>{const e=${editor};return e?.querySelector('legend')?.textContent===${JSON.stringify(legend)}&&e.getClientRects().length>0&&Array.from(e.querySelectorAll('input')).some(i=>!i.disabled&&i.getClientRects().length>0);})()`),'Requested filter editor did not open: '+legend);
+  await check(`${activeElement}===Array.from(${editor}.querySelectorAll('input')).find(e=>!e.disabled&&e.getClientRects().length>0)`,'Opening '+legend+' puts keyboard focus in the first value input');
+  await check(`${inspector}?.querySelector('h2')?.textContent===${JSON.stringify(label)}&&${inspector}.contains(${editor})&&${button('Back to Components')}?.getClientRects().length>0`,'Opening '+legend+' replaces the rail with its labeled focused inspector');
+}
+async function filterReturned(label,mode,action) {
+  const opener=cardButton(label,mode==='default'?'Change saved default':'Choose temporary preview value');
+  await check(`${editor}===null&&${inspector}===null&&${root}.querySelector('.filter-editor')?.open===true&&${activeElement}===${opener}`,
+    action+' returns focus to the exact '+label+' '+mode+' opener and keeps Business filters expanded');
+}
+async function finishFilter(action,label,mode='default') {await click(action);await filterReturned(label,mode,action);}
+async function escapeFilter(label,mode='default') {
+  await rpc('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27});
+  await rpc('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27});
+  await ready();await filterReturned(label,mode,'Escape');
+}
+async function compactInspector(label) {
+  await check(`(()=>{const p=${root}.querySelector('.component-panel'),e=${inspector};return !!p&&p.children.length===1&&p.firstElementChild===e&&${root}.querySelectorAll('.filter-value-editor').length===1&&!p.querySelector('.component-library,.selected-panel,.panel-tabs,.filter-editor,.output-library,.catalog-search')&&!Array.from(p.querySelectorAll('button')).some(b=>['Add heading','Add published output','Create from dataset'].includes(b.textContent));})()`,label+' has one focused rail without a palette, catalog, selected-widget panel or duplicate filter summaries');
+  const geometry=await evaluate(`(()=>{const r=${root}.getBoundingClientRect(),p=${root}.querySelector('.component-panel').getBoundingClientRect(),i=${inspector},ir=i.getBoundingClientRect(),e=${editor},er=e.getBoundingClientRect();return {viewportWidth:innerWidth,viewportHeight:innerHeight,rootHeight:r.height,rootWidth:r.width,panelWidth:p.width,panelHeight:p.height,inspectorHeight:ir.height,editorHeight:er.height,inspectorTopOffset:ir.top-p.top,panelLeft:p.left,panelRight:p.right,editorLeft:er.left,editorRight:er.right,editorWidth:er.width,inspectorScrollWidth:i.scrollWidth,inspectorClientWidth:i.clientWidth,editorScrollWidth:e.scrollWidth,editorClientWidth:e.clientWidth};})()`);
+  assert(filterInspectorFits(geometry),label+' compact geometry at 1440×1000: '+JSON.stringify(geometry));assertions.push(label+' fits compact rail and document upper bounds at 1440×1000 without horizontal overflow');inspectorGeometry.push({label,...geometry});
 }
 async function setDate(start, end) {await setInput('Start date',start);await setInput('End date · inclusive',end);}
 async function arm(request, kind='option') {
@@ -199,26 +237,56 @@ async function filterJourney() {
 
   await noSource('Date edits and Cancel do not query or run',async()=>{
     await openFilter('Day');await check(`${field('Start date')}.value==='2026-01-01'&&${field('End date · inclusive')}.value==='2026-01-31'`,'Native half-open date default displays an inclusive end');
-    await setDate('2026-01-03','2026-01-20');await click('Cancel');await openFilter('Day');
+    await setDate('2026-01-03','2026-01-20');await finishFilter('Cancel','Day');await openFilter('Day');
     await check(`${field('Start date')}.value==='2026-01-01'&&${field('End date · inclusive')}.value==='2026-01-31'`,'Cancel discards the date stage');
     await setDate('2026-01-04','2026-01-20');await click('Notes');await check(`${editor}===null`,'Page navigation closes the old editor');
     await click('Analysis');await openFilter('Day');
-    await check(`${field('Start date')}.value==='2026-01-01'&&${field('End date · inclusive')}.value==='2026-01-31'`,'A page-isolated stale stage cannot change Analysis');await click('Cancel');
+    await check(`${field('Start date')}.value==='2026-01-01'&&${field('End date · inclusive')}.value==='2026-01-31'`,'A page-isolated stale stage cannot change Analysis');await finishFilter('Cancel','Day');
   });
+  // Page navigation deliberately clears selection. Select the existing native
+  // widget, then establish an unsent catalog query for the suspend/resume proof.
+  const nativeWidget=data.initial_report.definition.report_pages[0].widgets[0].id;
+  await noCalls('Selecting the native widget and typing an unsent component catalog query invokes no tool',async()=>{
+    await clickElement(`Array.from(${root}.querySelectorAll('.editing-canvas .widget-card')).find(e=>e.dataset.widget===${JSON.stringify(nativeWidget)}).querySelector('.widget-select')`);
+    await click('Components');await setInput('Find blocks','Synthetic approved outputs');
+  });
+  const builderContext=await evaluate(`({selection:${root}.dataset.selection,query:${field('Find blocks')}.value})`);
+  equal(builderContext.selection,nativeWidget,'The native Analysis widget is selected before the filter suspend/resume journey');
   await noSource('Search typing, selection removal and Cancel are local',async()=>{
-    await openFilter('Region');await setInput('Find values','East');await click('South · remove');await click('Cancel');
+    await openFilter('Region');await setInput('Find values','East');await click('South · remove');await finishFilter('Cancel','Region');
     await openFilter('Region');await check(`${editor}.textContent.includes('North · remove')&&${editor}.textContent.includes('South · remove')&&${field('Find values')}.value===''`,'Cancelled multiselect changes never reach the saved default');
+    await noCalls('Escape discards a staged multiselect without even a metadata call',async()=>{
+      await setInput('Find values','North');await click('South · remove');
+      await check(`${activeElement}===${field('Find values')}`,'Removing a selected value keeps keyboard focus in the filter search input');
+      await escapeFilter('Region');await openFilter('Region');
+      await check(`${editor}.textContent.includes('North · remove')&&${editor}.textContent.includes('South · remove')&&${field('Find values')}.value===''`,'Escape discards the changed selection and filter query before reopening');
+      equal(snapshot(),original,'Escape does not persist changed filter values');
+    });
     await setInput('Find values','East');
   });
   await arm(data.initial_option_request);await click('Search options');
   equal(fixture.counts(),{optionSearches:1,privateExecutions:0,publishedRuns:0,nativeSourceReadsRepresented:1},'Only explicit Search replays one native bounded source read');
   await check(`JSON.stringify(Array.from(${editor}.querySelectorAll('.filter-option-list span'),e=>e.textContent))===JSON.stringify(['East'])&&${editor}.textContent.includes('2 of 16 selected')&&${editor}.textContent.includes('full field population')`,'Exact native multiselect choices, 16-value limit and full-population disclosure are visible');
+  await noCalls('Back and Resume preserve the staged filter and lookup without any tool invocation',async()=>{
+    await choose('East');await setInput('Find values','Eas');await click('Back to Components');
+    await check(`${inspector}===null&&${editor}===null&&${root}.querySelector('.component-library')?.hidden===false&&${button('Components')}?.getAttribute('aria-pressed')==='true'&&${button('Resume filter edits')}?.getClientRects().length>0`,'Back suspends the editor and restores Components with an explicit Resume action');
+    await check(`${root}.querySelector('.filter-editor')?.open===true&&${card('Region')}.textContent.includes('Saved: North, South')&&${button('Save report')}.disabled===true`,'Back preserves expanded Business filters and leaves saved defaults and dirty state unchanged');
+    equal(await evaluate(`({selection:${root}.dataset.selection,query:${field('Find blocks')}.value})`),builderContext,'Back preserves the selected native widget and unsent component catalog query');
+    equal(snapshot(),original,'Back does not mutate native report, published definition or chart');
+    await capture(screenshotPath.replace(/\.png$/,'.components.png'));
+    await click('Resume filter edits');
+    await check(`${inspector}?.querySelector('h2')?.textContent==='Region'&&${field('Find values')}.value==='Eas'&&${editor}.textContent.includes('3 of 16 selected')&&['North · remove','South · remove','East · remove'].every(title=>Array.from(${editor}.querySelectorAll('button')).some(b=>b.textContent===title))`,'Resume restores exact staged multiselect values and the unsent filter query');
+    await check(`JSON.stringify(Array.from(${editor}.querySelectorAll('.filter-option-list span'),e=>e.textContent))===JSON.stringify(['East'])&&${editor}.querySelector('.filter-option-list input').checked===true&&${root}.dataset.selection===${JSON.stringify(builderContext.selection)}`,'Resume retains the prior exact lookup result and selected widget without replaying Search');
+    await click('East · remove');await setInput('Find values','East');
+  });
   await capture(screenshotPath);
+  await compactInspector('Region');
   await noSource('Selecting exact values and Done change the editor only',async()=>{
-    await click('South · remove');await choose('East');await click('Done');
+    await click('South · remove');await choose('East');await finishFilter('Done','Region');
     await openDefaults();await check(`${card('Region')}.textContent.includes('Saved: North, East')&&${button('Save report')}.disabled===false`,'Done stages the distinct saved default for explicit Save');
+    equal(await evaluate(`({selection:${root}.dataset.selection,query:${field('Find blocks')}.value})`),builderContext,'Done retains the original selected widget and unsent component catalog query');
     equal(snapshot(),original,'Done does not persist metadata');
-    await openFilter('Day');await setDate('2026-01-02','2026-01-31');await capture(screenshotPath.replace(/\.png$/,'.dates.png'));await click('Done');
+    await openFilter('Day');await setDate('2026-01-02','2026-01-31');await capture(screenshotPath.replace(/\.png$/,'.dates.png'));await compactInspector('Day');await finishFilter('Done','Day');
     await openDefaults();await check(`${card('Day')}.textContent.includes('2026-01-02 until 2026-02-01 (exclusive)')`,'Done converts inclusive January 31 to native February 1 exclusive');
   });
   await noSource('Explicit Save writes metadata without a source query',()=>click('Save report'));
@@ -227,11 +295,12 @@ async function filterJourney() {
   await noSource('Reload reads the actual persisted native saved default',()=>click('Reload latest'));
   await openFilter('Region');await setInput('Find values','East');await arm(data.private_option_request);await click('Search options');
   equal(fixture.counts().optionSearches,2,'Saved-revision lookup uses its new exact digest and operation');
-  await noSource('Cancel after Search applies no option result',()=>click('Cancel'));
+  await noSource('Cancel after Search applies no option result',()=>finishFilter('Cancel','Region'));
   const saved=snapshot();
   await noSource('Temporary preview selections do not rewrite saved defaults or execute',async()=>{
-    await openFilter('Region','preview');await click('East · remove');await click('Done');
-    await openFilter('Day','preview');await setDate('2026-01-01','2026-01-01');await click('Done');
+    await openFilter('Region','preview');await click('East · remove');await finishFilter('Cancel','Region','preview');
+    await openFilter('Region','preview');await check(`${editor}.textContent.includes('North · remove')&&${editor}.textContent.includes('East · remove')`,'Cancel discards temporary preview changes independently of saved defaults');await click('East · remove');await finishFilter('Done','Region','preview');
+    await openFilter('Day','preview');await setDate('2026-01-01','2026-01-01');await finishFilter('Done','Day','preview');
     await openDefaults();await check(`${card('Region')}.textContent.includes('Next preview: North')&&${card('Region')}.textContent.includes('Saved: North, East')`,'Temporary selection and persisted default remain separately labeled');
     await check(`${card('Day')}.textContent.includes('Next preview: 2026-01-01 until 2026-01-02 (exclusive)')`,'One inclusive temporary day becomes a half-open native day');
     equal(snapshot(),saved,'Temporary selections leave exact saved document untouched');
@@ -317,4 +386,4 @@ try {
       closeServer: () => new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())), removeProfile: rm});
   } catch (cleanupError) {if (runError) throw new AggregateError([runError, cleanupError], 'Filter assertions and owned-process cleanup failed');throw cleanupError;}
 }
-console.log(JSON.stringify({sourceReplay: fixture.counts(), nativeCapture: fixture.provenance, mode, checks: assertions.length, assertions, metadataWrites: writes(), calls: fixture.calls, requests, screenshots: [screenshotPath, screenshotPath.replace(/\.png$/, '.dates.png'), screenshotPath.replace(/\.png$/, '.published.png')], fixture: 'native PostgreSQL DTO-backed synthetic transport; no live PostgreSQL or Pengui connection', passed: true}));
+console.log(JSON.stringify({sourceReplay: fixture.counts(), nativeCapture: fixture.provenance, mode, checks: assertions.length, assertions, inspectorGeometry, metadataWrites: writes(), calls: fixture.calls, requests, screenshots: [screenshotPath, screenshotPath.replace(/\.png$/, '.dates.png'), screenshotPath.replace(/\.png$/, '.components.png'), screenshotPath.replace(/\.png$/, '.published.png')], fixture: 'native PostgreSQL DTO-backed synthetic transport; no live PostgreSQL or Pengui connection', passed: true}));

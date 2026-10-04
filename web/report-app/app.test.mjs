@@ -9,7 +9,7 @@ class Element {
  set textContent(value){this.children=[];this._text=String(value);}get textContent(){return this._text+this.children.map(c=>c.textContent||'').join('');}
  append(...children){this.children.push(...children);}replaceChildren(...children){this._text='';this.children=children;}
  setAttribute(name,value){this.attributes[name]=String(value);}getAttribute(name){return this.attributes[name]??null;}
- addEventListener(name,fn){this.listeners[name]=fn;}emit(name,event={}){this.listeners[name]?.({target:this,currentTarget:this,preventDefault(){},stopPropagation(){},...event});}focus(){this.focused=true;}setPointerCapture(id){this.pointerID=id;}hasPointerCapture(id){return this.pointerID===id;}releasePointerCapture(){this.pointerID=null;}
+ addEventListener(name,fn){this.listeners[name]=fn;}emit(name,event={}){this.listeners[name]?.({target:this,currentTarget:this,preventDefault(){},stopPropagation(){},...event});}focus(){this.focused=true;document.activeElement=this;}setPointerCapture(id){this.pointerID=id;}hasPointerCapture(id){return this.pointerID===id;}releasePointerCapture(){this.pointerID=null;}
  querySelectorAll(tag){return this.children.flatMap(c=>[...(c.tagName===tag.toUpperCase()?[c]:[]),...(c.querySelectorAll?.(tag)||[])]);}
  getBoundingClientRect(){return {width:1000,height:800};}
 }
@@ -329,4 +329,89 @@ test('page setting controls preserve open disclosure, save exact page-only CAS a
 });
 test('mapping display controls stay local, show the unavailable format seam and preserve full server metadata',async()=>{
  const f=await mappingApp(),{app,root}=f;await app.openMapping(f.widget());app.render();const calls=f.calls.length,field=(tag,label)=>root.querySelectorAll(tag).find(e=>e.getAttribute('aria-label')===label),display=()=>root.querySelectorAll('details').find(e=>e.className==='mapping-display');display().open=true;display().emit('toggle');field('input','Chart title').value='Revenue summary';field('input','Chart title').emit('change');assert.equal(display().open,true);field('select','Legend position').value='right';field('select','Legend position').emit('change');field('input','Maximum displayed label characters').value='24';field('input','Maximum displayed label characters').emit('change');field('input','Show legend').checked=false;field('input','Show legend').emit('change');assert.deepEqual(app.mapping.draft.options,{title:'Revenue summary',legend:{visible:false,position:'right'},label_max_runes:24});assert.equal(f.calls.length,calls);assert(root.textContent.includes('Field-label and number-format editing is unavailable'));assert(!root.querySelectorAll('input').some(e=>/currency|fraction|unit|display label/i.test(e.getAttribute('aria-label')||'')));await app.saveMapping();const saved=f.calls.find(c=>c.name==='reporting_authoring_block_copy_v1');assert.equal(saved.args.mapping.options.title,'Revenue summary');assert(!Object.hasOwn(saved.args.mapping,'columns'));assert(!f.calls.some(c=>c.name.includes('validate')||c.name.includes('execute')||c.name==='reporting_run'));app.close();
+});
+
+async function filterInspectorFixture(){
+ const root=installDOM(),f=fixture(),app=new ReportApp(root,f.adapter);
+ await app.start();app.mode='builder';await app.openDraft('report-a');app.enablePages();
+ app.editPage(page=>{page.filters=[
+  {label:'Day',parameter:{name:'day',type:'date_range',default:{date_range:{start:'2026-01-01',end_exclusive:'2026-02-01'}}}},
+  {label:'Region',parameter:{name:'region',type:'dimension_set',default:{items:['North','South']}}}
+ ];});
+ app.blockSearch.input='Synthetic unsent catalog query';app.render();
+ const all=tag=>root.querySelectorAll(tag),button=(label,index=0)=>all('button').filter(b=>b.textContent===label)[index];
+ const input=label=>all('input').find(e=>e.getAttribute('aria-label')===label);
+ const inspector=()=>all('section').find(e=>e.className==='filter-inspector');
+ const disclosure=()=>all('details').find(e=>e.className==='filter-editor');
+ return {root,f,app,all,button,input,inspector,disclosure};
+}
+
+test('selected filter replaces the palette; Back and Resume keep stage, catalog and canvas without calls',async()=>{
+ const h=await filterInspectorFixture(),{app,root,f,button,input,inspector,disclosure}=h;
+ const before=JSON.stringify(app.session.definition),calls=f.calls.length,selection=app.selectedWidget;
+ button('Change saved default',1).emit('click');const stage=app.filters.editor;
+ assert(inspector());assert(!h.all('section').some(e=>['component-library','selected-panel'].includes(e.className)));assert.equal(disclosure(),undefined);
+ assert.equal(document.activeElement,input('Find values'));assert(root.textContent.includes('Done stages this default for Save report.'));
+ input('Find values').value='East';input('Find values').emit('input');
+ // Returned option metadata is retained in the same UI stage, not reloaded.
+ stage.lookup={values:[{value:'East',label:'East'}],result:{values_available:true,complete:true},canSearch:()=>true};
+ button('Back to Components').emit('click');
+ assert.equal(inspector(),undefined);assert.equal(app.filters.editor,stage);assert.equal(stage.suspended,true);assert.equal(disclosure().open,true);
+ assert.equal(input('Find blocks').value,'Synthetic unsent catalog query');assert.equal(app.selectedWidget,selection);assert.equal(app.panelTab,'components');
+ assert.equal(document.activeElement,button('Change saved default',1));assert.equal(button('Change saved default',0).disabled,true,'another filter cannot overwrite the paused stage');
+ app.filters.done(stage,{items:['East']});app.filters.cancel(stage);assert.equal(app.filters.editor,stage,'detached Done/Cancel cannot apply or discard a paused stage');
+ button('Resume filter edits').emit('click');assert.equal(app.filters.editor,stage);assert.equal(stage.suspended,false);assert.equal(input('Find values').value,'East');assert.equal(stage.lookup.values[0].value,'East');
+ assert.equal(document.activeElement,input('Find values'));assert.equal(JSON.stringify(app.session.definition),before);assert.equal(f.calls.length,calls);
+ button('Cancel').emit('click');assert.equal(app.filters.editor,null);assert.equal(disclosure().open,true);assert.equal(document.activeElement,button('Change saved default',1));assert.equal(f.calls.length,calls);app.close();
+});
+
+test('filter Escape discards only the stage, restores the exact opener and ignores composition or busy work',async()=>{
+ const h=await filterInspectorFixture(),{app,f,button,input,inspector,disclosure}=h,before=JSON.stringify(app.session.definition),calls=f.calls.length;
+ button('Change saved default',1).emit('click');input('Find values').value='Uncommitted';input('Find values').emit('input');const stage=app.filters.editor;
+ inspector().emit('keydown',{key:'Escape',isComposing:true});assert.equal(app.filters.editor,stage);
+ app.busy=true;inspector().emit('keydown',{key:'Escape'});app.filters.back(stage);assert.equal(app.filters.editor,stage);assert.equal(stage.suspended,false);app.busy=false;
+ let prevented=false,stopped=false;inspector().emit('keydown',{key:'Escape',preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
+ assert(prevented&&stopped);assert.equal(app.filters.editor,null);assert.equal(document.activeElement,button('Change saved default',1));assert.equal(disclosure().open,true);
+ assert.equal(JSON.stringify(app.session.definition),before);assert.equal(f.calls.length,calls);
+ button('Change saved default',1).emit('click');assert.equal(input('Find values').value,'');button('Cancel').emit('click');app.close();
+});
+
+test('filter Done stages dates and preview selections, returns focus and never saves or executes',async()=>{
+ const h=await filterInspectorFixture(),{app,f,button,input,disclosure}=h,calls=f.calls.length;
+ button('Change saved default',0).emit('click');assert.equal(document.activeElement,input('Start date'));
+ input('Start date').value='2026-01-02';input('Start date').emit('input');input('End date · inclusive').value='2026-01-31';input('End date · inclusive').emit('input');
+ button('Done').emit('click');assert.equal(app.filters.editor,null);assert.equal(disclosure().open,true);assert.equal(document.activeElement,button('Change saved default',0));
+ assert.deepEqual(app.activePage().filters[0].parameter.default,{date_range:{start:'2026-01-02',end_exclusive:'2026-02-01'}});
+ const definition=JSON.stringify(app.session.definition);button('Choose temporary preview value',0).emit('click');
+ input('End date · inclusive').value='2026-01-02';input('End date · inclusive').emit('input');button('Done').emit('click');
+ assert.equal(document.activeElement,button('Choose temporary preview value',0));assert.equal(JSON.stringify(app.session.definition),definition);assert.equal(app.filters.pageInputs(app.session.definition)[0].filters[0].value.date_range.end_exclusive,'2026-01-03');
+ assert.equal(f.calls.length,calls);app.close();
+});
+
+test('filter page changes, reset and close fence old stage actions and detached disclosure toggles',async()=>{
+ const h=await filterInspectorFixture(),{app,f,button,disclosure,inspector}=h;
+ app.addPage();const second=app.activePageID;app.switchPage('main');
+ const oldDisclosure=disclosure();button('Change saved default',0).emit('click');const oldStage=app.filters.editor;
+ oldDisclosure.open=false;oldDisclosure.emit('toggle');assert.equal(app.filters.defaultsOpen,true,'detached palette cannot close the return destination');
+ button('Back to Components').emit('click');app.switchPage(second);const before=JSON.stringify(app.session.definition),calls=f.calls.length;
+ app.filters.done(oldStage,{literal:'stale'});app.filters.cancel(oldStage);app.filters.back(oldStage);app.filters.open(oldStage.filter,'main','default');
+ assert.equal(inspector(),undefined);assert.equal(app.filters.editor,null);assert.equal(JSON.stringify(app.session.definition),before);assert.equal(f.calls.length,calls);
+ app.switchPage('main');button('Change saved default',0).emit('click');app.filters.reset();assert.equal(app.filters.focusTarget,null);assert.equal(app.filters.defaultsElement,null);app.render();
+ button('Change saved default',0).emit('click');const closed=app.filters.editor;app.close();app.filters.cancel(closed);app.filters.open(closed.filter,'main','default');assert.equal(app.filters.editor,null);assert.equal(app.filters.focusTarget,null);
+});
+
+test('paused filter rejects detached lookup search and control actions before provider invocation',async()=>{
+ const h=await filterInspectorFixture(),{app,button,f}=h;button('Change saved default',1).emit('click');const stage=app.filters.editor;
+ let inspections=0;stage.lookup={inspect(){inspections++;}};button('Back to Components').emit('click');const calls=f.calls.length;
+ for(const action of ['','cancel','reconcile'])await assert.rejects(app.filters.inspect(stage,action),e=>e.code==='stale_validation');
+ await assert.rejects(app.filters.search(stage,'East',''),e=>e.code==='forbidden');assert.equal(inspections,0);assert.equal(f.calls.length,calls);assert.equal(app.filters.editor,stage);app.close();
+});
+
+test('removing another filter keeps the paused selected filter stage intact',async()=>{
+ const h=await filterInspectorFixture(),{app,button,input,f}=h;button('Change saved default',1).emit('click');const stage=app.filters.editor;
+ input('Find values').value='East';input('Find values').emit('input');stage.state.items=['North'];stage.lookup={values:[{value:'East',label:'East'}],result:{values_available:true,complete:true},canSearch:()=>true};
+ button('Back to Components').emit('click');const calls=f.calls.length;button('Remove filter',0).emit('click');
+ assert.equal(app.activePage().filters.length,1);assert.equal(Object.hasOwn(app.activePage().widgets[0],'bindings'),false,'removal preserves omitted heading bindings');assert.equal(app.activePage().filters[0].parameter.name,'region');assert.equal(app.filters.editor,stage);
+ button('Resume filter edits').emit('click');assert.equal(input('Find values').value,'East');assert.deepEqual(stage.state.items,['North']);assert.equal(stage.lookup.values[0].value,'East');assert.equal(f.calls.length,calls);
+ button('Back to Components').emit('click');button('Remove filter',0).emit('click');assert.equal(app.filters.editor,null,'removing the edited filter deliberately clears its stage');app.close();
 });

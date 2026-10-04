@@ -60,6 +60,7 @@ class TestNode{
  setAttribute(key,value){this.attributes[key]=value;}
  addEventListener(name,fn){this.listeners[name]=fn;}
  replaceWith(node){node.parent=this.parent;this.parent.children[this.parent.children.indexOf(this)]=node;}
+ querySelectorAll(tag){return this.children.flatMap(child=>[...(child.tagName===tag.toUpperCase()?[child]:[]),...child.querySelectorAll(tag)]);}
  get firstChild(){return this.children[0];}
 }
 const find=(node,predicate)=>[node,...node.children.flatMap(child=>find(child,()=>true))].filter(predicate);

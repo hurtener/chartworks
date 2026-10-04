@@ -80,6 +80,35 @@ async function dragSelected(edge,columns,rows,{cancel=false}={}){
  await rpc('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+columns*point.pitchX,y:point.y+rows*point.pitchY,button:'left',buttons:0,clickCount:1});
  await ready();
 }
+// Proof-only disclosure interaction uses the same real pointer path as grid edits.
+// Measure again after scrolling and host resize; never force the DOM's open state.
+async function proofDisclosure(selector,open){
+ const target=`${body}.querySelector(${JSON.stringify(selector)})`;
+ if(await evaluate(`${target}?.open===${open}`))return;
+ const scroll=()=>evaluate(`${target}.querySelector('summary').scrollIntoView({block:'center',inline:'nearest',behavior:'instant'})`);
+ await scroll();let previous,point;
+ await until(async()=>{
+  const current=await evaluate(`(()=>{const d=${target},e=d?.querySelector('summary'),f=document.getElementById('app');if(!e?.getClientRects().length)return null;const r=e.getBoundingClientRect(),fr=f.getBoundingClientRect(),x=fr.left+f.clientLeft+r.left+r.width/2,y=fr.top+f.clientTop+r.top+r.height/2,hit=f.contentDocument.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return {x,y,quiet:performance.now()-lastResizeAt>=200,hit:document.elementFromPoint(x,y)===f&&(hit===e||e.contains(hit)),geometry:[r.left,r.top,r.width,r.height,fr.left,fr.top,fr.width,fr.height,resizeCount,scrollX,scrollY,f.contentWindow.scrollX,f.contentWindow.scrollY]};})()`);
+  const reachable=current&&current.hit&&current.x>0&&current.x<1440&&current.y>0&&current.y<1000;
+  const stable=reachable&&current.quiet&&previous&&current.geometry.every((value,i)=>Number.isFinite(value)&&Math.abs(value-previous.geometry[i])<.5);previous=current;
+  if(stable){point=current;return true;}
+  if(current?.quiet&&!reachable){await scroll();previous=null;}
+  return false;
+ },'Disclosure pointer did not become stable and reachable: '+selector);
+ await rpc('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});
+ await rpc('Input.dispatchMouseEvent',{type:'mousePressed',x:point.x,y:point.y,button:'left',buttons:1,clickCount:1});
+ await rpc('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x,y:point.y,button:'left',buttons:0,clickCount:1});
+ await until(()=>evaluate(`${target}?.open===${open}`),'Pointer did not toggle disclosure: '+selector);
+ await pause(25); // Deliver the native toggle event before a later render.
+}
+async function captureExpandedProof(selector,labels,path){
+ const target=`${body}.querySelector(${JSON.stringify(selector)})`,wasOpen=await evaluate(`${target}.open`),before=await evaluate('calls.length');
+ // Exercise a real opening even if an earlier form helper left it expanded.
+ await proofDisclosure(selector,false);await proofDisclosure(selector,true);
+ await check(`(()=>{const d=${target};return d.open&&${JSON.stringify(labels)}.every(label=>{const e=Array.from(d.querySelectorAll('input,select')).find(e=>e.getAttribute('aria-label')===label),r=e?.getBoundingClientRect(),b=d.getBoundingClientRect();return r&&r.width>0&&r.height>0&&r.left>=b.left-1&&r.right<=b.right+1&&r.top>=b.top&&r.bottom<=b.bottom;});})()`,'expanded '+selector+' proof exposes every requested setting within its disclosure');
+ await captureProof(path);await proofDisclosure(selector,wasOpen);
+ await check(`calls.length===${before}`,'expanded '+selector+' proof and disclosure restoration make zero tool calls');
+}
 async function resetProofScroll(){await evaluate(`window.scrollTo(0,0);document.getElementById('app').contentWindow.scrollTo(0,0);for(const e of ${body}.querySelectorAll('.composition-canvas,.widget-body,.scroll')){e.scrollTop=0;e.scrollLeft=0;}`);}
 async function checkFixedGrid(label){
  await check(`(()=>{const c=${allCanvas},s=getComputedStyle(c);return s.display==='grid'&&s.gridTemplateColumns.split(' ').length===12&&s.gridAutoRows==='80px'&&s.rowGap==='12px'&&Array.from(c.querySelectorAll('article[data-widget]')).every(e=>Math.abs(e.getBoundingClientRect().height-(Number(e.dataset.height)*80+(Number(e.dataset.height)-1)*12))<2);})()`,label+' uses twelve columns and exact fixed logical cell heights');
@@ -142,7 +171,9 @@ try{
  const searchStart=await evaluate('calls.length');await fill('Find reports','No matching report');await check(`calls.length===${searchStart}`,'typing report search never performs a metadata or source request');await click('Search reports');await ready();
  await check(`!${body}.querySelector('.catalog-item')&&${body}.textContent.includes('No matches in the catalog pages checked.')&&calls.at(-1).arguments.query==='No matching report'`,'explicit report search shows a bounded empty result instead of stale catalog cards');
  await evaluate('catalogSparseSearch=true');await fill('Find reports','Synthetic');await click('Search reports');await ready();await check(`!${body}.querySelector('.catalog-item')&&!!Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='More reports')`,'sparse native report page preserves its explicit continuation');await click('More reports');await ready();
- await check(`${body}.querySelector('.catalog-preview').textContent.includes('Synthetic retained KPI')&&calls.at(-1).arguments.after==='synthetic-next'&&calls.at(-1).arguments.query==='Synthetic'`,'More reports carries the exact search and cursor and shows authorized title/description previews');await click('Clear reports search');await ready();await evaluate('catalogSparseSearch=false');await check(`${body}.querySelector('input[aria-label="Find reports"]').value===''&&calls.at(-1).arguments.query===''`,'Clear reports search explicitly restores unfiltered bounded metadata');await checkNoTargetInputs('Catalog search');
+ await check(`${body}.querySelector('.catalog-preview').textContent.includes('Synthetic retained KPI')&&calls.at(-1).arguments.after==='synthetic-next'&&calls.at(-1).arguments.query==='Synthetic'`,'More reports carries the exact search and cursor and shows authorized title/description previews');
+ if(screenshotPath)await captureProof(screenshotPath.replace(/\.png$/,'.catalog-reports.png'));
+ await click('Clear reports search');await ready();await evaluate('catalogSparseSearch=false');await check(`${body}.querySelector('input[aria-label="Find reports"]').value===''&&calls.at(-1).arguments.query===''`,'Clear reports search explicitly restores unfiltered bounded metadata');await checkNoTargetInputs('Catalog search');
  await click('Weekly operations');await textHas('Retained runs');await ready();
  await click('Open retained run');await textHas(exactAmount);await ready();
  await check("calls.every(c=>!['reporting_run','reporting_authoring_execute_v1'].includes(c.name))",'catalog and retained read make zero execution calls');
@@ -296,7 +327,9 @@ try{
  await resetProofScroll();if(screenshotPath)await captureProof(screenshotPath.replace(/\.png$/,'.empty.png'));
  await evaluate('cleanPaletteTitles=true');
  await click('Add published output');await textHas('Approved business metrics');await ready();
- const blockSearchStart=await evaluate('calls.length');await fill('Find blocks','No matching block');await check(`calls.length===${blockSearchStart}`,'typing block search remains local');await click('Search blocks');await ready();await check(`!${body}.querySelector('.block-choice')&&!${body}.querySelector('.output-library h4')`,'new block search clears old metadata choices and output selection');await evaluate('catalogSparseSearch=true');await fill('Find blocks','Synthetic');await click('Search blocks');await ready();await click('More blocks');await ready();await check(`calls.at(-1).arguments.kind==='block'&&calls.at(-1).arguments.query==='Synthetic'&&calls.at(-1).arguments.after==='synthetic-next'&&${body}.querySelector('.output-library .catalog-preview').textContent==='Synthetic approved outputs'`,'bounded block continuation preserves exact native query and metadata previews');await click('Clear blocks search');await ready();await evaluate('catalogSparseSearch=false');await click('Approved business metrics');await ready();
+ const blockSearchStart=await evaluate('calls.length');await fill('Find blocks','No matching block');await check(`calls.length===${blockSearchStart}`,'typing block search remains local');await click('Search blocks');await ready();await check(`!${body}.querySelector('.block-choice')&&!${body}.querySelector('.output-library h4')`,'new block search clears old metadata choices and output selection');await evaluate('catalogSparseSearch=true');await fill('Find blocks','Synthetic');await click('Search blocks');await ready();await click('More blocks');await ready();await check(`calls.at(-1).arguments.kind==='block'&&calls.at(-1).arguments.query==='Synthetic'&&calls.at(-1).arguments.after==='synthetic-next'&&${body}.querySelector('.output-library .catalog-preview').textContent==='Synthetic approved outputs'`,'bounded block continuation preserves exact native query and metadata previews');
+ if(screenshotPath)await captureProof(screenshotPath.replace(/\.png$/,'.catalog-blocks.png'));
+ await click('Clear blocks search');await ready();await evaluate('catalogSparseSearch=false');await click('Approved business metrics');await ready();
  await check(`${body}.querySelectorAll('.component-library .component-option').length===4&&${body}.querySelectorAll('.component-library .component-glyph').length===4`,'component palette offers heading plus approved KPI, chart and table cards');
  await resetProofScroll();if(screenshotPath)await captureProof(screenshotPath.replace(/\.png$/,'.palette.png'));
  await click('Add heading');await click('Save report');await textHas('Saved private draft revision 1.');await ready();
@@ -362,6 +395,7 @@ try{
  await evaluate('window.beforeChartPages=structuredClone(definition.report_pages)');await click('Reload latest');await textHas('Private draft revision 11 loaded.');await ready();
  await check(`${body}.dataset.page==='page-2'&&${allCanvas}.querySelectorAll('article[data-widget]').length===0`,'save and reopen retain the selected empty page rather than falling back to the first page');
  await check(`${body}.querySelector('select[aria-label="Page locale"]').value==='es-AR'&&${body}.querySelector('select[aria-label="Page timezone"]').value==='America/Argentina/Buenos_Aires'`,'reopened page restores exact saved locale/timezone choices without a legacy rewrite');
+ if(screenshotPath)await captureExpandedProof('.page-controls',['Page title','Page locale','Page timezone'],screenshotPath.replace(/\.png$/,'.page-settings.png'));
  await pageTab('page-1');await checkGrid('definition.report_pages[1]','Reopened Details page');await pageTab('main');await selectOutput('trend-main');
  const mappingStart=await evaluate('calls.length');await click('Edit chart');await textHas('Changes are staged here.');await ready();
  await check(`${body}.querySelector('.mapping-editor').textContent.includes('Field-label and number-format editing is unavailable')&&!Array.from(${body}.querySelectorAll('.mapping-editor input')).some(i=>/currency|fraction|unit/i.test(i.getAttribute('aria-label')||''))`,'chart editor exposes the native format limitation without unsupported unit or currency inputs');await fill('Chart title','Staged display title');await selectOption('Legend position','left');await fill('Maximum displayed label characters','24');
@@ -371,6 +405,7 @@ try{
  await selectOption('Category / time','c0');await selectOption('Value','c1');await checkNoTargetInputs('Published chart copy');
  await check(`Array.from(${body}.querySelectorAll('nav[aria-label="Report pages"] [data-page]')).every(b=>b.disabled)`,'open chart staging fences page switches until Save or Cancel');
  if(screenshotPath)await captureProof(screenshotPath.replace(/\.png$/,'.mapping.png'));
+ if(screenshotPath)await captureExpandedProof('.mapping-display',['Chart title','Show legend','Legend position','Maximum displayed label characters'],screenshotPath.replace(/\.png$/,'.mapping-display.png'));
  await click('Cancel chart edits');await textHas('Chart editor closed.');
  await check(`calls.slice(${mappingStart}).map(c=>c.name).sort().join(',')==='chart_catalog,reporting_authoring_block_read_v1'&&JSON.stringify(definition.report_pages)===JSON.stringify(beforeChartPages)`,'Cancel discards staged kind and fields without mutating chart or report');
  await click('Edit chart');await ready();await check(`${body}.querySelector('select[aria-label="Chart type"]').value==='line'`,'reopening after Cancel restores the authoritative original mapping');

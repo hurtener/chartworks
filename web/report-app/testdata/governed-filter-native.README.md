@@ -7,14 +7,29 @@ an isolated real PostgreSQL/native source fixture, with race detection enabled.
 
 ## Provenance
 
-- Capture source commit: `eb678cfa7c9f852e26c20817917eefe76f378a77`
-  (built on `cd01cd6f549c6bf65c8f7222a866ce03398fb83a`).
-- Command: `CHARTWORKS_FILTER_DTO_PATH=/tmp/governed-filter-native.json go test -race ./test/acceptance -run '^TestReportAppAuthoringOptions$' -count=1 -v`.
+- Capture source commit: `4265fd7af30286cdaf9d93dbf3f5e4cbc3e7775a`
+  (built on `6bba34e42977d1bef188e2bd0d4839d2245ebae0`).
+- Command: `CHARTWORKS_FILTER_DTO_PATH=/tmp/governed-filter-native.json go test -race ./test/acceptance -run '^TestReportAppAuthoringOptions$' -count=1 -timeout=10m -v`.
   Configure the repository's documented isolated PostgreSQL/native test runtime
   first; no database connection information belongs in this fixture.
-- Final native result: PASS; test 23.80 seconds, package 24.958 seconds.
-- Recording size: 341,936 bytes (maximum 512 KiB).
-- SHA-256: `721737273c4ee6f2e7ec06b462408016cf353ba0ed16fa2499e788c378e756c6`.
+- Runtime: Go 1.27.1, PostgreSQL 17.11, `GOMAXPROCS=2`,
+  `GOMEMLIMIT=768MiB`, `GOFLAGS=-p=1`; isolated fixture stopped after the run.
+- Final native result: PASS; test 25.08 seconds, package 26.259 seconds.
+- Recording size: 341,943 bytes (maximum 512 KiB).
+- SHA-256: `768899edb32f4146df2ae552bd7a2dabd26945dc90033ce91bbc4939b0e2b0e7`.
+
+The authored chart uses a full-width, four-row card (356 CSS pixels with the
+app's current 80-pixel grid rows and 12-pixel gaps). The captured duplicate starts
+at row 4; the later native mixed-revision regression places its third reference
+at row 8. Both preserve non-overlap. This replaces the one-row browser fixture
+that clipped the retained amount below its title; it does not change production
+layout rules. The large exact-value precision fixtures and their assertions are
+unchanged and remain separate stress coverage.
+
+Regeneration changes native IDs, timestamps, evidence digests and corresponding
+request pins together. The chart payloads, exact values, saved filter defaults,
+Notes page, publication revisions and source/model call-count assertions remain
+unchanged. Recorded replay qualification is separate from browser visual proof.
 
 The source fixture constructs literal synthetic sales rows and reviewed Day and
 Region dimensions. All identity, source, dataset, context, topic, report, block,

@@ -17,8 +17,8 @@
     },
     {
       "path": "web/report-app/app.js",
-      "bytes": 94507,
-      "sha256": "e469c1613d486b7f36a3717667324e7265c374ba3ae0ef072501855a60c83a0d",
+      "bytes": 94982,
+      "sha256": "5caa76b829c69af9a80dcc2594c8698ad1727d4cacf2c7fefe53b9aef36b3866",
       "imports": [
         "web/report-app/allocation.js",
         "web/report-app/bridge.js",
@@ -37,7 +37,7 @@
         "web/report-app/retained.js",
         "web/report-viewer/presentation.js"
       ],
-      "bytesInOutput": 75991
+      "bytesInOutput": 76342
     },
     {
       "path": "web/report-app/bridge.js",
@@ -84,13 +84,13 @@
     },
     {
       "path": "web/report-app/filter-controls.js",
-      "bytes": 6898,
-      "sha256": "36863a8413033ca358db8d9211c8eacd218fbad0e5637df27c978757dc9b88a5",
+      "bytes": 7256,
+      "sha256": "823b241a78618cc4bb19c9dd5f560b4067b5a7372cdceaf3048aa3753252fb50",
       "imports": [
         "web/report-app/filters.js",
         "web/report-app/model.js"
       ],
-      "bytesInOutput": 4867
+      "bytesInOutput": 5122
     },
     {
       "path": "web/report-app/filters.js",
@@ -181,15 +181,15 @@
     },
     {
       "path": "web/report-app/report-filters.js",
-      "bytes": 8647,
-      "sha256": "a078269af6d151b99b7f02fa4d83a9617e29d0eec2a7b999a40384cdb0aabd33",
+      "bytes": 11557,
+      "sha256": "56446cd643c1634694294d1a08b809c6e0bcc5779c7a2cf957c7007865feace0",
       "imports": [
         "web/report-app/filter-controls.js",
         "web/report-app/filters.js",
         "web/report-app/model.js",
         "web/report-app/pages.js"
       ],
-      "bytesInOutput": 6751
+      "bytesInOutput": 9077
     },
     {
       "path": "web/report-app/retained.js",
@@ -235,13 +235,13 @@
     },
     {
       "path": "web/report-app/styles.css",
-      "bytes": 21525,
-      "sha256": "50796ff72697c459dd9ac1ce0fe410bf121b5d0ae2c744b4704387af222c0c59"
+      "bytes": 22321,
+      "sha256": "6f2be06bbc8735e25a3d635e6e4a62a86fb697ec410097b6a994d9914241d7e9"
     }
   ],
   "output": {
     "path": "web/report-app/generated/report-app.js",
-    "bytes": 227239,
-    "sha256": "372afa1f1472727e09df08b630f5e795451d5f04fc5fdea8c9b6bf7f08341c51"
+    "bytes": 230171,
+    "sha256": "f7613bbdff70fd923a0a3fcd01f6864edb3e0b4091c43113cac8ef1a509e8257"
   }
 }

@@ -27,7 +27,7 @@
           "field": "m_46f93a6a01617b80efa06168",
           "status": "unknown",
           "basis": "reviewed_query_dependencies",
-          "provenance_digest": "0db36ffeeb45ff8250b9eeb93289100c19c4ad71e1a96462fd02850d2a8a98c5"
+          "provenance_digest": "b9b592634ad9b3355bb1dbc3b42e22700a5845bbbc9b397e69a6a86765a85f7a"
         }
       ],
       "state": {
@@ -38,13 +38,13 @@
         "published_revision": 0,
         "draft_state": "draft",
         "archived": false,
-        "created_at": "2026-10-04T09:58:30.27534-03:00",
-        "updated_at": "2026-10-04T09:58:30.27534-03:00"
+        "created_at": "2026-10-04T12:12:25.515067-03:00",
+        "updated_at": "2026-10-04T12:12:25.515067-03:00"
       },
       "revision": 1,
-      "revision_id": "2d6c8e4d90605e9889745e0cd3790774",
-      "digest": "841f2c1dc0522337fdba588939bdc33044ebb3e7264b7b75749e3b33e950a9b8",
-      "execution_digest": "76fe69bf68956292f1566303300d15432c90d1818337b30f536c0db40953ae8f",
+      "revision_id": "1bdfdd158c958c2332f517aebacdedc5",
+      "digest": "39efe8e83a26f2d22c65aed0e3f37ba7f64bfcc1cc3a8cdffae93225d09671c3",
+      "execution_digest": "ee2a02c9162708d6d3141f3b90557b7069dbdbe785e114d7f38a3beb085519c3",
       "metadata": [
         {
           "locale": "en-US",
@@ -60,7 +60,7 @@
         {
           "topic": "filtered-sales",
           "version": "v1",
-          "digest": "9662280d28b0a8464a7be4f1e2355a45b6f31069cd78a47dcdae7db839838f72"
+          "digest": "b0dd7323fa94e8adf4bf02d750591641e1ba66c40c9646226aff8f679459590c"
         }
       ],
       "parameters": [
@@ -166,7 +166,7 @@
         }
       ],
       "actor": "operator",
-      "created_at": "2026-10-04T12:58:30.23570908Z",
+      "created_at": "2026-10-04T15:12:25.452438294Z",
       "private": true,
       "trust": {
         "publication": "draft",
@@ -238,7 +238,7 @@
     "topic": {
       "topic": "filtered-sales",
       "version": "v1",
-      "digest": "9662280d28b0a8464a7be4f1e2355a45b6f31069cd78a47dcdae7db839838f72"
+      "digest": "b0dd7323fa94e8adf4bf02d750591641e1ba66c40c9646226aff8f679459590c"
     },
     "dataset": "ds:58a3a406cddd80b1ae008394cfd3b877",
     "source": "filtered-source",
@@ -308,7 +308,7 @@
             "title": "Informe sintético"
           }
         ],
-        "updated_at": "2026-10-04T09:58:30.324294-03:00"
+        "updated_at": "2026-10-04T12:12:25.629486-03:00"
       }
     ]
   },
@@ -318,20 +318,20 @@
         "policy": "private_preview",
         "report": "filtered-report",
         "revision": 1,
-        "digest": "f9e1a0d5bbd40b2b0571f48e0982ce89b57da553c067a8488d5050588e16369e",
+        "digest": "ef4e96d58e5963e66f696766f57c89991409db20d3c7624d04dbd744d6ae30df",
         "page": "analysis",
         "filter": "region"
       }
     },
-    "operation": "option:1791118710:0000000000000000000000000000001e",
+    "operation": "option:1791126745:0000000000000000000000000000001e",
     "search": "East",
     "cursor": "",
     "limit": 199,
     "locale": "en-US"
   },
   "initial_option_response": {
-    "operation": "option:1791118710:0000000000000000000000000000001e",
-    "input_digest": "904dfcb76d086e2266688b7cd42de4e4f8db2a46dfc8d64bdeef31d4bd17c494",
+    "operation": "option:1791126745:0000000000000000000000000000001e",
+    "input_digest": "e275ff77f73979af457cf8e72850ede5cde2495833eb962dc08b9b24c6ba4b90",
     "status": "completed",
     "execution_status": "succeeded",
     "remote_state": "stopped",
@@ -356,11 +356,11 @@
       "review_revision": 0,
       "published_revision": 0,
       "archived": false,
-      "created_at": "2026-10-04T09:58:30.324294-03:00",
-      "updated_at": "2026-10-04T09:58:30.324294-03:00"
+      "created_at": "2026-10-04T12:12:25.629486-03:00",
+      "updated_at": "2026-10-04T12:12:25.629486-03:00"
     },
     "revision": 1,
-    "digest": "f9e1a0d5bbd40b2b0571f48e0982ce89b57da553c067a8488d5050588e16369e",
+    "digest": "ef4e96d58e5963e66f696766f57c89991409db20d3c7624d04dbd744d6ae30df",
     "private": true,
     "definition": {
       "schema_version": 3,
@@ -388,11 +388,11 @@
                 "column": 0,
                 "row": 0,
                 "width": 12,
-                "height": 1
+                "height": 4
               },
               "presentation": {},
               "block": {
-                "digest": "841f2c1dc0522337fdba588939bdc33044ebb3e7264b7b75749e3b33e950a9b8",
+                "digest": "39efe8e83a26f2d22c65aed0e3f37ba7f64bfcc1cc3a8cdffae93225d09671c3",
                 "block": "filtered-chart",
                 "revision": 1,
                 "outputs": [
@@ -486,21 +486,21 @@
         "topic": {
           "topic": "filtered-sales",
           "version": "v1",
-          "digest": "9662280d28b0a8464a7be4f1e2355a45b6f31069cd78a47dcdae7db839838f72"
+          "digest": "b0dd7323fa94e8adf4bf02d750591641e1ba66c40c9646226aff8f679459590c"
         },
         "dataset": "ds:58a3a406cddd80b1ae008394cfd3b877",
         "dimension": "region"
       }
     },
-    "operation": "option:1791118710:0000000000000000000000000000001a",
+    "operation": "option:1791126745:0000000000000000000000000000001a",
     "search": "East",
     "cursor": "",
     "limit": 199,
     "locale": "en-US"
   },
   "option_response": {
-    "operation": "option:1791118710:0000000000000000000000000000001a",
-    "input_digest": "499be787815c96608d65e0de0356a182c1cf475c2af9932d11e8c4de4d3dc10e",
+    "operation": "option:1791126745:0000000000000000000000000000001a",
+    "input_digest": "d2f89d73c992260825170525742211621b5ad4a886462ced17d6682141e62ffb",
     "status": "completed",
     "execution_status": "succeeded",
     "remote_state": "stopped",
@@ -516,10 +516,10 @@
     "complete": true
   },
   "preparation": {
-    "preparation": "0c25d3e06ebdbf4b6c72b0515e28fb5c",
+    "preparation": "a69f0a06d47e25e3dc358df901862196",
     "new_block": "filtered-chart",
     "operation": "dataset-prepare-one",
-    "digest": "918cdf8a9d2c538857c9776e6efac436073e62ed0f12b1af196093aed1d8dc25",
+    "digest": "08bdb27ce132cf5d26ae0b322d568d90b79296b9714ed41e73c6053a9ae5e37c",
     "status": "prepared",
     "schema": [
       {
@@ -570,7 +570,7 @@
         "label_max_runes": 80
       }
     },
-    "expires_at": "2026-10-04T13:13:30.168520784Z",
+    "expires_at": "2026-10-04T15:27:25.361404279Z",
     "validation": "native_validation_required",
     "execution_status": "succeeded",
     "remote_state": "stopped"
@@ -604,7 +604,7 @@
       "topic": {
         "topic": "filtered-sales",
         "version": "v1",
-        "digest": "9662280d28b0a8464a7be4f1e2355a45b6f31069cd78a47dcdae7db839838f72"
+        "digest": "b0dd7323fa94e8adf4bf02d750591641e1ba66c40c9646226aff8f679459590c"
       },
       "dataset": "ds:58a3a406cddd80b1ae008394cfd3b877",
       "dimensions": [],
@@ -645,11 +645,11 @@
       "review_revision": 0,
       "published_revision": 0,
       "archived": false,
-      "created_at": "2026-10-04T09:58:30.324294-03:00",
-      "updated_at": "2026-10-04T09:58:30.635566-03:00"
+      "created_at": "2026-10-04T12:12:25.629486-03:00",
+      "updated_at": "2026-10-04T12:12:25.981685-03:00"
     },
     "revision": 2,
-    "digest": "d22e2246bff0b3cf573dda9a99cd2c6c9e2d6d2acefa9f31e9db151d7f93ea0d",
+    "digest": "a64996520dacaa74099bcfc8c7ba7dcb02f326e0bb63a007164a3ca147f9c6dd",
     "private": true,
     "definition": {
       "schema_version": 3,
@@ -677,11 +677,11 @@
                 "column": 0,
                 "row": 0,
                 "width": 12,
-                "height": 1
+                "height": 4
               },
               "presentation": {},
               "block": {
-                "digest": "841f2c1dc0522337fdba588939bdc33044ebb3e7264b7b75749e3b33e950a9b8",
+                "digest": "39efe8e83a26f2d22c65aed0e3f37ba7f64bfcc1cc3a8cdffae93225d09671c3",
                 "block": "filtered-chart",
                 "revision": 1,
                 "outputs": [
@@ -774,20 +774,20 @@
         "policy": "private_preview",
         "report": "filtered-report",
         "revision": 2,
-        "digest": "d22e2246bff0b3cf573dda9a99cd2c6c9e2d6d2acefa9f31e9db151d7f93ea0d",
+        "digest": "a64996520dacaa74099bcfc8c7ba7dcb02f326e0bb63a007164a3ca147f9c6dd",
         "page": "analysis",
         "filter": "region"
       }
     },
-    "operation": "option:1791118710:0000000000000000000000000000000a",
+    "operation": "option:1791126746:0000000000000000000000000000000a",
     "search": "East",
     "cursor": "",
     "limit": 199,
     "locale": "en-US"
   },
   "private_option_response": {
-    "operation": "option:1791118710:0000000000000000000000000000000a",
-    "input_digest": "f3fde26d2d178501f2056b0b3840831737b9fc78e5b0194dd75f4760908d6eec",
+    "operation": "option:1791126746:0000000000000000000000000000000a",
+    "input_digest": "2dd8aad9b026d9bd26af9159975c5e5577df8c53291dfeae3a43fa21f9cca628",
     "status": "completed",
     "execution_status": "succeeded",
     "remote_state": "stopped",
@@ -812,11 +812,11 @@
       "review_revision": 0,
       "published_revision": 0,
       "archived": false,
-      "created_at": "2026-10-04T09:58:30.324294-03:00",
-      "updated_at": "2026-10-04T09:58:30.635566-03:00"
+      "created_at": "2026-10-04T12:12:25.629486-03:00",
+      "updated_at": "2026-10-04T12:12:25.981685-03:00"
     },
     "revision": 2,
-    "digest": "d22e2246bff0b3cf573dda9a99cd2c6c9e2d6d2acefa9f31e9db151d7f93ea0d",
+    "digest": "a64996520dacaa74099bcfc8c7ba7dcb02f326e0bb63a007164a3ca147f9c6dd",
     "private": true,
     "definition": {
       "schema_version": 3,
@@ -844,11 +844,11 @@
                 "column": 0,
                 "row": 0,
                 "width": 12,
-                "height": 1
+                "height": 4
               },
               "presentation": {},
               "block": {
-                "digest": "841f2c1dc0522337fdba588939bdc33044ebb3e7264b7b75749e3b33e950a9b8",
+                "digest": "39efe8e83a26f2d22c65aed0e3f37ba7f64bfcc1cc3a8cdffae93225d09671c3",
                 "block": "filtered-chart",
                 "revision": 1,
                 "outputs": [
@@ -938,23 +938,23 @@
   "private_runs": {
     "cleared": {
       "execute_request": {
-        "run": "0fec82791fe3d101e2196a027f093b3d",
+        "run": "cedb333de66f6b9e6d7b8bbf9e0c27c8",
         "resume": false
       },
       "execute_response": {
-        "id": "0fec82791fe3d101e2196a027f093b3d",
+        "id": "cedb333de66f6b9e6d7b8bbf9e0c27c8",
         "kind": "report",
         "document": "filtered-report",
         "revision": 2,
-        "manifest_digest": "13f95da690a3cf1db64350009dfd1dfb118fdb429ac6b12cee207a511c68ed91",
+        "manifest_digest": "0d16c777499100d1ebb304d5bdcde0c17c5edef1ae636876e6c1cf6bb7569862",
         "state": "completed",
         "private": true,
         "complete": true,
         "mixed_freshness": false,
         "redacted": false,
-        "created_at": "2026-10-04T12:58:32.984983Z",
-        "expires_at": "2026-10-05T12:58:32.984983Z",
-        "finished_at": "2026-10-04T09:58:33.758741-03:00",
+        "created_at": "2026-10-04T15:12:28.130557Z",
+        "expires_at": "2026-10-05T15:12:28.130557Z",
+        "finished_at": "2026-10-04T12:12:29.200416-03:00",
         "pages": [
           {
             "locale": "en-US",
@@ -1009,7 +1009,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -1038,12 +1038,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:33.427046-03:00"
+                "observed_at": "2026-10-04T12:12:28.714772-03:00"
               }
             ]
           },
@@ -1073,11 +1073,11 @@
           }
         ],
         "query_groups": 1,
-        "retained_bytes": 13105
+        "retained_bytes": 13106
       },
       "notes_request": {
         "kind": "report",
-        "run": "0fec82791fe3d101e2196a027f093b3d",
+        "run": "cedb333de66f6b9e6d7b8bbf9e0c27c8",
         "page": "notes",
         "widget": "filter-notes",
         "output": "",
@@ -1086,7 +1086,7 @@
       },
       "output_request": {
         "kind": "report",
-        "run": "0fec82791fe3d101e2196a027f093b3d",
+        "run": "cedb333de66f6b9e6d7b8bbf9e0c27c8",
         "page": "analysis",
         "widget": "options-widget",
         "output": "chart",
@@ -1098,24 +1098,24 @@
         "key": "filter-browser-private-cleared",
         "revision": 2,
         "resolution": {
-          "at": "2026-10-04T12:58:32.123Z",
+          "at": "2026-10-04T15:12:28.123Z",
           "timezone": "UTC"
         },
         "pages": []
       },
       "preview_response": {
-        "id": "0fec82791fe3d101e2196a027f093b3d",
+        "id": "cedb333de66f6b9e6d7b8bbf9e0c27c8",
         "kind": "report",
         "document": "filtered-report",
         "revision": 2,
-        "manifest_digest": "13f95da690a3cf1db64350009dfd1dfb118fdb429ac6b12cee207a511c68ed91",
+        "manifest_digest": "0d16c777499100d1ebb304d5bdcde0c17c5edef1ae636876e6c1cf6bb7569862",
         "state": "sealed",
         "private": true,
         "complete": false,
         "mixed_freshness": false,
         "redacted": false,
-        "created_at": "2026-10-04T12:58:32.984983Z",
-        "expires_at": "2026-10-05T12:58:32.984983Z",
+        "created_at": "2026-10-04T15:12:28.130557Z",
+        "expires_at": "2026-10-05T15:12:28.130557Z",
         "pages": [
           {
             "locale": "en-US",
@@ -1170,7 +1170,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -1199,8 +1199,8 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 }
@@ -1237,7 +1237,7 @@
       },
       "root_request": {
         "kind": "report",
-        "run": "0fec82791fe3d101e2196a027f093b3d",
+        "run": "cedb333de66f6b9e6d7b8bbf9e0c27c8",
         "page": "",
         "widget": "",
         "output": "",
@@ -1249,7 +1249,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "0fec82791fe3d101e2196a027f093b3d",
+          "run": "cedb333de66f6b9e6d7b8bbf9e0c27c8",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -1258,12 +1258,12 @@
           "state": "completed",
           "code": "",
           "private": true,
-          "created_at": "2026-10-04T09:58:32.984983-03:00",
-          "expires_at": "2026-10-05T09:58:32.984983-03:00"
+          "created_at": "2026-10-04T12:12:28.130557-03:00",
+          "expires_at": "2026-10-05T12:12:28.130557-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "0fec82791fe3d101e2196a027f093b3d",
+          "run": "cedb333de66f6b9e6d7b8bbf9e0c27c8",
           "page": "notes",
           "widget": "filter-notes",
           "output": "",
@@ -1327,7 +1327,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -1356,12 +1356,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:33.427046-03:00"
+                "observed_at": "2026-10-04T12:12:28.714772-03:00"
               }
             ]
           },
@@ -1444,7 +1444,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "0fec82791fe3d101e2196a027f093b3d",
+          "run": "cedb333de66f6b9e6d7b8bbf9e0c27c8",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -1453,12 +1453,12 @@
           "state": "completed",
           "code": "",
           "private": true,
-          "created_at": "2026-10-04T09:58:32.984983-03:00",
-          "expires_at": "2026-10-05T09:58:32.984983-03:00"
+          "created_at": "2026-10-04T12:12:28.130557-03:00",
+          "expires_at": "2026-10-05T12:12:28.130557-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "0fec82791fe3d101e2196a027f093b3d",
+          "run": "cedb333de66f6b9e6d7b8bbf9e0c27c8",
           "page": "analysis",
           "widget": "options-widget",
           "output": "chart",
@@ -1542,7 +1542,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -1571,12 +1571,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:33.427046-03:00"
+                "observed_at": "2026-10-04T12:12:28.714772-03:00"
               }
             ]
           },
@@ -1611,12 +1611,12 @@
           "certification": "none",
           "health": {
             "status": "healthy",
-            "observed_at": "2026-10-04T12:58:31.026938099Z",
-            "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+            "observed_at": "2026-10-04T15:12:26.313968346Z",
+            "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
             "reason": "validated_observation"
           }
         },
-        "observed_at": "2026-10-04T09:58:33.427046-03:00",
+        "observed_at": "2026-10-04T12:12:28.714772-03:00",
         "mixed_freshness": false,
         "redacted": false,
         "output": {
@@ -1625,7 +1625,7 @@
               "field": "m_46f93a6a01617b80efa06168",
               "status": "allowed",
               "basis": "reviewed_query_dependencies",
-              "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+              "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
             }
           ],
           "intent": {
@@ -1644,7 +1644,7 @@
           "kind": "kpi",
           "state": "succeeded",
           "code": "",
-          "retained_digest": "6269035d5aa2f30687291c215e6275522862a4e7b67b7fddd26130d0d05c4cab",
+          "retained_digest": "82fc0fec1568f10b9256019f312ee59c4405b8c854b2f024616dfb1c80bcc193",
           "chart": {
             "version": 1,
             "kind": "kpi",
@@ -1817,7 +1817,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "0fec82791fe3d101e2196a027f093b3d",
+          "run": "cedb333de66f6b9e6d7b8bbf9e0c27c8",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -1826,12 +1826,12 @@
           "state": "completed",
           "code": "",
           "private": true,
-          "created_at": "2026-10-04T09:58:32.984983-03:00",
-          "expires_at": "2026-10-05T09:58:32.984983-03:00"
+          "created_at": "2026-10-04T12:12:28.130557-03:00",
+          "expires_at": "2026-10-05T12:12:28.130557-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "0fec82791fe3d101e2196a027f093b3d",
+          "run": "cedb333de66f6b9e6d7b8bbf9e0c27c8",
           "page": "analysis",
           "widget": "options-widget",
           "output": "chart",
@@ -1915,7 +1915,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -1944,12 +1944,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:33.427046-03:00"
+                "observed_at": "2026-10-04T12:12:28.714772-03:00"
               }
             ]
           },
@@ -1984,12 +1984,12 @@
           "certification": "none",
           "health": {
             "status": "healthy",
-            "observed_at": "2026-10-04T12:58:31.026938099Z",
-            "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+            "observed_at": "2026-10-04T15:12:26.313968346Z",
+            "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
             "reason": "validated_observation"
           }
         },
-        "observed_at": "2026-10-04T09:58:33.427046-03:00",
+        "observed_at": "2026-10-04T12:12:28.714772-03:00",
         "mixed_freshness": false,
         "redacted": false,
         "output": {
@@ -1998,7 +1998,7 @@
               "field": "m_46f93a6a01617b80efa06168",
               "status": "allowed",
               "basis": "reviewed_query_dependencies",
-              "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+              "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
             }
           ],
           "intent": {
@@ -2017,7 +2017,7 @@
           "kind": "kpi",
           "state": "succeeded",
           "code": "",
-          "retained_digest": "6269035d5aa2f30687291c215e6275522862a4e7b67b7fddd26130d0d05c4cab",
+          "retained_digest": "82fc0fec1568f10b9256019f312ee59c4405b8c854b2f024616dfb1c80bcc193",
           "chart": {
             "version": 1,
             "kind": "kpi",
@@ -2152,23 +2152,23 @@
     },
     "defaults": {
       "execute_request": {
-        "run": "cfb8fea23744c17adb353a12974a6c5b",
+        "run": "dcc09cd95893d38988971559e1e79d34",
         "resume": false
       },
       "execute_response": {
-        "id": "cfb8fea23744c17adb353a12974a6c5b",
+        "id": "dcc09cd95893d38988971559e1e79d34",
         "kind": "report",
         "document": "filtered-report",
         "revision": 2,
-        "manifest_digest": "9958bab60c270679e0e89ecc9b7c8778df93ec0cafa42ba7748569d697785083",
+        "manifest_digest": "b278e42a962ea24c06ae632fbf3badec0cdc45d0a044bd45e67310182ab9c8a0",
         "state": "completed",
         "private": true,
         "complete": true,
         "mixed_freshness": false,
         "redacted": false,
-        "created_at": "2026-10-04T12:58:31.105096Z",
-        "expires_at": "2026-10-05T12:58:31.105096Z",
-        "finished_at": "2026-10-04T09:58:31.945033-03:00",
+        "created_at": "2026-10-04T15:12:26.375234Z",
+        "expires_at": "2026-10-05T15:12:26.375234Z",
+        "finished_at": "2026-10-04T12:12:27.113579-03:00",
         "pages": [
           {
             "locale": "en-US",
@@ -2223,7 +2223,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -2252,12 +2252,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:31.599948-03:00"
+                "observed_at": "2026-10-04T12:12:26.802655-03:00"
               }
             ]
           },
@@ -2287,11 +2287,11 @@
           }
         ],
         "query_groups": 1,
-        "retained_bytes": 13105
+        "retained_bytes": 13103
       },
       "notes_request": {
         "kind": "report",
-        "run": "cfb8fea23744c17adb353a12974a6c5b",
+        "run": "dcc09cd95893d38988971559e1e79d34",
         "page": "notes",
         "widget": "filter-notes",
         "output": "",
@@ -2300,7 +2300,7 @@
       },
       "output_request": {
         "kind": "report",
-        "run": "cfb8fea23744c17adb353a12974a6c5b",
+        "run": "dcc09cd95893d38988971559e1e79d34",
         "page": "analysis",
         "widget": "options-widget",
         "output": "chart",
@@ -2312,24 +2312,24 @@
         "key": "filter-browser-private-defaults",
         "revision": 2,
         "resolution": {
-          "at": "2026-10-04T12:58:31.123Z",
+          "at": "2026-10-04T15:12:26.123Z",
           "timezone": "UTC"
         },
         "pages": []
       },
       "preview_response": {
-        "id": "cfb8fea23744c17adb353a12974a6c5b",
+        "id": "dcc09cd95893d38988971559e1e79d34",
         "kind": "report",
         "document": "filtered-report",
         "revision": 2,
-        "manifest_digest": "9958bab60c270679e0e89ecc9b7c8778df93ec0cafa42ba7748569d697785083",
+        "manifest_digest": "b278e42a962ea24c06ae632fbf3badec0cdc45d0a044bd45e67310182ab9c8a0",
         "state": "sealed",
         "private": true,
         "complete": false,
         "mixed_freshness": false,
         "redacted": false,
-        "created_at": "2026-10-04T12:58:31.105096Z",
-        "expires_at": "2026-10-05T12:58:31.105096Z",
+        "created_at": "2026-10-04T15:12:26.375234Z",
+        "expires_at": "2026-10-05T15:12:26.375234Z",
         "pages": [
           {
             "locale": "en-US",
@@ -2384,7 +2384,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -2413,8 +2413,8 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 }
@@ -2451,7 +2451,7 @@
       },
       "root_request": {
         "kind": "report",
-        "run": "cfb8fea23744c17adb353a12974a6c5b",
+        "run": "dcc09cd95893d38988971559e1e79d34",
         "page": "",
         "widget": "",
         "output": "",
@@ -2463,7 +2463,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "cfb8fea23744c17adb353a12974a6c5b",
+          "run": "dcc09cd95893d38988971559e1e79d34",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -2472,12 +2472,12 @@
           "state": "completed",
           "code": "",
           "private": true,
-          "created_at": "2026-10-04T09:58:31.105096-03:00",
-          "expires_at": "2026-10-05T09:58:31.105096-03:00"
+          "created_at": "2026-10-04T12:12:26.375234-03:00",
+          "expires_at": "2026-10-05T12:12:26.375234-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "cfb8fea23744c17adb353a12974a6c5b",
+          "run": "dcc09cd95893d38988971559e1e79d34",
           "page": "notes",
           "widget": "filter-notes",
           "output": "",
@@ -2541,7 +2541,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -2570,12 +2570,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:31.599948-03:00"
+                "observed_at": "2026-10-04T12:12:26.802655-03:00"
               }
             ]
           },
@@ -2658,7 +2658,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "cfb8fea23744c17adb353a12974a6c5b",
+          "run": "dcc09cd95893d38988971559e1e79d34",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -2667,12 +2667,12 @@
           "state": "completed",
           "code": "",
           "private": true,
-          "created_at": "2026-10-04T09:58:31.105096-03:00",
-          "expires_at": "2026-10-05T09:58:31.105096-03:00"
+          "created_at": "2026-10-04T12:12:26.375234-03:00",
+          "expires_at": "2026-10-05T12:12:26.375234-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "cfb8fea23744c17adb353a12974a6c5b",
+          "run": "dcc09cd95893d38988971559e1e79d34",
           "page": "analysis",
           "widget": "options-widget",
           "output": "chart",
@@ -2756,7 +2756,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -2785,12 +2785,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:31.599948-03:00"
+                "observed_at": "2026-10-04T12:12:26.802655-03:00"
               }
             ]
           },
@@ -2825,12 +2825,12 @@
           "certification": "none",
           "health": {
             "status": "healthy",
-            "observed_at": "2026-10-04T12:58:31.026938099Z",
-            "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+            "observed_at": "2026-10-04T15:12:26.313968346Z",
+            "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
             "reason": "validated_observation"
           }
         },
-        "observed_at": "2026-10-04T09:58:31.599948-03:00",
+        "observed_at": "2026-10-04T12:12:26.802655-03:00",
         "mixed_freshness": false,
         "redacted": false,
         "output": {
@@ -2839,7 +2839,7 @@
               "field": "m_46f93a6a01617b80efa06168",
               "status": "allowed",
               "basis": "reviewed_query_dependencies",
-              "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+              "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
             }
           ],
           "intent": {
@@ -2858,7 +2858,7 @@
           "kind": "kpi",
           "state": "succeeded",
           "code": "",
-          "retained_digest": "6269035d5aa2f30687291c215e6275522862a4e7b67b7fddd26130d0d05c4cab",
+          "retained_digest": "82fc0fec1568f10b9256019f312ee59c4405b8c854b2f024616dfb1c80bcc193",
           "chart": {
             "version": 1,
             "kind": "kpi",
@@ -3031,7 +3031,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "cfb8fea23744c17adb353a12974a6c5b",
+          "run": "dcc09cd95893d38988971559e1e79d34",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -3040,12 +3040,12 @@
           "state": "completed",
           "code": "",
           "private": true,
-          "created_at": "2026-10-04T09:58:31.105096-03:00",
-          "expires_at": "2026-10-05T09:58:31.105096-03:00"
+          "created_at": "2026-10-04T12:12:26.375234-03:00",
+          "expires_at": "2026-10-05T12:12:26.375234-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "cfb8fea23744c17adb353a12974a6c5b",
+          "run": "dcc09cd95893d38988971559e1e79d34",
           "page": "analysis",
           "widget": "options-widget",
           "output": "chart",
@@ -3129,7 +3129,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -3158,12 +3158,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:31.599948-03:00"
+                "observed_at": "2026-10-04T12:12:26.802655-03:00"
               }
             ]
           },
@@ -3198,12 +3198,12 @@
           "certification": "none",
           "health": {
             "status": "healthy",
-            "observed_at": "2026-10-04T12:58:31.026938099Z",
-            "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+            "observed_at": "2026-10-04T15:12:26.313968346Z",
+            "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
             "reason": "validated_observation"
           }
         },
-        "observed_at": "2026-10-04T09:58:31.599948-03:00",
+        "observed_at": "2026-10-04T12:12:26.802655-03:00",
         "mixed_freshness": false,
         "redacted": false,
         "output": {
@@ -3212,7 +3212,7 @@
               "field": "m_46f93a6a01617b80efa06168",
               "status": "allowed",
               "basis": "reviewed_query_dependencies",
-              "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+              "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
             }
           ],
           "intent": {
@@ -3231,7 +3231,7 @@
           "kind": "kpi",
           "state": "succeeded",
           "code": "",
-          "retained_digest": "6269035d5aa2f30687291c215e6275522862a4e7b67b7fddd26130d0d05c4cab",
+          "retained_digest": "82fc0fec1568f10b9256019f312ee59c4405b8c854b2f024616dfb1c80bcc193",
           "chart": {
             "version": 1,
             "kind": "kpi",
@@ -3366,23 +3366,23 @@
     },
     "temporary": {
       "execute_request": {
-        "run": "dc15b3f97b45c1d9ca346f47a5c06391",
+        "run": "bb686df74d92bd677f9c1c0be1ac7d8a",
         "resume": false
       },
       "execute_response": {
-        "id": "dc15b3f97b45c1d9ca346f47a5c06391",
+        "id": "bb686df74d92bd677f9c1c0be1ac7d8a",
         "kind": "report",
         "document": "filtered-report",
         "revision": 2,
-        "manifest_digest": "5454dc8ffc6e6f9f7d2abd43e88dcf792fea2d5e989bd204c8cf61dcc4273ca0",
+        "manifest_digest": "be9d91695fbda1de3be0ea6b45302cbd5792cc24144917624de8f471e49fdb3a",
         "state": "completed",
         "private": true,
         "complete": true,
         "mixed_freshness": false,
         "redacted": false,
-        "created_at": "2026-10-04T12:58:32.078035Z",
-        "expires_at": "2026-10-05T12:58:32.078035Z",
-        "finished_at": "2026-10-04T09:58:32.869046-03:00",
+        "created_at": "2026-10-04T15:12:27.204199Z",
+        "expires_at": "2026-10-05T15:12:27.204199Z",
+        "finished_at": "2026-10-04T12:12:28.013642-03:00",
         "pages": [
           {
             "locale": "en-US",
@@ -3437,7 +3437,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -3466,12 +3466,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:32.550972-03:00"
+                "observed_at": "2026-10-04T12:12:27.634711-03:00"
               }
             ]
           },
@@ -3501,11 +3501,11 @@
           }
         ],
         "query_groups": 1,
-        "retained_bytes": 13094
+        "retained_bytes": 13095
       },
       "notes_request": {
         "kind": "report",
-        "run": "dc15b3f97b45c1d9ca346f47a5c06391",
+        "run": "bb686df74d92bd677f9c1c0be1ac7d8a",
         "page": "notes",
         "widget": "filter-notes",
         "output": "",
@@ -3514,7 +3514,7 @@
       },
       "output_request": {
         "kind": "report",
-        "run": "dc15b3f97b45c1d9ca346f47a5c06391",
+        "run": "bb686df74d92bd677f9c1c0be1ac7d8a",
         "page": "analysis",
         "widget": "options-widget",
         "output": "chart",
@@ -3526,7 +3526,7 @@
         "key": "filter-browser-private-temporary",
         "revision": 2,
         "resolution": {
-          "at": "2026-10-04T12:58:32.123Z",
+          "at": "2026-10-04T15:12:27.123Z",
           "timezone": "UTC"
         },
         "pages": [
@@ -3556,18 +3556,18 @@
         ]
       },
       "preview_response": {
-        "id": "dc15b3f97b45c1d9ca346f47a5c06391",
+        "id": "bb686df74d92bd677f9c1c0be1ac7d8a",
         "kind": "report",
         "document": "filtered-report",
         "revision": 2,
-        "manifest_digest": "5454dc8ffc6e6f9f7d2abd43e88dcf792fea2d5e989bd204c8cf61dcc4273ca0",
+        "manifest_digest": "be9d91695fbda1de3be0ea6b45302cbd5792cc24144917624de8f471e49fdb3a",
         "state": "sealed",
         "private": true,
         "complete": false,
         "mixed_freshness": false,
         "redacted": false,
-        "created_at": "2026-10-04T12:58:32.078035Z",
-        "expires_at": "2026-10-05T12:58:32.078035Z",
+        "created_at": "2026-10-04T15:12:27.204199Z",
+        "expires_at": "2026-10-05T15:12:27.204199Z",
         "pages": [
           {
             "locale": "en-US",
@@ -3622,7 +3622,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -3651,8 +3651,8 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 }
@@ -3689,7 +3689,7 @@
       },
       "root_request": {
         "kind": "report",
-        "run": "dc15b3f97b45c1d9ca346f47a5c06391",
+        "run": "bb686df74d92bd677f9c1c0be1ac7d8a",
         "page": "",
         "widget": "",
         "output": "",
@@ -3701,7 +3701,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "dc15b3f97b45c1d9ca346f47a5c06391",
+          "run": "bb686df74d92bd677f9c1c0be1ac7d8a",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -3710,12 +3710,12 @@
           "state": "completed",
           "code": "",
           "private": true,
-          "created_at": "2026-10-04T09:58:32.078035-03:00",
-          "expires_at": "2026-10-05T09:58:32.078035-03:00"
+          "created_at": "2026-10-04T12:12:27.204199-03:00",
+          "expires_at": "2026-10-05T12:12:27.204199-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "dc15b3f97b45c1d9ca346f47a5c06391",
+          "run": "bb686df74d92bd677f9c1c0be1ac7d8a",
           "page": "notes",
           "widget": "filter-notes",
           "output": "",
@@ -3779,7 +3779,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -3808,12 +3808,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:32.550972-03:00"
+                "observed_at": "2026-10-04T12:12:27.634711-03:00"
               }
             ]
           },
@@ -3896,7 +3896,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "dc15b3f97b45c1d9ca346f47a5c06391",
+          "run": "bb686df74d92bd677f9c1c0be1ac7d8a",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -3905,12 +3905,12 @@
           "state": "completed",
           "code": "",
           "private": true,
-          "created_at": "2026-10-04T09:58:32.078035-03:00",
-          "expires_at": "2026-10-05T09:58:32.078035-03:00"
+          "created_at": "2026-10-04T12:12:27.204199-03:00",
+          "expires_at": "2026-10-05T12:12:27.204199-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "dc15b3f97b45c1d9ca346f47a5c06391",
+          "run": "bb686df74d92bd677f9c1c0be1ac7d8a",
           "page": "analysis",
           "widget": "options-widget",
           "output": "chart",
@@ -3994,7 +3994,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -4023,12 +4023,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:32.550972-03:00"
+                "observed_at": "2026-10-04T12:12:27.634711-03:00"
               }
             ]
           },
@@ -4063,12 +4063,12 @@
           "certification": "none",
           "health": {
             "status": "healthy",
-            "observed_at": "2026-10-04T12:58:31.026938099Z",
-            "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+            "observed_at": "2026-10-04T15:12:26.313968346Z",
+            "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
             "reason": "validated_observation"
           }
         },
-        "observed_at": "2026-10-04T09:58:32.550972-03:00",
+        "observed_at": "2026-10-04T12:12:27.634711-03:00",
         "mixed_freshness": false,
         "redacted": false,
         "output": {
@@ -4077,7 +4077,7 @@
               "field": "m_46f93a6a01617b80efa06168",
               "status": "allowed",
               "basis": "reviewed_query_dependencies",
-              "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+              "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
             }
           ],
           "intent": {
@@ -4096,7 +4096,7 @@
           "kind": "kpi",
           "state": "succeeded",
           "code": "",
-          "retained_digest": "a873cd0f9c6398915e5e43f521cd98f8c9ca29f27e4f840025c0a406c009b5bd",
+          "retained_digest": "6ab98efe6317642fe59f41cb6dac43ee56ce86ec1765b271583b968093810552",
           "chart": {
             "version": 1,
             "kind": "kpi",
@@ -4269,7 +4269,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "dc15b3f97b45c1d9ca346f47a5c06391",
+          "run": "bb686df74d92bd677f9c1c0be1ac7d8a",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -4278,12 +4278,12 @@
           "state": "completed",
           "code": "",
           "private": true,
-          "created_at": "2026-10-04T09:58:32.078035-03:00",
-          "expires_at": "2026-10-05T09:58:32.078035-03:00"
+          "created_at": "2026-10-04T12:12:27.204199-03:00",
+          "expires_at": "2026-10-05T12:12:27.204199-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "dc15b3f97b45c1d9ca346f47a5c06391",
+          "run": "bb686df74d92bd677f9c1c0be1ac7d8a",
           "page": "analysis",
           "widget": "options-widget",
           "output": "chart",
@@ -4367,7 +4367,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -4396,12 +4396,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:31.026938099Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:26.313968346Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:32.550972-03:00"
+                "observed_at": "2026-10-04T12:12:27.634711-03:00"
               }
             ]
           },
@@ -4436,12 +4436,12 @@
           "certification": "none",
           "health": {
             "status": "healthy",
-            "observed_at": "2026-10-04T12:58:31.026938099Z",
-            "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+            "observed_at": "2026-10-04T15:12:26.313968346Z",
+            "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
             "reason": "validated_observation"
           }
         },
-        "observed_at": "2026-10-04T09:58:32.550972-03:00",
+        "observed_at": "2026-10-04T12:12:27.634711-03:00",
         "mixed_freshness": false,
         "redacted": false,
         "output": {
@@ -4450,7 +4450,7 @@
               "field": "m_46f93a6a01617b80efa06168",
               "status": "allowed",
               "basis": "reviewed_query_dependencies",
-              "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+              "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
             }
           ],
           "intent": {
@@ -4469,7 +4469,7 @@
           "kind": "kpi",
           "state": "succeeded",
           "code": "",
-          "retained_digest": "a873cd0f9c6398915e5e43f521cd98f8c9ca29f27e4f840025c0a406c009b5bd",
+          "retained_digest": "6ab98efe6317642fe59f41cb6dac43ee56ce86ec1765b271583b968093810552",
           "chart": {
             "version": 1,
             "kind": "kpi",
@@ -4613,11 +4613,11 @@
       "review_revision": 0,
       "published_revision": 5,
       "archived": false,
-      "created_at": "2026-10-04T09:58:30.324294-03:00",
-      "updated_at": "2026-10-04T09:58:34.69206-03:00"
+      "created_at": "2026-10-04T12:12:25.629486-03:00",
+      "updated_at": "2026-10-04T12:12:30.669578-03:00"
     },
     "revision": 5,
-    "digest": "4b79b50f29f01b4667aaafa71a162066f21d2eff584d28a3c689b60c184394dc",
+    "digest": "179c296a3848d7c2322e2ef099157f0191f7184f846e3048ac42f5d1762fa192",
     "private": false,
     "definition": {
       "schema_version": 3,
@@ -4645,7 +4645,7 @@
                 "column": 0,
                 "row": 0,
                 "width": 12,
-                "height": 1
+                "height": 4
               },
               "presentation": {},
               "block": {
@@ -4673,9 +4673,9 @@
               "kind": "block",
               "grid": {
                 "column": 0,
-                "row": 1,
+                "row": 4,
                 "width": 12,
-                "height": 1
+                "height": 4
               },
               "presentation": {},
               "block": {
@@ -4782,7 +4782,7 @@
     "next": ""
   },
   "published_description": {
-    "definition_digest": "4b79b50f29f01b4667aaafa71a162066f21d2eff584d28a3c689b60c184394dc",
+    "definition_digest": "179c296a3848d7c2322e2ef099157f0191f7184f846e3048ac42f5d1762fa192",
     "version": "reporting-view-v1",
     "resource": {
       "target": {
@@ -4891,7 +4891,7 @@
               "column": 0,
               "row": 0,
               "width": 12,
-              "height": 1
+              "height": 4
             },
             "presentation": {},
             "outputs": [
@@ -4903,8 +4903,8 @@
               "certification": "none",
               "health": {
                 "status": "healthy",
-                "observed_at": "2026-10-04T12:58:33.963460616Z",
-                "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                "observed_at": "2026-10-04T15:12:29.494089322Z",
+                "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                 "reason": "validated_observation"
               }
             }
@@ -4952,9 +4952,9 @@
             "state": "not_run",
             "grid": {
               "column": 0,
-              "row": 1,
+              "row": 4,
               "width": 12,
-              "height": 1
+              "height": 4
             },
             "presentation": {},
             "outputs": [
@@ -4966,8 +4966,8 @@
               "certification": "none",
               "health": {
                 "status": "healthy",
-                "observed_at": "2026-10-04T12:58:33.963460616Z",
-                "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                "observed_at": "2026-10-04T15:12:29.494089322Z",
+                "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                 "reason": "validated_observation"
               }
             }
@@ -5008,20 +5008,20 @@
         "policy": "published",
         "report": "filtered-report",
         "revision": 5,
-        "digest": "4b79b50f29f01b4667aaafa71a162066f21d2eff584d28a3c689b60c184394dc",
+        "digest": "179c296a3848d7c2322e2ef099157f0191f7184f846e3048ac42f5d1762fa192",
         "page": "analysis",
         "filter": "region"
       }
     },
-    "operation": "option:1791118714:0000000000000000000000000000000b",
+    "operation": "option:1791126750:0000000000000000000000000000000b",
     "search": "East",
     "cursor": "",
     "limit": 199,
     "locale": "en-US"
   },
   "published_option_response": {
-    "operation": "option:1791118714:0000000000000000000000000000000b",
-    "input_digest": "cc70117f491c7989f831712577c9605a5b475b4bd792b492dfc1d0b9181144ae",
+    "operation": "option:1791126750:0000000000000000000000000000000b",
+    "input_digest": "881822c9af4eb4eebb2710844ae49b06123c889d4c0fe4c651c9aaa2e76adeb9",
     "status": "completed",
     "execution_status": "succeeded",
     "remote_state": "stopped",
@@ -5046,11 +5046,11 @@
       "review_revision": 0,
       "published_revision": 5,
       "archived": false,
-      "created_at": "2026-10-04T09:58:30.324294-03:00",
-      "updated_at": "2026-10-04T09:58:34.69206-03:00"
+      "created_at": "2026-10-04T12:12:25.629486-03:00",
+      "updated_at": "2026-10-04T12:12:30.669578-03:00"
     },
     "revision": 5,
-    "digest": "4b79b50f29f01b4667aaafa71a162066f21d2eff584d28a3c689b60c184394dc",
+    "digest": "179c296a3848d7c2322e2ef099157f0191f7184f846e3048ac42f5d1762fa192",
     "private": false,
     "definition": {
       "schema_version": 3,
@@ -5078,7 +5078,7 @@
                 "column": 0,
                 "row": 0,
                 "width": 12,
-                "height": 1
+                "height": 4
               },
               "presentation": {},
               "block": {
@@ -5106,9 +5106,9 @@
               "kind": "block",
               "grid": {
                 "column": 0,
-                "row": 1,
+                "row": 4,
                 "width": 12,
-                "height": 1
+                "height": 4
               },
               "presentation": {},
               "block": {
@@ -5202,7 +5202,7 @@
     "cleared": {
       "notes_request": {
         "kind": "report",
-        "run": "539930234bddbf06d2f8508d3c0c98a5",
+        "run": "811837d56bb1aa1531e407753e86d43c",
         "page": "notes",
         "widget": "filter-notes",
         "output": "",
@@ -5213,7 +5213,7 @@
         "options-widget": {
           "request": {
             "kind": "report",
-            "run": "539930234bddbf06d2f8508d3c0c98a5",
+            "run": "811837d56bb1aa1531e407753e86d43c",
             "page": "analysis",
             "widget": "options-widget",
             "output": "chart",
@@ -5261,7 +5261,7 @@
             "version": "reporting-view-v1",
             "summary": {
               "kind": "report",
-              "run": "539930234bddbf06d2f8508d3c0c98a5",
+              "run": "811837d56bb1aa1531e407753e86d43c",
               "target": {
                 "kind": "report",
                 "id": "filtered-report",
@@ -5270,12 +5270,12 @@
               "state": "completed",
               "code": "",
               "private": false,
-              "created_at": "2026-10-04T09:58:36.489768-03:00",
-              "expires_at": "2026-10-11T09:58:36.489768-03:00"
+              "created_at": "2026-10-04T12:12:33.521735-03:00",
+              "expires_at": "2026-10-11T12:12:33.521735-03:00"
             },
             "selection": {
               "kind": "report",
-              "run": "539930234bddbf06d2f8508d3c0c98a5",
+              "run": "811837d56bb1aa1531e407753e86d43c",
               "page": "analysis",
               "widget": "options-widget",
               "output": "chart",
@@ -5359,7 +5359,7 @@
                       "column": 0,
                       "row": 0,
                       "width": 12,
-                      "height": 1
+                      "height": 4
                     },
                     "presentation": {},
                     "outputs": [
@@ -5388,12 +5388,12 @@
                       "certification": "none",
                       "health": {
                         "status": "healthy",
-                        "observed_at": "2026-10-04T12:58:33.963460616Z",
-                        "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                        "observed_at": "2026-10-04T15:12:29.494089322Z",
+                        "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                         "reason": "validated_observation"
                       }
                     },
-                    "observed_at": "2026-10-04T09:58:36.821955-03:00"
+                    "observed_at": "2026-10-04T12:12:34.101257-03:00"
                   },
                   {
                     "selection": {
@@ -5438,9 +5438,9 @@
                     "state": "completed",
                     "grid": {
                       "column": 0,
-                      "row": 1,
+                      "row": 4,
                       "width": 12,
-                      "height": 1
+                      "height": 4
                     },
                     "presentation": {},
                     "outputs": [
@@ -5469,12 +5469,12 @@
                       "certification": "none",
                       "health": {
                         "status": "healthy",
-                        "observed_at": "2026-10-04T12:58:33.963460616Z",
-                        "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                        "observed_at": "2026-10-04T15:12:29.494089322Z",
+                        "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                         "reason": "validated_observation"
                       }
                     },
-                    "observed_at": "2026-10-04T09:58:36.821955-03:00"
+                    "observed_at": "2026-10-04T12:12:34.101257-03:00"
                   }
                 ]
               },
@@ -5509,12 +5509,12 @@
               "certification": "none",
               "health": {
                 "status": "healthy",
-                "observed_at": "2026-10-04T12:58:33.963460616Z",
-                "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                "observed_at": "2026-10-04T15:12:29.494089322Z",
+                "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                 "reason": "validated_observation"
               }
             },
-            "observed_at": "2026-10-04T09:58:36.821955-03:00",
+            "observed_at": "2026-10-04T12:12:34.101257-03:00",
             "mixed_freshness": false,
             "redacted": false,
             "output": {
@@ -5523,7 +5523,7 @@
                   "field": "m_46f93a6a01617b80efa06168",
                   "status": "allowed",
                   "basis": "reviewed_query_dependencies",
-                  "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+                  "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
                 }
               ],
               "intent": {
@@ -5542,7 +5542,7 @@
               "kind": "kpi",
               "state": "succeeded",
               "code": "",
-              "retained_digest": "6269035d5aa2f30687291c215e6275522862a4e7b67b7fddd26130d0d05c4cab",
+              "retained_digest": "82fc0fec1568f10b9256019f312ee59c4405b8c854b2f024616dfb1c80bcc193",
               "chart": {
                 "version": 1,
                 "kind": "kpi",
@@ -5678,7 +5678,7 @@
         "published-same-revision": {
           "request": {
             "kind": "report",
-            "run": "539930234bddbf06d2f8508d3c0c98a5",
+            "run": "811837d56bb1aa1531e407753e86d43c",
             "page": "analysis",
             "widget": "published-same-revision",
             "output": "chart",
@@ -5726,7 +5726,7 @@
             "version": "reporting-view-v1",
             "summary": {
               "kind": "report",
-              "run": "539930234bddbf06d2f8508d3c0c98a5",
+              "run": "811837d56bb1aa1531e407753e86d43c",
               "target": {
                 "kind": "report",
                 "id": "filtered-report",
@@ -5735,12 +5735,12 @@
               "state": "completed",
               "code": "",
               "private": false,
-              "created_at": "2026-10-04T09:58:36.489768-03:00",
-              "expires_at": "2026-10-11T09:58:36.489768-03:00"
+              "created_at": "2026-10-04T12:12:33.521735-03:00",
+              "expires_at": "2026-10-11T12:12:33.521735-03:00"
             },
             "selection": {
               "kind": "report",
-              "run": "539930234bddbf06d2f8508d3c0c98a5",
+              "run": "811837d56bb1aa1531e407753e86d43c",
               "page": "analysis",
               "widget": "published-same-revision",
               "output": "chart",
@@ -5824,7 +5824,7 @@
                       "column": 0,
                       "row": 0,
                       "width": 12,
-                      "height": 1
+                      "height": 4
                     },
                     "presentation": {},
                     "outputs": [
@@ -5853,12 +5853,12 @@
                       "certification": "none",
                       "health": {
                         "status": "healthy",
-                        "observed_at": "2026-10-04T12:58:33.963460616Z",
-                        "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                        "observed_at": "2026-10-04T15:12:29.494089322Z",
+                        "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                         "reason": "validated_observation"
                       }
                     },
-                    "observed_at": "2026-10-04T09:58:36.821955-03:00"
+                    "observed_at": "2026-10-04T12:12:34.101257-03:00"
                   },
                   {
                     "selection": {
@@ -5903,9 +5903,9 @@
                     "state": "completed",
                     "grid": {
                       "column": 0,
-                      "row": 1,
+                      "row": 4,
                       "width": 12,
-                      "height": 1
+                      "height": 4
                     },
                     "presentation": {},
                     "outputs": [
@@ -5934,12 +5934,12 @@
                       "certification": "none",
                       "health": {
                         "status": "healthy",
-                        "observed_at": "2026-10-04T12:58:33.963460616Z",
-                        "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                        "observed_at": "2026-10-04T15:12:29.494089322Z",
+                        "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                         "reason": "validated_observation"
                       }
                     },
-                    "observed_at": "2026-10-04T09:58:36.821955-03:00"
+                    "observed_at": "2026-10-04T12:12:34.101257-03:00"
                   }
                 ]
               },
@@ -5974,12 +5974,12 @@
               "certification": "none",
               "health": {
                 "status": "healthy",
-                "observed_at": "2026-10-04T12:58:33.963460616Z",
-                "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                "observed_at": "2026-10-04T15:12:29.494089322Z",
+                "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                 "reason": "validated_observation"
               }
             },
-            "observed_at": "2026-10-04T09:58:36.821955-03:00",
+            "observed_at": "2026-10-04T12:12:34.101257-03:00",
             "mixed_freshness": false,
             "redacted": false,
             "output": {
@@ -5988,7 +5988,7 @@
                   "field": "m_46f93a6a01617b80efa06168",
                   "status": "allowed",
                   "basis": "reviewed_query_dependencies",
-                  "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+                  "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
                 }
               ],
               "intent": {
@@ -6007,7 +6007,7 @@
               "kind": "kpi",
               "state": "succeeded",
               "code": "",
-              "retained_digest": "6269035d5aa2f30687291c215e6275522862a4e7b67b7fddd26130d0d05c4cab",
+              "retained_digest": "82fc0fec1568f10b9256019f312ee59c4405b8c854b2f024616dfb1c80bcc193",
               "chart": {
                 "version": 1,
                 "kind": "kpi",
@@ -6143,7 +6143,7 @@
       },
       "root_request": {
         "kind": "report",
-        "run": "539930234bddbf06d2f8508d3c0c98a5",
+        "run": "811837d56bb1aa1531e407753e86d43c",
         "page": "",
         "widget": "",
         "output": "",
@@ -6170,7 +6170,7 @@
       "run_response": {
         "version": "reporting-view-v1",
         "kind": "report",
-        "run": "539930234bddbf06d2f8508d3c0c98a5",
+        "run": "811837d56bb1aa1531e407753e86d43c",
         "state": "completed",
         "code": "",
         "target": {
@@ -6184,7 +6184,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "539930234bddbf06d2f8508d3c0c98a5",
+          "run": "811837d56bb1aa1531e407753e86d43c",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -6193,12 +6193,12 @@
           "state": "completed",
           "code": "",
           "private": false,
-          "created_at": "2026-10-04T09:58:36.489768-03:00",
-          "expires_at": "2026-10-11T09:58:36.489768-03:00"
+          "created_at": "2026-10-04T12:12:33.521735-03:00",
+          "expires_at": "2026-10-11T12:12:33.521735-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "539930234bddbf06d2f8508d3c0c98a5",
+          "run": "811837d56bb1aa1531e407753e86d43c",
           "page": "notes",
           "widget": "filter-notes",
           "output": "",
@@ -6262,7 +6262,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -6291,12 +6291,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:33.963460616Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:29.494089322Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:36.821955-03:00"
+                "observed_at": "2026-10-04T12:12:34.101257-03:00"
               },
               {
                 "selection": {
@@ -6341,9 +6341,9 @@
                 "state": "completed",
                 "grid": {
                   "column": 0,
-                  "row": 1,
+                  "row": 4,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -6372,12 +6372,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:33.963460616Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:29.494089322Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:36.821955-03:00"
+                "observed_at": "2026-10-04T12:12:34.101257-03:00"
               }
             ]
           },
@@ -6460,7 +6460,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "539930234bddbf06d2f8508d3c0c98a5",
+          "run": "811837d56bb1aa1531e407753e86d43c",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -6469,12 +6469,12 @@
           "state": "completed",
           "code": "",
           "private": false,
-          "created_at": "2026-10-04T09:58:36.489768-03:00",
-          "expires_at": "2026-10-11T09:58:36.489768-03:00"
+          "created_at": "2026-10-04T12:12:33.521735-03:00",
+          "expires_at": "2026-10-11T12:12:33.521735-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "539930234bddbf06d2f8508d3c0c98a5",
+          "run": "811837d56bb1aa1531e407753e86d43c",
           "page": "analysis",
           "widget": "options-widget",
           "output": "chart",
@@ -6558,7 +6558,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -6587,12 +6587,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:33.963460616Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:29.494089322Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:36.821955-03:00"
+                "observed_at": "2026-10-04T12:12:34.101257-03:00"
               },
               {
                 "selection": {
@@ -6637,9 +6637,9 @@
                 "state": "completed",
                 "grid": {
                   "column": 0,
-                  "row": 1,
+                  "row": 4,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -6668,12 +6668,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:33.963460616Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:29.494089322Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:36.821955-03:00"
+                "observed_at": "2026-10-04T12:12:34.101257-03:00"
               }
             ]
           },
@@ -6708,12 +6708,12 @@
           "certification": "none",
           "health": {
             "status": "healthy",
-            "observed_at": "2026-10-04T12:58:33.963460616Z",
-            "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+            "observed_at": "2026-10-04T15:12:29.494089322Z",
+            "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
             "reason": "validated_observation"
           }
         },
-        "observed_at": "2026-10-04T09:58:36.821955-03:00",
+        "observed_at": "2026-10-04T12:12:34.101257-03:00",
         "mixed_freshness": false,
         "redacted": false,
         "output": {
@@ -6722,7 +6722,7 @@
               "field": "m_46f93a6a01617b80efa06168",
               "status": "allowed",
               "basis": "reviewed_query_dependencies",
-              "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+              "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
             }
           ],
           "intent": {
@@ -6741,7 +6741,7 @@
           "kind": "kpi",
           "state": "succeeded",
           "code": "",
-          "retained_digest": "6269035d5aa2f30687291c215e6275522862a4e7b67b7fddd26130d0d05c4cab",
+          "retained_digest": "82fc0fec1568f10b9256019f312ee59c4405b8c854b2f024616dfb1c80bcc193",
           "chart": {
             "version": 1,
             "kind": "kpi",
@@ -6877,7 +6877,7 @@
     "defaults": {
       "notes_request": {
         "kind": "report",
-        "run": "412fac851d41deeef7ca92e8157cb040",
+        "run": "7d41b82e9744a24049f5f73c364e2d35",
         "page": "notes",
         "widget": "filter-notes",
         "output": "",
@@ -6888,7 +6888,7 @@
         "options-widget": {
           "request": {
             "kind": "report",
-            "run": "412fac851d41deeef7ca92e8157cb040",
+            "run": "7d41b82e9744a24049f5f73c364e2d35",
             "page": "analysis",
             "widget": "options-widget",
             "output": "chart",
@@ -6936,7 +6936,7 @@
             "version": "reporting-view-v1",
             "summary": {
               "kind": "report",
-              "run": "412fac851d41deeef7ca92e8157cb040",
+              "run": "7d41b82e9744a24049f5f73c364e2d35",
               "target": {
                 "kind": "report",
                 "id": "filtered-report",
@@ -6945,12 +6945,12 @@
               "state": "completed",
               "code": "",
               "private": false,
-              "created_at": "2026-10-04T09:58:35.000228-03:00",
-              "expires_at": "2026-10-11T09:58:35.000228-03:00"
+              "created_at": "2026-10-04T12:12:31.138741-03:00",
+              "expires_at": "2026-10-11T12:12:31.138741-03:00"
             },
             "selection": {
               "kind": "report",
-              "run": "412fac851d41deeef7ca92e8157cb040",
+              "run": "7d41b82e9744a24049f5f73c364e2d35",
               "page": "analysis",
               "widget": "options-widget",
               "output": "chart",
@@ -7034,7 +7034,7 @@
                       "column": 0,
                       "row": 0,
                       "width": 12,
-                      "height": 1
+                      "height": 4
                     },
                     "presentation": {},
                     "outputs": [
@@ -7063,12 +7063,12 @@
                       "certification": "none",
                       "health": {
                         "status": "healthy",
-                        "observed_at": "2026-10-04T12:58:33.963460616Z",
-                        "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                        "observed_at": "2026-10-04T15:12:29.494089322Z",
+                        "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                         "reason": "validated_observation"
                       }
                     },
-                    "observed_at": "2026-10-04T09:58:35.400093-03:00"
+                    "observed_at": "2026-10-04T12:12:31.642369-03:00"
                   },
                   {
                     "selection": {
@@ -7113,9 +7113,9 @@
                     "state": "completed",
                     "grid": {
                       "column": 0,
-                      "row": 1,
+                      "row": 4,
                       "width": 12,
-                      "height": 1
+                      "height": 4
                     },
                     "presentation": {},
                     "outputs": [
@@ -7144,12 +7144,12 @@
                       "certification": "none",
                       "health": {
                         "status": "healthy",
-                        "observed_at": "2026-10-04T12:58:33.963460616Z",
-                        "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                        "observed_at": "2026-10-04T15:12:29.494089322Z",
+                        "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                         "reason": "validated_observation"
                       }
                     },
-                    "observed_at": "2026-10-04T09:58:35.400093-03:00"
+                    "observed_at": "2026-10-04T12:12:31.642369-03:00"
                   }
                 ]
               },
@@ -7184,12 +7184,12 @@
               "certification": "none",
               "health": {
                 "status": "healthy",
-                "observed_at": "2026-10-04T12:58:33.963460616Z",
-                "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                "observed_at": "2026-10-04T15:12:29.494089322Z",
+                "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                 "reason": "validated_observation"
               }
             },
-            "observed_at": "2026-10-04T09:58:35.400093-03:00",
+            "observed_at": "2026-10-04T12:12:31.642369-03:00",
             "mixed_freshness": false,
             "redacted": false,
             "output": {
@@ -7198,7 +7198,7 @@
                   "field": "m_46f93a6a01617b80efa06168",
                   "status": "allowed",
                   "basis": "reviewed_query_dependencies",
-                  "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+                  "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
                 }
               ],
               "intent": {
@@ -7217,7 +7217,7 @@
               "kind": "kpi",
               "state": "succeeded",
               "code": "",
-              "retained_digest": "6269035d5aa2f30687291c215e6275522862a4e7b67b7fddd26130d0d05c4cab",
+              "retained_digest": "82fc0fec1568f10b9256019f312ee59c4405b8c854b2f024616dfb1c80bcc193",
               "chart": {
                 "version": 1,
                 "kind": "kpi",
@@ -7353,7 +7353,7 @@
         "published-same-revision": {
           "request": {
             "kind": "report",
-            "run": "412fac851d41deeef7ca92e8157cb040",
+            "run": "7d41b82e9744a24049f5f73c364e2d35",
             "page": "analysis",
             "widget": "published-same-revision",
             "output": "chart",
@@ -7401,7 +7401,7 @@
             "version": "reporting-view-v1",
             "summary": {
               "kind": "report",
-              "run": "412fac851d41deeef7ca92e8157cb040",
+              "run": "7d41b82e9744a24049f5f73c364e2d35",
               "target": {
                 "kind": "report",
                 "id": "filtered-report",
@@ -7410,12 +7410,12 @@
               "state": "completed",
               "code": "",
               "private": false,
-              "created_at": "2026-10-04T09:58:35.000228-03:00",
-              "expires_at": "2026-10-11T09:58:35.000228-03:00"
+              "created_at": "2026-10-04T12:12:31.138741-03:00",
+              "expires_at": "2026-10-11T12:12:31.138741-03:00"
             },
             "selection": {
               "kind": "report",
-              "run": "412fac851d41deeef7ca92e8157cb040",
+              "run": "7d41b82e9744a24049f5f73c364e2d35",
               "page": "analysis",
               "widget": "published-same-revision",
               "output": "chart",
@@ -7499,7 +7499,7 @@
                       "column": 0,
                       "row": 0,
                       "width": 12,
-                      "height": 1
+                      "height": 4
                     },
                     "presentation": {},
                     "outputs": [
@@ -7528,12 +7528,12 @@
                       "certification": "none",
                       "health": {
                         "status": "healthy",
-                        "observed_at": "2026-10-04T12:58:33.963460616Z",
-                        "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                        "observed_at": "2026-10-04T15:12:29.494089322Z",
+                        "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                         "reason": "validated_observation"
                       }
                     },
-                    "observed_at": "2026-10-04T09:58:35.400093-03:00"
+                    "observed_at": "2026-10-04T12:12:31.642369-03:00"
                   },
                   {
                     "selection": {
@@ -7578,9 +7578,9 @@
                     "state": "completed",
                     "grid": {
                       "column": 0,
-                      "row": 1,
+                      "row": 4,
                       "width": 12,
-                      "height": 1
+                      "height": 4
                     },
                     "presentation": {},
                     "outputs": [
@@ -7609,12 +7609,12 @@
                       "certification": "none",
                       "health": {
                         "status": "healthy",
-                        "observed_at": "2026-10-04T12:58:33.963460616Z",
-                        "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                        "observed_at": "2026-10-04T15:12:29.494089322Z",
+                        "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                         "reason": "validated_observation"
                       }
                     },
-                    "observed_at": "2026-10-04T09:58:35.400093-03:00"
+                    "observed_at": "2026-10-04T12:12:31.642369-03:00"
                   }
                 ]
               },
@@ -7649,12 +7649,12 @@
               "certification": "none",
               "health": {
                 "status": "healthy",
-                "observed_at": "2026-10-04T12:58:33.963460616Z",
-                "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                "observed_at": "2026-10-04T15:12:29.494089322Z",
+                "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                 "reason": "validated_observation"
               }
             },
-            "observed_at": "2026-10-04T09:58:35.400093-03:00",
+            "observed_at": "2026-10-04T12:12:31.642369-03:00",
             "mixed_freshness": false,
             "redacted": false,
             "output": {
@@ -7663,7 +7663,7 @@
                   "field": "m_46f93a6a01617b80efa06168",
                   "status": "allowed",
                   "basis": "reviewed_query_dependencies",
-                  "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+                  "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
                 }
               ],
               "intent": {
@@ -7682,7 +7682,7 @@
               "kind": "kpi",
               "state": "succeeded",
               "code": "",
-              "retained_digest": "6269035d5aa2f30687291c215e6275522862a4e7b67b7fddd26130d0d05c4cab",
+              "retained_digest": "82fc0fec1568f10b9256019f312ee59c4405b8c854b2f024616dfb1c80bcc193",
               "chart": {
                 "version": 1,
                 "kind": "kpi",
@@ -7818,7 +7818,7 @@
       },
       "root_request": {
         "kind": "report",
-        "run": "412fac851d41deeef7ca92e8157cb040",
+        "run": "7d41b82e9744a24049f5f73c364e2d35",
         "page": "",
         "widget": "",
         "output": "",
@@ -7845,7 +7845,7 @@
       "run_response": {
         "version": "reporting-view-v1",
         "kind": "report",
-        "run": "412fac851d41deeef7ca92e8157cb040",
+        "run": "7d41b82e9744a24049f5f73c364e2d35",
         "state": "completed",
         "code": "",
         "target": {
@@ -7859,7 +7859,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "412fac851d41deeef7ca92e8157cb040",
+          "run": "7d41b82e9744a24049f5f73c364e2d35",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -7868,12 +7868,12 @@
           "state": "completed",
           "code": "",
           "private": false,
-          "created_at": "2026-10-04T09:58:35.000228-03:00",
-          "expires_at": "2026-10-11T09:58:35.000228-03:00"
+          "created_at": "2026-10-04T12:12:31.138741-03:00",
+          "expires_at": "2026-10-11T12:12:31.138741-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "412fac851d41deeef7ca92e8157cb040",
+          "run": "7d41b82e9744a24049f5f73c364e2d35",
           "page": "notes",
           "widget": "filter-notes",
           "output": "",
@@ -7937,7 +7937,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -7966,12 +7966,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:33.963460616Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:29.494089322Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:35.400093-03:00"
+                "observed_at": "2026-10-04T12:12:31.642369-03:00"
               },
               {
                 "selection": {
@@ -8016,9 +8016,9 @@
                 "state": "completed",
                 "grid": {
                   "column": 0,
-                  "row": 1,
+                  "row": 4,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -8047,12 +8047,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:33.963460616Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:29.494089322Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:35.400093-03:00"
+                "observed_at": "2026-10-04T12:12:31.642369-03:00"
               }
             ]
           },
@@ -8135,7 +8135,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "412fac851d41deeef7ca92e8157cb040",
+          "run": "7d41b82e9744a24049f5f73c364e2d35",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -8144,12 +8144,12 @@
           "state": "completed",
           "code": "",
           "private": false,
-          "created_at": "2026-10-04T09:58:35.000228-03:00",
-          "expires_at": "2026-10-11T09:58:35.000228-03:00"
+          "created_at": "2026-10-04T12:12:31.138741-03:00",
+          "expires_at": "2026-10-11T12:12:31.138741-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "412fac851d41deeef7ca92e8157cb040",
+          "run": "7d41b82e9744a24049f5f73c364e2d35",
           "page": "analysis",
           "widget": "options-widget",
           "output": "chart",
@@ -8233,7 +8233,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -8262,12 +8262,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:33.963460616Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:29.494089322Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:35.400093-03:00"
+                "observed_at": "2026-10-04T12:12:31.642369-03:00"
               },
               {
                 "selection": {
@@ -8312,9 +8312,9 @@
                 "state": "completed",
                 "grid": {
                   "column": 0,
-                  "row": 1,
+                  "row": 4,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -8343,12 +8343,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:33.963460616Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:29.494089322Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:35.400093-03:00"
+                "observed_at": "2026-10-04T12:12:31.642369-03:00"
               }
             ]
           },
@@ -8383,12 +8383,12 @@
           "certification": "none",
           "health": {
             "status": "healthy",
-            "observed_at": "2026-10-04T12:58:33.963460616Z",
-            "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+            "observed_at": "2026-10-04T15:12:29.494089322Z",
+            "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
             "reason": "validated_observation"
           }
         },
-        "observed_at": "2026-10-04T09:58:35.400093-03:00",
+        "observed_at": "2026-10-04T12:12:31.642369-03:00",
         "mixed_freshness": false,
         "redacted": false,
         "output": {
@@ -8397,7 +8397,7 @@
               "field": "m_46f93a6a01617b80efa06168",
               "status": "allowed",
               "basis": "reviewed_query_dependencies",
-              "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+              "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
             }
           ],
           "intent": {
@@ -8416,7 +8416,7 @@
           "kind": "kpi",
           "state": "succeeded",
           "code": "",
-          "retained_digest": "6269035d5aa2f30687291c215e6275522862a4e7b67b7fddd26130d0d05c4cab",
+          "retained_digest": "82fc0fec1568f10b9256019f312ee59c4405b8c854b2f024616dfb1c80bcc193",
           "chart": {
             "version": 1,
             "kind": "kpi",
@@ -8552,7 +8552,7 @@
     "temporary": {
       "notes_request": {
         "kind": "report",
-        "run": "849c1622c264e9cc773eade666f18862",
+        "run": "b07c7f00b94635fc350addb6676eb25f",
         "page": "notes",
         "widget": "filter-notes",
         "output": "",
@@ -8563,7 +8563,7 @@
         "options-widget": {
           "request": {
             "kind": "report",
-            "run": "849c1622c264e9cc773eade666f18862",
+            "run": "b07c7f00b94635fc350addb6676eb25f",
             "page": "analysis",
             "widget": "options-widget",
             "output": "chart",
@@ -8611,7 +8611,7 @@
             "version": "reporting-view-v1",
             "summary": {
               "kind": "report",
-              "run": "849c1622c264e9cc773eade666f18862",
+              "run": "b07c7f00b94635fc350addb6676eb25f",
               "target": {
                 "kind": "report",
                 "id": "filtered-report",
@@ -8620,12 +8620,12 @@
               "state": "completed",
               "code": "",
               "private": false,
-              "created_at": "2026-10-04T09:58:35.811059-03:00",
-              "expires_at": "2026-10-11T09:58:35.811059-03:00"
+              "created_at": "2026-10-04T12:12:32.230014-03:00",
+              "expires_at": "2026-10-11T12:12:32.230014-03:00"
             },
             "selection": {
               "kind": "report",
-              "run": "849c1622c264e9cc773eade666f18862",
+              "run": "b07c7f00b94635fc350addb6676eb25f",
               "page": "analysis",
               "widget": "options-widget",
               "output": "chart",
@@ -8709,7 +8709,7 @@
                       "column": 0,
                       "row": 0,
                       "width": 12,
-                      "height": 1
+                      "height": 4
                     },
                     "presentation": {},
                     "outputs": [
@@ -8738,12 +8738,12 @@
                       "certification": "none",
                       "health": {
                         "status": "healthy",
-                        "observed_at": "2026-10-04T12:58:33.963460616Z",
-                        "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                        "observed_at": "2026-10-04T15:12:29.494089322Z",
+                        "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                         "reason": "validated_observation"
                       }
                     },
-                    "observed_at": "2026-10-04T09:58:36.120377-03:00"
+                    "observed_at": "2026-10-04T12:12:32.803819-03:00"
                   },
                   {
                     "selection": {
@@ -8788,9 +8788,9 @@
                     "state": "completed",
                     "grid": {
                       "column": 0,
-                      "row": 1,
+                      "row": 4,
                       "width": 12,
-                      "height": 1
+                      "height": 4
                     },
                     "presentation": {},
                     "outputs": [
@@ -8819,12 +8819,12 @@
                       "certification": "none",
                       "health": {
                         "status": "healthy",
-                        "observed_at": "2026-10-04T12:58:33.963460616Z",
-                        "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                        "observed_at": "2026-10-04T15:12:29.494089322Z",
+                        "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                         "reason": "validated_observation"
                       }
                     },
-                    "observed_at": "2026-10-04T09:58:36.120377-03:00"
+                    "observed_at": "2026-10-04T12:12:32.803819-03:00"
                   }
                 ]
               },
@@ -8859,12 +8859,12 @@
               "certification": "none",
               "health": {
                 "status": "healthy",
-                "observed_at": "2026-10-04T12:58:33.963460616Z",
-                "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                "observed_at": "2026-10-04T15:12:29.494089322Z",
+                "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                 "reason": "validated_observation"
               }
             },
-            "observed_at": "2026-10-04T09:58:36.120377-03:00",
+            "observed_at": "2026-10-04T12:12:32.803819-03:00",
             "mixed_freshness": false,
             "redacted": false,
             "output": {
@@ -8873,7 +8873,7 @@
                   "field": "m_46f93a6a01617b80efa06168",
                   "status": "allowed",
                   "basis": "reviewed_query_dependencies",
-                  "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+                  "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
                 }
               ],
               "intent": {
@@ -8892,7 +8892,7 @@
               "kind": "kpi",
               "state": "succeeded",
               "code": "",
-              "retained_digest": "a873cd0f9c6398915e5e43f521cd98f8c9ca29f27e4f840025c0a406c009b5bd",
+              "retained_digest": "6ab98efe6317642fe59f41cb6dac43ee56ce86ec1765b271583b968093810552",
               "chart": {
                 "version": 1,
                 "kind": "kpi",
@@ -9028,7 +9028,7 @@
         "published-same-revision": {
           "request": {
             "kind": "report",
-            "run": "849c1622c264e9cc773eade666f18862",
+            "run": "b07c7f00b94635fc350addb6676eb25f",
             "page": "analysis",
             "widget": "published-same-revision",
             "output": "chart",
@@ -9076,7 +9076,7 @@
             "version": "reporting-view-v1",
             "summary": {
               "kind": "report",
-              "run": "849c1622c264e9cc773eade666f18862",
+              "run": "b07c7f00b94635fc350addb6676eb25f",
               "target": {
                 "kind": "report",
                 "id": "filtered-report",
@@ -9085,12 +9085,12 @@
               "state": "completed",
               "code": "",
               "private": false,
-              "created_at": "2026-10-04T09:58:35.811059-03:00",
-              "expires_at": "2026-10-11T09:58:35.811059-03:00"
+              "created_at": "2026-10-04T12:12:32.230014-03:00",
+              "expires_at": "2026-10-11T12:12:32.230014-03:00"
             },
             "selection": {
               "kind": "report",
-              "run": "849c1622c264e9cc773eade666f18862",
+              "run": "b07c7f00b94635fc350addb6676eb25f",
               "page": "analysis",
               "widget": "published-same-revision",
               "output": "chart",
@@ -9174,7 +9174,7 @@
                       "column": 0,
                       "row": 0,
                       "width": 12,
-                      "height": 1
+                      "height": 4
                     },
                     "presentation": {},
                     "outputs": [
@@ -9203,12 +9203,12 @@
                       "certification": "none",
                       "health": {
                         "status": "healthy",
-                        "observed_at": "2026-10-04T12:58:33.963460616Z",
-                        "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                        "observed_at": "2026-10-04T15:12:29.494089322Z",
+                        "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                         "reason": "validated_observation"
                       }
                     },
-                    "observed_at": "2026-10-04T09:58:36.120377-03:00"
+                    "observed_at": "2026-10-04T12:12:32.803819-03:00"
                   },
                   {
                     "selection": {
@@ -9253,9 +9253,9 @@
                     "state": "completed",
                     "grid": {
                       "column": 0,
-                      "row": 1,
+                      "row": 4,
                       "width": 12,
-                      "height": 1
+                      "height": 4
                     },
                     "presentation": {},
                     "outputs": [
@@ -9284,12 +9284,12 @@
                       "certification": "none",
                       "health": {
                         "status": "healthy",
-                        "observed_at": "2026-10-04T12:58:33.963460616Z",
-                        "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                        "observed_at": "2026-10-04T15:12:29.494089322Z",
+                        "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                         "reason": "validated_observation"
                       }
                     },
-                    "observed_at": "2026-10-04T09:58:36.120377-03:00"
+                    "observed_at": "2026-10-04T12:12:32.803819-03:00"
                   }
                 ]
               },
@@ -9324,12 +9324,12 @@
               "certification": "none",
               "health": {
                 "status": "healthy",
-                "observed_at": "2026-10-04T12:58:33.963460616Z",
-                "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                "observed_at": "2026-10-04T15:12:29.494089322Z",
+                "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                 "reason": "validated_observation"
               }
             },
-            "observed_at": "2026-10-04T09:58:36.120377-03:00",
+            "observed_at": "2026-10-04T12:12:32.803819-03:00",
             "mixed_freshness": false,
             "redacted": false,
             "output": {
@@ -9338,7 +9338,7 @@
                   "field": "m_46f93a6a01617b80efa06168",
                   "status": "allowed",
                   "basis": "reviewed_query_dependencies",
-                  "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+                  "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
                 }
               ],
               "intent": {
@@ -9357,7 +9357,7 @@
               "kind": "kpi",
               "state": "succeeded",
               "code": "",
-              "retained_digest": "a873cd0f9c6398915e5e43f521cd98f8c9ca29f27e4f840025c0a406c009b5bd",
+              "retained_digest": "6ab98efe6317642fe59f41cb6dac43ee56ce86ec1765b271583b968093810552",
               "chart": {
                 "version": 1,
                 "kind": "kpi",
@@ -9493,7 +9493,7 @@
       },
       "root_request": {
         "kind": "report",
-        "run": "849c1622c264e9cc773eade666f18862",
+        "run": "b07c7f00b94635fc350addb6676eb25f",
         "page": "",
         "widget": "",
         "output": "",
@@ -9544,7 +9544,7 @@
       "run_response": {
         "version": "reporting-view-v1",
         "kind": "report",
-        "run": "849c1622c264e9cc773eade666f18862",
+        "run": "b07c7f00b94635fc350addb6676eb25f",
         "state": "completed",
         "code": "",
         "target": {
@@ -9558,7 +9558,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "849c1622c264e9cc773eade666f18862",
+          "run": "b07c7f00b94635fc350addb6676eb25f",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -9567,12 +9567,12 @@
           "state": "completed",
           "code": "",
           "private": false,
-          "created_at": "2026-10-04T09:58:35.811059-03:00",
-          "expires_at": "2026-10-11T09:58:35.811059-03:00"
+          "created_at": "2026-10-04T12:12:32.230014-03:00",
+          "expires_at": "2026-10-11T12:12:32.230014-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "849c1622c264e9cc773eade666f18862",
+          "run": "b07c7f00b94635fc350addb6676eb25f",
           "page": "notes",
           "widget": "filter-notes",
           "output": "",
@@ -9636,7 +9636,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -9665,12 +9665,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:33.963460616Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:29.494089322Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:36.120377-03:00"
+                "observed_at": "2026-10-04T12:12:32.803819-03:00"
               },
               {
                 "selection": {
@@ -9715,9 +9715,9 @@
                 "state": "completed",
                 "grid": {
                   "column": 0,
-                  "row": 1,
+                  "row": 4,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -9746,12 +9746,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:33.963460616Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:29.494089322Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:36.120377-03:00"
+                "observed_at": "2026-10-04T12:12:32.803819-03:00"
               }
             ]
           },
@@ -9834,7 +9834,7 @@
         "version": "reporting-view-v1",
         "summary": {
           "kind": "report",
-          "run": "849c1622c264e9cc773eade666f18862",
+          "run": "b07c7f00b94635fc350addb6676eb25f",
           "target": {
             "kind": "report",
             "id": "filtered-report",
@@ -9843,12 +9843,12 @@
           "state": "completed",
           "code": "",
           "private": false,
-          "created_at": "2026-10-04T09:58:35.811059-03:00",
-          "expires_at": "2026-10-11T09:58:35.811059-03:00"
+          "created_at": "2026-10-04T12:12:32.230014-03:00",
+          "expires_at": "2026-10-11T12:12:32.230014-03:00"
         },
         "selection": {
           "kind": "report",
-          "run": "849c1622c264e9cc773eade666f18862",
+          "run": "b07c7f00b94635fc350addb6676eb25f",
           "page": "analysis",
           "widget": "options-widget",
           "output": "chart",
@@ -9932,7 +9932,7 @@
                   "column": 0,
                   "row": 0,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -9961,12 +9961,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:33.963460616Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:29.494089322Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:36.120377-03:00"
+                "observed_at": "2026-10-04T12:12:32.803819-03:00"
               },
               {
                 "selection": {
@@ -10011,9 +10011,9 @@
                 "state": "completed",
                 "grid": {
                   "column": 0,
-                  "row": 1,
+                  "row": 4,
                   "width": 12,
-                  "height": 1
+                  "height": 4
                 },
                 "presentation": {},
                 "outputs": [
@@ -10042,12 +10042,12 @@
                   "certification": "none",
                   "health": {
                     "status": "healthy",
-                    "observed_at": "2026-10-04T12:58:33.963460616Z",
-                    "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+                    "observed_at": "2026-10-04T15:12:29.494089322Z",
+                    "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
                     "reason": "validated_observation"
                   }
                 },
-                "observed_at": "2026-10-04T09:58:36.120377-03:00"
+                "observed_at": "2026-10-04T12:12:32.803819-03:00"
               }
             ]
           },
@@ -10082,12 +10082,12 @@
           "certification": "none",
           "health": {
             "status": "healthy",
-            "observed_at": "2026-10-04T12:58:33.963460616Z",
-            "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+            "observed_at": "2026-10-04T15:12:29.494089322Z",
+            "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
             "reason": "validated_observation"
           }
         },
-        "observed_at": "2026-10-04T09:58:36.120377-03:00",
+        "observed_at": "2026-10-04T12:12:32.803819-03:00",
         "mixed_freshness": false,
         "redacted": false,
         "output": {
@@ -10096,7 +10096,7 @@
               "field": "m_46f93a6a01617b80efa06168",
               "status": "allowed",
               "basis": "reviewed_query_dependencies",
-              "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+              "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
             }
           ],
           "intent": {
@@ -10115,7 +10115,7 @@
           "kind": "kpi",
           "state": "succeeded",
           "code": "",
-          "retained_digest": "a873cd0f9c6398915e5e43f521cd98f8c9ca29f27e4f840025c0a406c009b5bd",
+          "retained_digest": "6ab98efe6317642fe59f41cb6dac43ee56ce86ec1765b271583b968093810552",
           "chart": {
             "version": 1,
             "kind": "kpi",
@@ -10288,11 +10288,11 @@
                 "column": 0,
                 "row": 0,
                 "width": 12,
-                "height": 1
+                "height": 4
               },
               "presentation": {},
               "block": {
-                "digest": "841f2c1dc0522337fdba588939bdc33044ebb3e7264b7b75749e3b33e950a9b8",
+                "digest": "39efe8e83a26f2d22c65aed0e3f37ba7f64bfcc1cc3a8cdffae93225d09671c3",
                 "block": "filtered-chart",
                 "revision": 1,
                 "outputs": [
@@ -10398,7 +10398,7 @@
             "title": "Informe sintético"
           }
         ],
-        "updated_at": "2026-10-04T09:58:30.635566-03:00"
+        "updated_at": "2026-10-04T12:12:25.981685-03:00"
       }
     ]
   },
@@ -10411,8 +10411,8 @@
     "review_revision": 0,
     "published_revision": 0,
     "archived": false,
-    "created_at": "2026-10-04T09:58:30.324294-03:00",
-    "updated_at": "2026-10-04T09:58:30.635566-03:00"
+    "created_at": "2026-10-04T12:12:25.629486-03:00",
+    "updated_at": "2026-10-04T12:12:25.981685-03:00"
   },
   "validated_block": {
     "block": {
@@ -10422,7 +10422,7 @@
           "field": "m_46f93a6a01617b80efa06168",
           "status": "allowed",
           "basis": "reviewed_query_dependencies",
-          "provenance_digest": "150845c96339f1bd477de5ce5d1b4d7b097522124505465ad584fa08f957e963"
+          "provenance_digest": "c4b295dc4611f5a3180142fe165a998bfb698906b04959d28173c0a780b89f9f"
         }
       ],
       "state": {
@@ -10433,13 +10433,13 @@
         "published_revision": 0,
         "draft_state": "validated",
         "archived": false,
-        "created_at": "2026-10-04T09:58:30.27534-03:00",
-        "updated_at": "2026-10-04T09:58:31.052612-03:00"
+        "created_at": "2026-10-04T12:12:25.515067-03:00",
+        "updated_at": "2026-10-04T12:12:26.335751-03:00"
       },
       "revision": 1,
-      "revision_id": "2d6c8e4d90605e9889745e0cd3790774",
-      "digest": "841f2c1dc0522337fdba588939bdc33044ebb3e7264b7b75749e3b33e950a9b8",
-      "execution_digest": "76fe69bf68956292f1566303300d15432c90d1818337b30f536c0db40953ae8f",
+      "revision_id": "1bdfdd158c958c2332f517aebacdedc5",
+      "digest": "39efe8e83a26f2d22c65aed0e3f37ba7f64bfcc1cc3a8cdffae93225d09671c3",
+      "execution_digest": "ee2a02c9162708d6d3141f3b90557b7069dbdbe785e114d7f38a3beb085519c3",
       "metadata": [
         {
           "locale": "en-US",
@@ -10455,7 +10455,7 @@
         {
           "topic": "filtered-sales",
           "version": "v1",
-          "digest": "9662280d28b0a8464a7be4f1e2355a45b6f31069cd78a47dcdae7db839838f72"
+          "digest": "b0dd7323fa94e8adf4bf02d750591641e1ba66c40c9646226aff8f679459590c"
         }
       ],
       "parameters": [
@@ -10561,23 +10561,23 @@
         }
       ],
       "actor": "operator",
-      "created_at": "2026-10-04T09:58:30.235709-03:00",
+      "created_at": "2026-10-04T12:12:25.452438-03:00",
       "private": true,
       "trust": {
         "publication": "draft",
         "certification": "none",
         "health": {
           "status": "healthy",
-          "observed_at": "2026-10-04T12:58:31.026938099Z",
-          "dependency_digest": "deae88fdd7651366696567a1c1a680a3de6019b466b75d458bebf1d2d25b105d",
+          "observed_at": "2026-10-04T15:12:26.313968346Z",
+          "dependency_digest": "ad10749f86fc0b3e918c26a1f2aaac5392482a24f312875925fddbc0bf0e0727",
           "reason": "validated_observation"
         }
       },
       "validation": {
-        "id": "8f9c10ca391779c7dc01931c93948c93",
+        "id": "db859a83b2b45de8044146d51d199c8f",
         "revision": 1,
-        "definition_digest": "841f2c1dc0522337fdba588939bdc33044ebb3e7264b7b75749e3b33e950a9b8",
-        "execution_digest": "76fe69bf68956292f1566303300d15432c90d1818337b30f536c0db40953ae8f",
+        "definition_digest": "39efe8e83a26f2d22c65aed0e3f37ba7f64bfcc1cc3a8cdffae93225d09671c3",
+        "execution_digest": "ee2a02c9162708d6d3141f3b90557b7069dbdbe785e114d7f38a3beb085519c3",
         "schema_digest": "f408819d52279e8d85fa4a42073d0eee36676d36b4647fadd7bbecb01dcd2d9b",
         "schema": [
           {
@@ -10587,8 +10587,8 @@
             "native_type": "numeric"
           }
         ],
-        "created_at": "2026-10-04T12:58:31.026938099Z",
-        "expires_at": "2026-10-05T12:58:31.026938099Z"
+        "created_at": "2026-10-04T15:12:26.313968346Z",
+        "expires_at": "2026-10-05T15:12:26.313968346Z"
       }
     },
     "output_columns": [
@@ -10632,14 +10632,14 @@
       "published_revision": 0,
       "draft_state": "validated",
       "archived": false,
-      "created_at": "2026-10-04T09:58:30.27534-03:00",
-      "updated_at": "2026-10-04T09:58:31.052612-03:00"
+      "created_at": "2026-10-04T12:12:25.515067-03:00",
+      "updated_at": "2026-10-04T12:12:26.335751-03:00"
     },
     "evidence": {
-      "id": "8f9c10ca391779c7dc01931c93948c93",
+      "id": "db859a83b2b45de8044146d51d199c8f",
       "revision": 1,
-      "definition_digest": "841f2c1dc0522337fdba588939bdc33044ebb3e7264b7b75749e3b33e950a9b8",
-      "execution_digest": "76fe69bf68956292f1566303300d15432c90d1818337b30f536c0db40953ae8f",
+      "definition_digest": "39efe8e83a26f2d22c65aed0e3f37ba7f64bfcc1cc3a8cdffae93225d09671c3",
+      "execution_digest": "ee2a02c9162708d6d3141f3b90557b7069dbdbe785e114d7f38a3beb085519c3",
       "schema_digest": "f408819d52279e8d85fa4a42073d0eee36676d36b4647fadd7bbecb01dcd2d9b",
       "schema": [
         {
@@ -10649,18 +10649,18 @@
           "native_type": "numeric"
         }
       ],
-      "created_at": "2026-10-04T12:58:31.026938099Z",
-      "expires_at": "2026-10-05T12:58:31.026938099Z"
+      "created_at": "2026-10-04T15:12:26.313968346Z",
+      "expires_at": "2026-10-05T15:12:26.313968346Z"
     }
   },
   "validation_request": {
     "block": "filtered-chart",
     "expected_version": 1,
     "revision": 1,
-    "digest": "841f2c1dc0522337fdba588939bdc33044ebb3e7264b7b75749e3b33e950a9b8",
+    "digest": "39efe8e83a26f2d22c65aed0e3f37ba7f64bfcc1cc3a8cdffae93225d09671c3",
     "arguments": [],
     "resolution": {
-      "at": "2026-10-04T12:58:30.123Z",
+      "at": "2026-10-04T15:12:26.123Z",
       "timezone": "UTC"
     }
   }

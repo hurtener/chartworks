@@ -181,6 +181,9 @@ func TestReportAppAuthoringOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	widget := phase29BlockWidget("options-widget", prepare.NewBlock, 0, "chart")
+	// This native capture also drives the browser journey: leave practical room
+	// for the retained chart, exact amount and disclosure within the authored card.
+	widget.Grid.Height = 4
 	widget.Block.Policy = "private_preview"
 	widget.Block.Revision = created.Block.Revision
 	widget.Block.Digest = created.Block.Digest
@@ -352,7 +355,7 @@ func TestReportAppAuthoringOptions(t *testing.T) {
 	mixedPolicies := phase27Copy(t, saved.Definition)
 	publishedWidget := phase27Copy(t, rebound.ReportPages[0].Widgets[0])
 	publishedWidget.ID = "published-same-revision"
-	publishedWidget.Grid.Row = 1
+	publishedWidget.Grid.Row = widget.Grid.Height
 	mixedPolicies.ReportPages[0].Widgets = append(mixedPolicies.ReportPages[0].Widgets, publishedWidget)
 	state, err = s.Save(ctx, publisher, reporting.AuthoringSaveRequest{Report: state.ID, ExpectedVersion: state.Version, Revision: state.DraftRevision, Definition: mixedPolicies})
 	if err != nil {
@@ -479,11 +482,11 @@ func TestReportAppAuthoringOptions(t *testing.T) {
 	a := mixed.ReportPages[0].Widgets[0]
 	b := phase27Copy(t, a)
 	b.ID = "options-widget-two"
-	b.Grid.Row = 1
+	b.Grid.Row = a.Grid.Height
 	b.Block.Revision = secondBlock.PublishedRevision
 	c := phase27Copy(t, a)
 	c.ID = "options-widget-three"
-	c.Grid.Row = 2
+	c.Grid.Row = 2 * a.Grid.Height
 	mixed.ReportPages[0].Widgets = []reporting.Widget{a, b, c}
 	state, err = s.Save(ctx, publisher, reporting.AuthoringSaveRequest{Report: state.ID, ExpectedVersion: state.Version, Revision: state.PublishedRevision, Definition: mixed})
 	if err != nil {

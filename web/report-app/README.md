@@ -293,6 +293,16 @@ The manual filter UI stages saved defaults separately from temporary preview/run
 selections. Text options require explicit governed Search; multiselect retains
 1–16 exact values, including empty text, and excludes SQL NULL. Date ranges commit
 only on Done and convert inclusive civil end dates to half-open wire bounds.
+In Builder, the selected business filter replaces the Components rail with one
+focused inspector. **Back to Components** pauses its local stage; **Resume filter
+edits** restores the same values, search text and loaded options. The component
+catalog and selected widget remain intact. **Done** stages the default for an
+explicit report save or applies only the temporary preview selection; **Cancel**
+and Escape discard the filter stage. Each returns keyboard focus to the exact
+expanded filter opener. Entering, leaving and resuming the inspector make no
+provider call. Page/report navigation clears the local stage. Source and compiled
+adapter regressions cover these transitions; hosted compact-layout and keyboard
+assertions require a new exact-source browser run before visual qualification.
 Private chart parameters use SQL-free authoring metadata. Shared filter bindings
 can be selected for compatible widget parameters and removed explicitly.
 Report-filter defaults update `Filters[].Parameter.Default`; the separate

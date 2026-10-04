@@ -36,10 +36,26 @@ test('mismatched run, target, privacy, exact selection or authorized manifest fa
  const changes=[v=>v.summary.run='foreign',v=>v.summary.target.id='foreign',v=>v.summary.target.revision++,v=>v.summary.private=false,v=>v.selection.run='foreign',v=>v.selection.widget='w1',v=>v.selection.output='out1',v=>v.selection.offset++,v=>v.selection.limit++,v=>v.page_bounds.offset++,v=>v.pages[0].widgets.pop(),v=>v.pages[0].widgets[1].grid.width=6,v=>v.redacted=true,v=>v.output.id='out1',v=>v.output.retained_digest='foreign-digest',v=>v.outputs[0].selected=false];
  for(const change of changes){const f=fixture(),retained=new RetainedReport(async(_,r)=>f.view(r));await retained.load(f.root);retained.invoke=async(_,r)=>{const v=f.view(r);change(v);return v;};await assert.rejects(retained.page('main','w0','out0',1));assert.equal(retained.entries.size,0);assert.equal(retained.value,null);retained.close();}
 });
-test('expired root and in-flight expiry clear buffers without rerunning',async()=>{
- const f=fixture(1);f.root.summary.expires_at='2000-01-01T00:00:00Z';let calls=0;const retained=new RetainedReport(async(_,r)=>{calls++;return f.view(r);});await assert.rejects(retained.load(f.root),/expired/);assert.equal(calls,0);
- let expired,watchdog;const observed=new Promise((resolve,reject)=>{expired=resolve;watchdog=setTimeout(()=>reject(new Error('retained expiry did not fire within 2 seconds')),2000);});retained.onExpired=expired;
- try{f.root.summary.expires_at=new Date(Date.now()+60).toISOString();await Promise.all([retained.load(f.root),observed]);assert.equal(retained.entries.size,0);assert.equal(retained.value,null);assert.equal(calls,1);}finally{clearTimeout(watchdog);retained.close();}
+test('expired root and in-flight expiry clear buffers without rerunning',async t=>{
+ t.mock.timers.enable({apis:['Date','setTimeout'],now:new Date('2026-01-01T00:00:00Z')});
+ const f=fixture(1);f.root.summary.expires_at='2000-01-01T00:00:00Z';let calls=0,expired=0;
+ const retained=new RetainedReport(async(_,r)=>{calls++;return f.view(r);},()=>{expired++;});
+ try{
+  await assert.rejects(retained.load(f.root),/expired/);assert.equal(calls,0);assert.equal(expired,0);
+  f.root.summary.expires_at=new Date(Date.now()+60).toISOString();assert.equal(await retained.load(f.root),true);
+  assert.equal(retained.entries.size,2);assert(retained.value);assert.equal(calls,1);
+  t.mock.timers.tick(59);assert.equal(retained.entries.size,2);assert(retained.value);assert.equal(expired,0);
+  t.mock.timers.tick(1);assert.equal(retained.entries.size,0);assert.equal(retained.value,null);assert.equal(calls,1);assert.equal(expired,1);
+  t.mock.timers.tick(1000);assert.equal(expired,1,'one expiry callback for this load');assert.equal(calls,1);
+
+  let release;retained.invoke=(_,request)=>{calls++;return new Promise(resolve=>{release=()=>resolve(f.view(request));});};
+  f.root.summary.expires_at=new Date(Date.now()+60).toISOString();const loading=retained.load(f.root);
+  assert.equal(typeof release,'function');assert.equal(calls,2);assert.equal(retained.entries.size,1);
+  t.mock.timers.tick(59);assert.equal(expired,1);assert.equal(retained.entries.size,1);assert(retained.value);
+  t.mock.timers.tick(1);assert.equal(expired,2);assert.equal(retained.entries.size,0);assert.equal(retained.value,null);
+  release();assert.equal(await loading,false);assert.equal(retained.entries.size,0);assert.equal(retained.value,null);assert.equal(calls,2);
+  t.mock.timers.tick(1000);assert.equal(expired,2,'late completion cannot fire expiry again or restore buffers');assert.equal(calls,2);
+ }finally{retained.close();}
 });
 test('pending roots show metadata only and do not fan out speculative payload reads',async()=>{
  const f=fixture();f.root.summary.state='running';delete f.root.text;let calls=0;const retained=new RetainedReport(async()=>{calls++;});assert.equal(await retained.load(f.root),true);assert.equal(calls,0);assert.equal(retained.entries.size,0);retained.close();

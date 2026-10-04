@@ -34,3 +34,29 @@ test('filter pointer hit-tests both realms and remains strict about clipping',()
   assert(previous.geometry[5]<0);assert.equal(ready(sample(),previous),true);
   const bad=sample();bad.geometry[0]=NaN;assert.equal(ready(bad,previous),false);
 });
+
+const inspectorStart=source.indexOf('function filterInspectorFits('),inspectorEnd=source.indexOf('// End compact inspector contract.',inspectorStart);
+assert(inspectorStart>=0&&inspectorEnd>inspectorStart,'Exact hosted compact-inspector predicate must exist');
+const inspectorFits=vm.runInNewContext('('+source.slice(inspectorStart,inspectorEnd)+')');
+const inspectorSample=(patch={})=>({viewportWidth:1440,viewportHeight:1000,rootHeight:850,rootWidth:1440,
+  panelWidth:352,panelHeight:660,inspectorHeight:644,editorHeight:470,inspectorTopOffset:0,
+  panelLeft:1088,panelRight:1440,editorLeft:1109,editorRight:1420,editorWidth:311,
+  inspectorScrollWidth:351,inspectorClientWidth:351,editorScrollWidth:309,editorClientWidth:309,...patch});
+
+test('focused filter geometry enforces desktop compactness rather than a merely uncropped full page',()=>{
+  assert.equal(inspectorFits(inspectorSample()),true);
+  for(const patch of [{viewportWidth:1439},{viewportHeight:999},{rootHeight:1001},{rootWidth:1441},
+    {panelWidth:361},{panelHeight:801},{inspectorHeight:761},{editorHeight:661},{inspectorTopOffset:33},
+    {inspectorTopOffset:-1},{editorLeft:1087},{editorRight:1442},{editorWidth:361},
+    {inspectorScrollWidth:353},{editorScrollWidth:311}])assert.equal(inspectorFits(inspectorSample(patch)),false,JSON.stringify(patch));
+  assert.equal(inspectorFits(inspectorSample({rootHeight:1000,panelWidth:360,panelHeight:800,inspectorHeight:760,editorHeight:660,inspectorTopOffset:32})),true,'Exact inclusive upper bounds are accepted');
+});
+
+test('focused filter geometry rejects absent, nonfinite or zero-sized evidence',()=>{
+  assert.equal(inspectorFits(null),false);assert.equal(inspectorFits({}),false);
+  for(const key of Object.keys(inspectorSample()))assert.equal(inspectorFits(inspectorSample({[key]:NaN})),false,key);
+  for(const key of ['rootHeight','rootWidth','panelWidth','panelHeight','inspectorHeight','editorHeight','editorWidth']){
+    assert.equal(inspectorFits(inspectorSample({[key]:0})),false,key);
+    assert.equal(inspectorFits(inspectorSample({[key]:-1})),false,key);
+  }
+});
