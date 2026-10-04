@@ -81,7 +81,7 @@ func reportAppGuide(ctx context.Context, e identity.Envelope, _ struct{}) (Repor
 			"Page IDs are stable, widget IDs report-global, and filters/defaults page-local. Never silently drop unsupported pages.",
 			"Credentials and host-only nonces stay in the trusted host and never enter iframe messages, URLs or persisted browser state.",
 		},
-		Documentation: []string{"docs/contracts/report-app-v1.md", "docs/contracts/manual-chart-preparation-v1.md", "docs/contracts/pengui-authority.md", "docs/reporting/contracts.md", "docs/reporting/delivery.md"},
+		Documentation: []string{"docs/contracts/report-app-v1.md", "docs/contracts/report-pages-v3.md", "docs/contracts/manual-chart-preparation-v1.md", "docs/contracts/pengui-authority.md", "docs/reporting/contracts.md", "docs/reporting/delivery.md"},
 	}, nil
 }
 

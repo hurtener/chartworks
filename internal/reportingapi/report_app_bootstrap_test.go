@@ -93,4 +93,8 @@ func TestReportAppBootstrapHTTPMCPAndStaticGuide(t *testing.T) {
 	if _, err := reportAppGuide(t.Context(), bootstrapAuthority(t, "reporting.write"), struct{}{}); !errors.Is(err, access.ErrForbidden) {
 		t.Fatal(err)
 	}
+	guide, err := reportAppGuide(t.Context(), bootstrapAuthority(t, "reporting.read"), struct{}{})
+	if err != nil || !slices.Contains(guide.Documentation, "docs/contracts/report-pages-v3.md") {
+		t.Fatal("inline page contract missing from agent guidance", guide, err)
+	}
 }

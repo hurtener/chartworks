@@ -7,7 +7,7 @@ parent origins. Neither entrypoint falls back to the other. Both mount the same
 `ReportApp`, `DraftSession`, canonical `DocumentDefinition` and shared retained
 `renderRetainedOutput` presentation. The existing `ui://chartworks/report-viewer/v1` remains supported and uses the same presentation function.
 
-## First slice
+## Implemented manual checkpoint
 
 - Consumer: authorized published report catalog, retained runs, exact retained
   values and explicit approved runs with typed business filters.
@@ -15,7 +15,9 @@ parent origins. Neither entrypoint falls back to the other. Both mount the same
   published KPI/chart/table output selection; report/widget titles; bounded
   12-column move/resize grid with keyboard/numeric alternatives and explicit arrangement; declared block-parameter filters and bindings;
   full-report CAS save; narrow selected-widget text/presentation save; reload;
-  explicit private preview and independent retained read.
+  explicit private preview and independent retained read. The continuations below
+  add independent inline pages, private chart mapping and finite dataset-first
+  creation.
 - No arbitrary query, dynamic generation, narrative
   generation, publication, multi-selection layout operations or export in this checkpoint.
   Existing unsupported documents are inspection-only. Source execution occurs
@@ -86,10 +88,10 @@ request or authorize execution replay. Closing the app fences late replies and
 clears editor metadata. Changing a staged mapping makes retained values visibly
 stale; Cancel restores compatible values without a new query.
 
-The bridge must allow `chart_catalog` and the four `reporting_authoring_block_*_v1`
+The bridge allows `chart_catalog` and the four `reporting_authoring_block_*_v1`
 operations; native action and dependency checks remain decisive. Dataset-first
-chart creation is a separate increment and is not implemented by this output
-mapping editor.
+creation is implemented through its separate preparation flow below; changing a
+saved mapping does not construct a new query.
 
 ## Saved report canvas
 
@@ -229,4 +231,31 @@ buffers; reopening requires a new authorized status read. Closing the app clears
 all client state. There is no automatic retry or source execution on control edits.
 
 Source tests use clearly synthetic DTOs. Actual PostgreSQL preparation, hosted
-browser interaction and pixels qualify this lane separately.
+browser interaction and pixels qualify this lane separately. The current
+[evidence record](../../docs/reviews/report-app-v1-evidence.md) pins hosted
+279-assertion runs in each adapter and inspected image pairs to source
+`fb936b1aa20e40790d5a6bd713198425e50669f8`; later revisions need their own evidence.
+
+## Remaining product and integration limits
+
+Dataset creation is PostgreSQL-only, with one reviewed measure, at most two direct
+dimensions and eight initial kinds. It cannot author filters, joins, calendar
+buckets, arbitrary expressions or unsupported reviewed policies. Mapping over an
+existing result offers all fourteen real native kinds; Combo remains unsupported.
+
+The manual filter UI currently copies existing block parameters and edits text
+defaults, while Consumer keeps temporary runtime values separately. Governed
+option search, single/multiselect, staged date-range controls and explicit shared
+filter applicability still need implementation. Private chart parameter discovery
+must use the SQL-free authoring read instead of published-only delivery. Field
+labels, numeric/date/currency formatting, legend settings and data-point limits
+are also not fully editable here; stored semantics remain protected.
+
+There is no in-app block/report publication or private-to-published reference
+rebind workflow. These require the existing independently authorized native
+lifecycle. Host-authorized IDs are still entered manually; real no-chat launch,
+allocation, authority projection/refresh and production registration remain host
+integration gates. Synthetic browser proof does not qualify them or mobile layouts.
+The [page contract](../../docs/contracts/report-pages-v3.md) and
+[preparation contract](../../docs/contracts/manual-chart-preparation-v1.md) retain
+their precise domain and evidence boundaries.

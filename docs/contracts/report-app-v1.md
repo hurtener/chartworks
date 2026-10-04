@@ -1,8 +1,10 @@
 # Manual report application v1
 
-Status: implementation in progress under D-096/D-097; production host activation is not
-claimed. This continuation belongs to phases 29/31. The previous read viewer URI
-and delivery contract remain supported independently.
+Status: implemented subsets under D-096/D-097, with exact-source qualification in
+[the evidence record](../reviews/report-app-v1-evidence.md). The complete manual
+journey and production host activation remain open. This continuation belongs to
+phases 29/31. The previous read viewer URI and delivery contract remain supported
+independently.
 
 ## One application, two adapters
 
@@ -59,11 +61,14 @@ save delegate canonical document validation and immutable revision CAS. The draf
 catalog applies current tenant, target and dependency eligibility before paging;
 it does not add private state to the published catalog.
 
-The first UI composes headings and already-published block outputs. KPI, chart
-(including approved trend shapes) and table outputs retain their stored meaning;
-UI selection cannot replace a chart mapping, invent a query or reinterpret units.
+The initial UI composed headings and already-published block outputs. That path
+remains supported: selecting an output retains its stored meaning and cannot
+replace a chart mapping or reinterpret units. The current continuation also has
+separate exact private mapping amendments and reviewed-dataset chart preparation,
+described below. Report presentation itself never changes a query or mapping.
 Manual operations disable dynamic query widgets and narratives. Filters are typed
-canonical document parameters, not SQL or authority predicates.
+canonical document parameters, not SQL or authority predicates; the complete
+manual filter editor remains unfinished.
 
 Targeted widget editing is an edit-intent boundary, not per-widget ACL. A separate
 narrow patch receives a stable widget ID, expected revision/CAS and allowlisted
@@ -123,14 +128,15 @@ that closure from browser-provided definitions. Manual host activation additiona
 needs central exact-target allocation, action projection, no-chat admission and
 both HTTP/MCP credential realms wired end to end.
 
-Required evidence: draft create/save/reopen/CAS/private preview on actual domain
-storage; exact and missing target/dependency/context negatives; cross-tenant and
-private-state exclusion; HTTP/MCP schemas/effects; selected-widget preservation;
+Required evidence includes draft create/save/reopen/CAS/private preview on actual
+domain storage; exact and missing target/dependency/context negatives; cross-tenant
+and private-state exclusion; HTTP/MCP schemas/effects; selected-widget preservation;
 credential-free resource; parent origin/generation failures; repeated/aborted save
-and navigation; actual browser rendering and retained read. Deterministic fixtures
-are not deployed host or live-provider evidence. Advanced drag/drop, multi-page
-editing, arbitrary NLQ widget creation and optional export remain outside this
-first slice.
+and navigation; actual browser rendering and retained read. The evidence record
+separates local native checkpoints from hosted browser checks. Deterministic
+fixtures are not deployed host or live-provider evidence. Direct single-card
+move/resize and inline page editing are now implemented; advanced layout tools,
+arbitrary NLQ widget creation and optional export remain outside this checkpoint.
 
 ## Visual authoring and mapping continuation
 
@@ -153,6 +159,39 @@ uses native bounded source validation, returns narrowed evidence/schema and CAS
 coordinates, and never publishes. Its source work may carry cost and is not
 idempotent or automatically retried. Metadata alone cannot attribute an unknown
 request. Source validation, private report preview and public eligibility changes
-remain separate user actions. Mounted inventory is83 default/88 with optional
-renditions under the unchanged96-tool ceiling; execution and transport budgets
+remain separate user actions. Mounted inventory is 83 default/88 with optional
+renditions under the unchanged 96-tool ceiling; execution and transport budgets
 are unchanged.
+
+Version-three [report-owned inline pages](report-pages-v3.md) have independent
+widgets, filters/defaults and settings, stable page IDs and report-global widget
+IDs. One report owns their immutable revision, CAS and authority. The UI supports
+explicit upgrade, add/rename/reorder/remove and empty pages; it never rewrites an
+older stored definition merely by opening it.
+
+The five [reviewed-dataset preparation operations](manual-chart-preparation-v1.md)
+provide metadata, explicit Prepare, status, Create and original-attempt control.
+The finite compiler is PostgreSQL-only, with zero to two direct reviewed
+dimensions, one reviewed measure and eight native initial chart kinds. It rejects
+unsupported filters, calendar/population/completeness policies, rules, joins and
+arbitrary expressions. Create consumes exact private preparation custody into an
+unvalidated draft; validation and private report preview remain separate explicit
+source reads. Preparation cleanup is not yet implemented; bounded quotas fail
+closed without erasing unresolved execution liability.
+
+## Remaining manual-product work
+
+- Governed option search, single/multiselect and staged date-range controls;
+  authored defaults versus temporary choices; explicit widget/filter applicability.
+  New dataset charts currently have no query parameters. Private chart parameter
+  discovery must use the authoring projection, not published-only delivery.
+- Editable field labels and number/date/currency display settings, legend controls,
+  data-point limits and additional qualified creation shapes. Saved semantic units
+  and aggregation cannot be replaced by unvalidated display input. Combo has no
+  native contract and is not offered as another kind.
+- In-app block publication, explicit private-to-published reference rebind and
+  report review/publication. Current private authoring does not publish or expand
+  visibility. Existing native lifecycle APIs retain their independent authority.
+- Real Pengui no-chat launch, exact target allocation, dependency projection,
+  authority refresh/withdrawal and production embedded registration. Hosted
+  synthetic-browser proof does not close those integration gates.
