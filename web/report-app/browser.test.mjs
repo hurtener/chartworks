@@ -35,6 +35,18 @@ async function fill(label,value){await evaluate(`(()=>{const i=Array.from(${body
 const filterCard=label=>`Array.from(${body}.querySelectorAll('.filter-editor > section')).find(e=>e.querySelector('input[aria-label="Filter label"]')?.value===${JSON.stringify(label)})`;
 async function openSavedDefault(label){await evaluate(`(()=>{const card=${filterCard(label)},b=Array.from(card?.querySelectorAll('button')||[]).find(b=>b.textContent==='Change saved default'&&!b.matches(':disabled'));if(!b)throw new Error('Missing saved default control '+${JSON.stringify(label)});for(let p=b.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;if(!b.getClientRects().length)throw new Error('Saved default control is hidden');b.click();})()`);}
 async function changeSavedDefault(label,value){await openSavedDefault(label);await fill(label+' · saved default',value);await click('Done');}
+// Inspect the accepted summary through the visible palette, then resume the
+// still-uncommitted stage. Never read a summary that the focused rail replaced.
+async function inspectAcceptedDefault(label,value,inspect){
+ const before=await evaluate('calls.length'),inspector=`${body}.querySelector('.filter-inspector')`,input=`Array.from(${body}.querySelectorAll('input')).find(e=>e.getAttribute('aria-label')===${JSON.stringify(label+' · saved default')})`;
+ await check(`!!${inspector}&&!${filterCard(label)}&&${input}?.value===${JSON.stringify(value)}`,'saved-default stage is visible in its focused inspector before inspecting the accepted value');
+ await click('Back to Components');
+ await check(`!${inspector}&&!!${filterCard(label)}&&${filterCard(label)}.getClientRects().length>0&&${body}.querySelector('.component-library')?.hidden===false&&calls.length===${before}`,'Back exposes the accepted filter summary through Components without any tool call');
+ await inspect();
+ await click('Resume filter edits');
+ await check(`!!${inspector}&&!${filterCard(label)}&&${input}?.value===${JSON.stringify(value)}&&calls.length===${before}`,'Resume restores the exact staged default without changing accepted values or making a tool call');
+}
+// End accepted-default inspection contract.
 async function selectOption(label,value){await evaluate(`(()=>{const s=${body}.querySelector('select[aria-label='+${JSON.stringify(JSON.stringify(label))}+']');if(!s||!Array.from(s.options).some(o=>o.value===${JSON.stringify(value)}))throw new Error('Missing mapping option');for(let p=s.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;if(!s.getClientRects().length)throw new Error('Select is hidden');s.value=${JSON.stringify(value)};s.dispatchEvent(new Event('change',{bubbles:true}));})()`);}
 async function toggleCheck(label,value){await evaluate(`(()=>{const i=${body}.querySelector('input[aria-label='+${JSON.stringify(JSON.stringify(label))}+']');if(!i||i.type!=='checkbox')throw new Error('Missing checkbox');for(let p=i.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;if(!i.getClientRects().length)throw new Error('Checkbox is hidden');i.checked=${JSON.stringify(value)};i.dispatchEvent(new Event('change',{bubbles:true}));})()`);}
 async function pageTab(id,consumer=false){await evaluate(`(()=>{const n=${body}.querySelector('nav[aria-label="'+${JSON.stringify(consumer?'Retained report pages':'Report pages')}+'"]'),b=n?.querySelector('[data-page="'+${JSON.stringify(id)}+'"]');if(!b||b.disabled||!b.getClientRects().length)throw new Error('Missing enabled page');b.click();})()`);await ready();}
@@ -201,7 +213,7 @@ try{
  await check(`${body}.querySelector('img')===null`,'untrusted output title remains inert text');await selectOutput('table-main');await fill('Widget title','Synthetic revenue detail');
  await click('Choose business filter');await textHas('Add filter: Maximum rows');await ready();await click('Add filter: Maximum rows');await fill('Filter label','Rows shown');
  const defaultFilterCalls=await evaluate('calls.length');await openSavedDefault('Rows shown');await fill('Rows shown · saved default','99');
- await check(`${filterCard('Rows shown')}.querySelector('p').textContent==='Saved: 10'&&definition.filters.length===0&&calls.length===${defaultFilterCalls}`,'typing a saved default leaves both the accepted draft default and persisted definition unchanged');
+ await inspectAcceptedDefault('Rows shown','99',()=>check(`${filterCard('Rows shown')}.querySelector('p').textContent==='Saved: 10'&&definition.filters.length===0&&calls.length===${defaultFilterCalls}`,'typing a saved default leaves both the accepted draft default and persisted definition unchanged'));
  await click('Cancel');await openSavedDefault('Rows shown');
  await check(`${body}.querySelector('input[aria-label="Rows shown · saved default"]').value==='10'&&calls.length===${defaultFilterCalls}`,'Cancel discards a staged saved default and reopening restores the accepted value');
  await fill('Rows shown · saved default','30');await click('Done');
@@ -285,7 +297,7 @@ try{
  await click('Use saved default for preview');await textHas(exactAmount);
  await check(`${output('kpi-main')}.querySelector('.kpi').textContent===${JSON.stringify(exactAmount)}&&calls.length===${beforeRedraw}`,'restoring the admitted temporary selection reuses retained values without an implicit preview');
  await openSavedDefault('Rows shown');await fill('Rows shown · saved default','31');
- await check(`${filterCard('Rows shown')}.querySelector('p').textContent==='Saved: 30'&&${output('kpi-main')}.querySelector('.kpi').textContent===${JSON.stringify(exactAmount)}&&calls.length===${beforeRedraw}`,'uncommitted default edits preserve the accepted retained values without a tool call');
+ await inspectAcceptedDefault('Rows shown','31',()=>check(`${filterCard('Rows shown')}.querySelector('p').textContent==='Saved: 30'&&${output('kpi-main')}.querySelector('.kpi').textContent===${JSON.stringify(exactAmount)}&&calls.length===${beforeRedraw}`,'uncommitted default edits preserve the accepted retained values without a tool call'));
  await click('Cancel');await check(`${filterCard('Rows shown')}.querySelector('p').textContent==='Saved: 30'&&!!${canvas}.querySelector('.kpi')&&calls.length===${beforeRedraw}`,'Cancel preserves the admitted default and retained preview without a read or query');
  await changeSavedDefault('Rows shown','31');await textHas('Preview is stale. Save and preview to update retained values.');
  await check(`!${canvas}.querySelector('.kpi,svg.chart,table')&&!${canvas}.textContent.includes(${JSON.stringify(exactAmount)})&&calls.length===${beforeRedraw}`,'semantic filter edit hides all stale retained values and never autoqueries');
