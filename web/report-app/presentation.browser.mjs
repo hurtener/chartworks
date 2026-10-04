@@ -4,13 +4,26 @@ import assert from 'node:assert/strict';
 import {exact} from '../report-viewer/presentation.js';
 import {runHostedBrowser} from './hosted-browser-harness.mjs';
 import {presentationBrowserFixture,presentationBrowserTools,presentationStageNames,presentationMutations} from './presentation-browser-fixture.mjs';
+
+// Pure compact-inspector geometry contract, executed verbatim by Node tests.
+function formattingInspectorFits(value) {
+ if(!value||![1440,960].includes(value.frameWidth)||value.viewportWidth!==1440||value.viewportHeight!==1000||value.fieldCount!==1||value.selectorCount!==1||![1,2].includes(value.inputCount))return false;
+ const numbers=['frameLeft','frameRight','editorHeight','editorWidth','editorClientWidth','editorScrollWidth'];
+ if(numbers.some(key=>!Number.isFinite(value[key])))return false;
+ if(value.frameLeft<0||value.frameRight>value.viewportWidth||value.frameRight-value.frameLeft!==value.frameWidth||value.editorHeight<=0||value.editorHeight>760||value.editorWidth<=0||value.editorWidth>360||value.editorClientWidth<=0||value.editorScrollWidth>value.editorClientWidth+1)return false;
+ return ['save','cancel'].every(key=>{const r=value[key];return r&&['top','bottom','left','right','width','height'].every(key=>Number.isFinite(r[key]))&&r.hit===true&&r.top>=0&&r.bottom<=value.viewportHeight&&r.left>=value.frameLeft&&r.right<=value.frameRight&&r.width>0&&r.height>0&&r.bottom>r.top&&r.right>r.left;});
+}
+// End compact-inspector geometry contract.
+
 const [htmlPath,screenshotPath,mode]=process.argv.slice(2);
-const fixture=await presentationBrowserFixture(),data=fixture.data,screenshots=[],scenarios=[];
+const fixture=await presentationBrowserFixture(),data=fixture.data,screenshots=[],scenarios=[],formattingGeometry=[];
 const proof=await runHostedBrowser({htmlPath,screenshotPath,mode,fixture,tools:presentationBrowserTools,label:'Synthetic host · Native PostgreSQL presentation DTOs · No live provider connection'},async h=>{
  const {root,button,check,equal,ready,textHas,clickElement,click,capture,evaluate,until}=h;
  const field=label=>`Array.from(${root}.querySelectorAll('input')).find(e=>e.getAttribute('aria-label')===${JSON.stringify(label)})`;
  const card=id=>`${root}.querySelector('.editing-canvas .widget-card[data-widget="${id}"]')`;
  const inspector=`${root}.querySelector('.mapping-editor')`;
+ const fieldSelector=`${inspector}.querySelector('select[aria-label="Format field"]')`;
+ const focused="document.getElementById('app').contentDocument.activeElement";
  const writes=()=>fixture.calls.filter(call=>presentationMutations.includes(call.name));
  const title=data.initial_report.definition.metadata.find(value=>value.locale==='en-US').title;
  const noCalls=async(message,action)=>{const before=structuredClone(fixture.calls),snapshot=fixture.snapshot(),counts=fixture.counts();await action();equal(fixture.calls,before,message);equal(fixture.snapshot(),snapshot,message+' preserves native snapshots');equal(fixture.counts(),counts,message+' represents no query');};
@@ -18,6 +31,30 @@ const proof=await runHostedBrowser({htmlPath,screenshotPath,mode,fixture,tools:p
  const captureAs=async suffix=>{const path=screenshotPath.replace(/\.png$/,'.'+suffix+'.png');await capture(path);screenshots.push(path);};
  async function setField(label,value){await evaluate(`(()=>{const e=${field(label)};if(!e||e.disabled||e.closest('fieldset')?.disabled)throw new Error('Missing enabled presentation field');e.value=${JSON.stringify(String(value))};e.dispatchEvent(new Event('change',{bubbles:true}));})()`);await ready();}
  async function select(id){await clickElement(`${card(id)}.querySelector('.widget-select')`);}
+ async function chooseFormatField(column){
+  const name=column.display_label||column.name||column.id;
+  await noCalls('Selecting '+name+' preserves all native state without a tool or query',async()=>{
+   const index=await evaluate(`(()=>{const e=${fieldSelector};if(!e||e.disabled||e.closest('fieldset')?.disabled)throw new Error('Missing enabled Format field selector');const index=Array.from(e.options).findIndex(o=>o.value===${JSON.stringify(column.id)});if(index<0||e.options[index].textContent!==${JSON.stringify(name)})throw new Error('Missing exact named native field');e.focus();return index;})()`);
+   const key=async(key,code,number)=>{for(const type of ['keyDown','keyUp'])await h.rpc('Input.dispatchKeyEvent',{type,key,code,windowsVirtualKeyCode:number,nativeVirtualKeyCode:number});await ready();};
+   await key('Home','Home',36);for(let offset=0;offset<index;offset++)await key('ArrowDown','ArrowDown',40);
+   await check(`${fieldSelector}.value===${JSON.stringify(column.id)}&&${focused}===${fieldSelector}`,'Keyboard selection keeps focus on the exact named Format field selector');
+   await check(`${inspector}.querySelectorAll('.mapping-column-list').length===1&&${fieldSelector}.selectedOptions[0]?.textContent===${JSON.stringify(name)}&&[1,2].includes(${inspector}.querySelectorAll('input').length)&&Array.from(${inspector}.querySelectorAll('input')).every(e=>(e.getAttribute('aria-label')||'').endsWith(${JSON.stringify(' · '+name)}))`,'Only '+name+' formatting inputs are rendered; other staged fields stay out of the form');
+  });
+ }
+ const canonicalField=name=>data.source_block.block.outputs.find(output=>output.id==='table-main').mapping.columns.find(column=>(column.display_label||column.name||column.id)===name);
+ async function compactFormatting(label){
+  await evaluate(`window.scrollTo(0,0);document.getElementById('app').contentWindow.scrollTo(0,0);`);
+  await until(()=>evaluate('performance.now()-lastResizeAt>=200'),'Formatting host resize did not settle');
+  const geometry=await evaluate(`(()=>{const f=document.getElementById('app'),d=f.contentDocument,e=${inspector},r=e.getBoundingClientRect(),fr=f.getBoundingClientRect();const action=label=>{const b=Array.from(e.querySelectorAll('button')).find(b=>b.textContent===label),r=b.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,hit=d.elementFromPoint(x,y);return {top:fr.top+f.clientTop+r.top,bottom:fr.top+f.clientTop+r.bottom,left:fr.left+f.clientLeft+r.left,right:fr.left+f.clientLeft+r.right,width:r.width,height:r.height,hit:(hit===b||b.contains(hit))&&document.elementFromPoint(fr.left+f.clientLeft+x,fr.top+f.clientTop+y)===f};};return {viewportWidth:innerWidth,viewportHeight:innerHeight,frameWidth:f.clientWidth,frameLeft:fr.left,frameRight:fr.right,editorHeight:r.height,editorWidth:r.width,editorClientWidth:e.clientWidth,editorScrollWidth:e.scrollWidth,fieldCount:e.querySelectorAll('.mapping-column-list').length,selectorCount:e.querySelectorAll('select[aria-label="Format field"]').length,inputCount:e.querySelectorAll('input').length,save:action('Save formatting'),cancel:action('Cancel formatting')};})()`);
+  assert(formattingInspectorFits(geometry),label+' must keep one compact field and both actions visible without document scrolling: '+JSON.stringify(geometry));h.assertions.push(label+' fits a <=760px inspector with Save and Cancel hit-tested in the desktop viewport');formattingGeometry.push({label,...geometry});
+ }
+ async function resizeFormattingFrame(width){
+  const before=await evaluate('resizeCount');
+  await evaluate(`document.getElementById('app').style.width=${JSON.stringify(String(width)+'px')};`);
+  await until(()=>evaluate(`document.getElementById('app').contentWindow.innerWidth===${width}&&resizeCount>${before}&&performance.now()-lastResizeAt>=200`),'Formatting iframe width did not settle');
+  await compactFormatting(width===960?'Narrow 960px formatting host':'Desktop 1440px formatting host');
+ }
+
  async function arm(request){await evaluate(`document.getElementById('app').contentWindow.armNativeRequest(${JSON.stringify({...request,key:request.key??null})},'preview')`);}
  async function open(){
   await until(()=>evaluate(`!!${root}&&${button('Build')}?.disabled===false`),'Native builder capability did not arrive');
@@ -27,15 +64,16 @@ const proof=await runHostedBrowser({htmlPath,screenshotPath,mode,fixture,tools:p
  }
  async function editor(id='table'){
   await select(id);await click('Field formatting');await check(`${inspector}?.querySelector('h2')?.textContent==='Field formatting'`,'The selected '+id+' chart has a dedicated Field formatting inspector');
+  await chooseFormatField(canonicalField(id==='kpi'?'Small amount':'Revenue'));
   await check(`!Array.from(${inspector}.querySelectorAll('input')).some(e=>/new.*id|block.*id|copy.*id/i.test(e.getAttribute('aria-label')||''))&&${inspector}.textContent.includes('Units, currency, percent scale, physical fields and exact values stay reviewed.')`,'Formatting keeps technical copy IDs out of entry controls and discloses semantic preservation');
  }
  function beforeView(name){return name==='formatted_kpi'?data.source_block:data.stages[presentationStageNames[presentationStageNames.indexOf(name)-1]].block;}
  async function applyPatch(name){
   const request=data.stages[name].mutation_request,mapping=beforeView(name).block.outputs.find(output=>output.id===request.output).mapping;
   await noCalls(name+' field changes and Reset are local and invoke no tool',async()=>{
-   for(const edit of request.presentation.edits){const c=mapping.columns.find(column=>column.id===edit.column),name=c.display_label||c.name||c.id;
+   for(const edit of request.presentation.edits){const c=mapping.columns.find(column=>column.id===edit.column),name=c.display_label||c.name||c.id;await chooseFormatField(c);
     for(const [key,value]of Object.entries(edit.set||{}))await setField((key==='display_label'?'Table header':'Fraction digits')+' · '+name,value);
-    for(const key of edit.reset||[])await click('Reset '+(key==='display_label'?'Table header':'Fraction digits')+' · '+name);
+    for(const key of edit.reset||[]){const label=(key==='display_label'?'Table header':'Fraction digits')+' · '+name;await click('Reset '+label);await check(`${focused}===${field(label)}`,'Reset '+label+' returns focus to its associated input');}
    }
   });
  }
@@ -77,7 +115,7 @@ const proof=await runHostedBrowser({htmlPath,screenshotPath,mode,fixture,tools:p
   await assertLayout(name);
   const id=name==='formatted_kpi'?'kpi':'table';await editor(id);
   const mapping=stage.block.block.outputs.find(output=>output.id===stage.mutation_request.output).mapping;
-  for(const edit of stage.mutation_request.presentation.edits){const column=mapping.columns.find(column=>column.id===edit.column),saved=mapping.presentation?.columns.find(row=>row.column===column.id),label=column.display_label||column.name||column.id;
+  for(const edit of stage.mutation_request.presentation.edits){const column=mapping.columns.find(column=>column.id===edit.column),saved=mapping.presentation?.columns.find(row=>row.column===column.id),label=column.display_label||column.name||column.id;await chooseFormatField(column);
    for(const key of [...Object.keys(edit.set||{}),...(edit.reset||[])])equal(await evaluate(`${field((key==='display_label'?'Table header':'Fraction digits')+' · '+label)}.value`),String(saved?.[key]??(key==='display_label'?column.display_label??'':column.format?.fraction_digits??0)),name+' reopened field inherits or shows its exact saved override');
   }
   await noCalls(name+' reopening Cancel does not mutate or execute',()=>click('Cancel formatting'));
@@ -105,16 +143,24 @@ const proof=await runHostedBrowser({htmlPath,screenshotPath,mode,fixture,tools:p
  }
  await open();equal(fixture.counts().nativeSourceReadsRepresented,0,'Report opening and field metadata perform no source work');
  await preview('source');await captureAs('baseline-private');
- await editor();await captureAs('table-inspector');
+ await editor();await compactFormatting('Revenue table inspector');await captureAs('table-inspector');
  const initialDigits=await evaluate(`${field('Fraction digits · Revenue')}.value`),initialHeader=await evaluate(`${field('Table header · Revenue')}.value`);
  await noCalls('Empty, invalid and cancelled formatting stages invoke no tool',async()=>{
   await setField('Fraction digits · Revenue','');await check(`${button('Save formatting')}.disabled===true`,'Empty precision is invalid rather than coerced to zero');
   await setField('Fraction digits · Revenue','21');await check(`${button('Save formatting')}.disabled===true`,'Precision above 20 is unavailable');
-  await setField('Fraction digits · Revenue','0');await setField('Table header · Revenue','Cancelled label');await click('Cancel formatting');
+  await setField('Fraction digits · Revenue','0');await setField('Table header · Revenue','Cancelled label');
+  await chooseFormatField(canonicalField('Small amount'));await setField('Fraction digits · Small amount','2');
+  await chooseFormatField(canonicalField('Sale date'));await setField('Table header · Sale date','Cancelled date label');
+  await chooseFormatField(canonicalField('Revenue'));await check(`${field('Fraction digits · Revenue')}.value==='0'&&${field('Table header · Revenue')}.value==='Cancelled label'&&${button('Save formatting')}.disabled===false`,'Switching among three named fields retains the complete staged Revenue draft');
+  await resizeFormattingFrame(960);await captureAs('table-inspector-narrow');await resizeFormattingFrame(1440);
+  await check(`${fieldSelector}.value===${JSON.stringify(canonicalField('Revenue').id)}&&${field('Fraction digits · Revenue')}.value==='0'&&${field('Table header · Revenue')}.value==='Cancelled label'&&${button('Save formatting')}.disabled===false`,'Responsive host resizing preserves the selected field and all staged edits');
+  await chooseFormatField(canonicalField('Small amount'));await check(`${field('Fraction digits · Small amount')}.value==='2'`,'The second field keeps its own staged precision after switching and resizing');
+  await chooseFormatField(canonicalField('Sale date'));await check(`${field('Table header · Sale date')}.value==='Cancelled date label'`,'The third field keeps its own staged label after switching and resizing');await click('Cancel formatting');
  });
  await editor();equal(await evaluate(`${field('Fraction digits · Revenue')}.value`),initialDigits,'Cancel preserves the reviewed digits');equal(await evaluate(`${field('Table header · Revenue')}.value`),initialHeader,'Cancel preserves the reviewed table header');
+ await chooseFormatField(canonicalField('Small amount'));equal(await evaluate(`${field('Fraction digits · Small amount')}.value`),'3','Cancel discards the other field precision stage');await chooseFormatField(canonicalField('Sale date'));equal(await evaluate(`${field('Table header · Sale date')}.value`),'Sale date','Cancel discards the other field label stage');await chooseFormatField(canonicalField('Revenue'));
  for(const name of presentationStageNames.slice(1)){
-  if(name!=='copied_table'){await editor(name==='formatted_kpi'?'kpi':'table');if(name==='formatted_kpi')await captureAs('kpi-inspector');}
+  if(name!=='copied_table'){await editor(name==='formatted_kpi'?'kpi':'table');if(name==='formatted_kpi'){await compactFormatting('Revenue KPI inspector');await captureAs('kpi-inspector');}}
   await applyPatch(name);const reportBefore=fixture.snapshot().report,sourceBefore=fixture.counts().nativeSourceReadsRepresented,writeCount=writes().length;
   if(name==='copied_table'){
    fixture.hold('reporting_authoring_block_copy_v1');await click('Save formatting',{wait:false,repeat:2});await until(()=>fixture.held()===1,'The exact native copy reply did not reach the bounded hold');
@@ -168,4 +214,4 @@ const proof=await runHostedBrowser({htmlPath,screenshotPath,mode,fixture,tools:p
   scenarios.push({name:scenario,counts:fixture.counts(),calls:structuredClone(fixture.calls),allocations:structuredClone(fixture.allocations)});
  }
 });
-console.log(JSON.stringify({...proof,nativeCapture:fixture.provenance,scenarios,screenshots,scope:'actual HTML in hosted Chrome using native PostgreSQL public DTO replay; private retained only; no live provider or published Consumer claim'}));
+console.log(JSON.stringify({...proof,nativeCapture:fixture.provenance,scenarios,screenshots,formattingGeometry,scope:'actual HTML in hosted Chrome using native PostgreSQL public DTO replay; private retained only; no live provider or published Consumer claim'}));

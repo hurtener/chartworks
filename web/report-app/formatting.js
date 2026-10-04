@@ -1,6 +1,6 @@
 import {INVALID_REQUEST} from './error-codes.js';
 import {appError,copyData} from './model.js';
-import {node, button, textField} from './dom.js';
+import {node, button, textField, selectField} from './dom.js';
 const fields=['display_label','fraction_digits'];
 const keys=(value,allowed)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(key=>allowed.includes(key));
 const base=(column,field)=>field==='display_label'?column.display_label??'':column.format?.fraction_digits??0;
@@ -73,16 +73,15 @@ export function checkFormattingResult(before,after,output,patch){
  if(before.block.execution_digest!==after.block.execution_digest||before.block.digest===after.block.digest||stable(expected)!==stable(after.block.outputs)||stable(before.block.expected_schema)!==stable(after.block.expected_schema)||stable(before.output_columns)!==stable(after.output_columns))throw appError(INVALID_REQUEST);
 }
 export function renderFormattingFields(parent,session,change){
- const output=session.view.block.outputs.find(o=>o.id===session.output),columns=formattingColumns(output);
- parent.append(node('p','Only advertised table headers and numeric precision can change. Units, currency, percent scale, physical fields and exact values stay reviewed.','metadata'));
- if(!columns.length)parent.append(node('p','Field formatting is unavailable for this output. Missing or unsupported metadata, legacy KPIs, percent precision and date formats cannot be edited.','notice'));
- columns.forEach(({column,role,fields},index)=>{
-  const row=session.draft.fields[index],name=column.display_label||column.name||column.id,section=node('section',undefined,'mapping-column-list');
-  section.append(node('h3',name),node('p',[role.replaceAll('_',' '),column.type,column.format?.currency,column.format?.unit].filter(Boolean).join(' · '),'metadata'));
-  for(const field of fields){
-   const label=(field==='display_label'?'Table header':'Fraction digits')+' · '+name,present=Object.hasOwn(row,field),edit=fn=>{session.edit(d=>fn(d.fields[index]));change();};
-   section.append(textField(label,present?row[field]:base(column,field),value=>edit(d=>{d[field]=field==='fraction_digits'?(value.trim()===''?null:Number(value)):value;}),field==='fraction_digits'?{type:'number',min:0,max:20}:{maxLength:256}),node('p',present?`Override · Reviewed: ${base(column,field)===''?'(empty)':base(column,field)}`:'Inherited from reviewed field','metadata'),button('Reset '+label,()=>edit(d=>{delete d[field];}),!present));
-  }
-  parent.append(section);
- });
+ const output=session.view.block.outputs.find(o=>o.id===session.output),columns=formattingColumns(output),name=c=>c.display_label||c.name||c.id;
+ parent.append(node('p','Edit supported headers and precision. Units, currency, percent scale, physical fields and exact values stay reviewed. Reset inherits the reviewed field.','metadata'));
+ if(!columns.length){parent.append(node('p','Field formatting is unavailable for this output. Missing or unsupported metadata, legacy KPIs, percent precision and date formats cannot be edited.','notice'));return;}
+ const index=Math.max(0,columns.findIndex(c=>c.column.id===session.formattingColumn)),{column,role,fields}=columns[index],row=session.draft.fields[index],section=node('section',undefined,'mapping-column-list');
+ parent.append(selectField('Format field',columns.map(({column})=>({value:column.id,label:name(column)})),column.id,value=>{if(!session.closed){session.formattingColumn=value;change();}}));
+ section.append(node('p',[role.replaceAll('_',' '),column.type,column.format?.currency,column.format?.unit].filter(Boolean).join(' · '),'metadata'));
+ for(const field of fields){
+  const label=(field==='display_label'?'Table header':'Fraction digits')+' · '+name(column),present=Object.hasOwn(row,field),reviewed=base(column,field),edit=fn=>{session.edit(d=>fn(d.fields[index]));change();},control=textField(label,present?row[field]:reviewed,value=>edit(d=>{d[field]=field==='fraction_digits'?(value.trim()===''?null:Number(value)):value;}),field==='fraction_digits'?{type:'number',min:0,max:20}:{maxLength:256});
+  section.append(control,node('p',present?`Override · Reviewed: ${reviewed===''?'(empty)':reviewed}`:'Inherited from reviewed field','metadata'),button('Reset '+label,()=>{control.children[0].focus?.({preventScroll:true});edit(d=>{delete d[field];});},!present));
+ }
+ parent.append(section);
 }

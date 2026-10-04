@@ -67,3 +67,38 @@ test('publication journey binds its host-side assertion recorder',async()=>{
  const harness=await readFile(new URL('./hosted-browser-harness.mjs',import.meta.url),'utf8');
  assert(/await run\(\{[^}]*\bassertions\b/.test(harness),'Shared harness supplies the same recorder');
 });
+
+const presentationSource=await readFile(new URL('./presentation.browser.mjs',import.meta.url),'utf8');
+const formattingStart=presentationSource.indexOf('function formattingInspectorFits('),formattingEnd=presentationSource.indexOf('// End compact-inspector geometry contract.',formattingStart);
+assert(formattingStart>=0&&formattingEnd>formattingStart,'Exact compact formatting geometry predicate is present in the hosted journey');
+const formattingFits=vm.runInNewContext('('+presentationSource.slice(formattingStart,formattingEnd)+')');
+const inspectorSample=(patch={})=>({viewportWidth:1440,viewportHeight:1000,frameWidth:1440,frameLeft:0,frameRight:1440,
+ editorHeight:620,editorWidth:280,editorClientWidth:280,editorScrollWidth:280,fieldCount:1,selectorCount:1,inputCount:2,
+ save:{top:320,bottom:364,left:1100,right:1240,width:140,height:44,hit:true},
+ cancel:{top:370,bottom:414,left:1100,right:1250,width:150,height:44,hit:true},...patch});
+
+test('formatting inspector enforces compact single-field layout and visible primary actions at desktop and narrower iframe widths',()=>{
+ assert.equal(formattingFits(inspectorSample()),true);
+ assert.equal(formattingFits(inspectorSample({frameWidth:960,frameRight:960,editorWidth:240,editorClientWidth:240,editorScrollWidth:240,
+  save:{top:410,bottom:454,left:700,right:840,width:140,height:44,hit:true},cancel:{top:460,bottom:504,left:700,right:850,width:150,height:44,hit:true}})),true);
+ assert.equal(formattingFits(inspectorSample({editorHeight:760,editorWidth:360,editorClientWidth:360,editorScrollWidth:361,inputCount:1})),true,'Exact upper bounds and KPI one-input form are accepted');
+ for(const patch of [{editorHeight:761},{editorHeight:1600},{editorWidth:361},{editorClientWidth:0},{editorScrollWidth:282},{fieldCount:0},{fieldCount:3},{selectorCount:0},{selectorCount:2},{inputCount:0},{inputCount:5},{viewportWidth:960},{viewportHeight:999},{frameWidth:959},{frameLeft:-1},{frameRight:1441}])assert.equal(formattingFits(inspectorSample(patch)),false,JSON.stringify(patch));
+});
+
+test('formatting action reachability rejects scroll-dependent, clipped, occluded or missing evidence',()=>{
+ assert.equal(formattingFits(null),false);assert.equal(formattingFits({}),false);
+ for(const key of ['save','cancel'])for(const change of [{top:-1},{bottom:1001},{left:-1},{right:1441},{width:0},{height:0},{hit:false},{top:NaN},{left:Infinity},{bottom:319},{right:1099}]){
+  const sample=inspectorSample();Object.assign(sample[key],change);assert.equal(formattingFits(sample),false,key+' '+JSON.stringify(change));
+ }
+ for(const key of ['frameLeft','frameRight','editorHeight','editorWidth','editorClientWidth','editorScrollWidth'])assert.equal(formattingFits(inspectorSample({[key]:NaN})),false,key);
+ const absent=inspectorSample();delete absent.cancel;assert.equal(formattingFits(absent),false);
+});
+
+test('hosted presentation uses real keyboard selection, proves staged cross-field edits and keeps original exact native mutation invariants',()=>{
+ for(const required of ['select[aria-label="Format field"]',"await key('Home','Home',36)","await key('ArrowDown','ArrowDown',40)","${focused}===${fieldSelector}","await chooseFormatField(c)","await chooseFormatField(column)","Reset '+label+' returns focus",'await resizeFormattingFrame(960)','await resizeFormattingFrame(1440)',"captureAs('table-inspector-narrow')",'draft','formattingGeometry','JSON.stringify(geometry)'])assert(presentationSource.includes(required),required);
+ assert(presentationSource.includes('noCalls(\'Selecting \''),'Field selection is explicitly tool-free');
+ assert(presentationSource.includes('Responsive host resizing preserves the selected field and all staged edits'));
+ assert(presentationSource.includes('Cancel discards the other field precision stage'));
+ assert(presentationSource.includes('Cancel discards the other field label stage'));
+ for(const preserved of ["'conflict','unknown','late-read','late-save'",'repeat:2','mutation_request','Private preview','Percent delta: ',"captureAs('table-inspector')","captureAs('kpi-inspector')"])assert(presentationSource.includes(preserved),preserved);
+});
