@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {once} from 'node:events';
 import {cleanupBrowserFixture} from './browser_cleanup.mjs';
+import {publicationFrameFits} from './publication-browser-fixture.mjs';
 import {capturedViews,initializeSyntheticHost,browserMappingSamples,browserDatasetSamples} from './browser_fixture.mjs';
 const [htmlPath,screenshotPath,mode="mcp"]=process.argv.slice(2);
 assert(["mcp","embedded"].includes(mode),"explicit transport mode required");
@@ -146,14 +147,14 @@ async function checkResizeConvergence(label){
  await until(()=>evaluate('resizeCount>0&&performance.now()-lastResizeAt>=200'),label+' resize did not settle');
  const before=await evaluate('({count:resizeMessages.length,height:document.getElementById("app").clientHeight})');await pause(300);
  await check(`resizeMessages.length===${before.count}&&document.getElementById('app').clientHeight===${before.height}`,label+' reaches stable intrinsic height despite host padding without a resize feedback loop');
- await check(`(()=>{const frame=document.getElementById('app'),r=${body},b=r.getBoundingClientRect(),style=getComputedStyle(r),children=Array.from(r.children).filter(e=>e.getClientRects().length),bottom=Math.max(...children.map(e=>e.getBoundingClientRect().bottom));return Math.abs(b.bottom-bottom-parseFloat(style.paddingBottom))<=3&&frame.clientHeight-b.bottom>=0&&frame.clientHeight-b.bottom<=18&&frame.clientHeight<2416;})()`,label+' iframe follows intrinsic visible content with at most host padding, not a capped blank tail');
+ await check(`(()=>{const frame=document.getElementById('app'),r=${body},b=r.getBoundingClientRect(),style=getComputedStyle(r),children=Array.from(r.children).filter(e=>e.getClientRects().length),bottom=Math.max(...children.map(e=>e.getBoundingClientRect().bottom));return Math.abs(b.bottom-bottom-parseFloat(style.paddingBottom))<=3&&(${publicationFrameFits.toString()})({root:b,frameHeight:frame.clientHeight,frameWidth:frame.clientWidth,resizeCount,quietMs:performance.now()-lastResizeAt});})()`,label+' iframe follows intrinsic visible content with the explicit host minimum and padding, not a capped blank tail');
 }
 async function captureProof(path,{settle=true}={}){
  await resetProofScroll();
  if(settle){
   // ready() only fences app operations; the parent resize notification is async.
   // Wait for the current root, not the previous screen's iframe or CDP metrics.
-  await until(()=>evaluate(`(()=>{const frame=document.getElementById('app'),root=${body},r=root.getBoundingClientRect();return window.resizeCount>0&&performance.now()-window.lastResizeAt>=200&&r.top>=0&&r.bottom<=frame.clientHeight&&frame.clientHeight-r.bottom<=18&&r.left>=0&&r.right<=frame.clientWidth+1&&frame.clientHeight<2416;})()`),'screenshot frame did not fit current intrinsic content: '+path);
+  await until(()=>evaluate(`(()=>{const frame=document.getElementById('app'),root=${body},r=root.getBoundingClientRect();return (${publicationFrameFits.toString()})({root:r,frameHeight:frame.clientHeight,frameWidth:frame.clientWidth,resizeCount,quietMs:performance.now()-lastResizeAt});})()`),'screenshot frame did not fit current intrinsic content: '+path);
   await checkResizeConvergence('Screenshot '+path.split('/').at(-1));
  }
  const metrics=await rpc('Page.getLayoutMetrics'),size=metrics.cssContentSize||metrics.contentSize;
