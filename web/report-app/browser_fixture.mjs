@@ -3489,7 +3489,7 @@ export function initializeSyntheticHost(samples, embedded, mappingSamples, datas
   const clone=value=>JSON.parse(JSON.stringify(value));
   const wrap=value=>({structuredContent:{result:clone(value)}});
   const failure=code=>({isError:true,structuredContent:{error:{code,outcome:'not_started'}}});
-  Object.assign(window,{calls:[],lastResizeAt:0,resizeCount:0,resizeMessages:[],saveDelay:0,viewDelay:0,rejectSave:false,denyPrivate:false,consumerOnly:false,compactCatalog:false,denial:'',privateRuns:new Set(),waiting:[]});
+  Object.assign(window,{calls:[],lastResizeAt:0,resizeCount:0,resizeMessages:[],saveDelay:0,viewDelay:0,rejectSave:false,denyPrivate:false,consumerOnly:false,publishedPagesCatalog:false,compactCatalog:false,denial:'',privateRuns:new Set(),waiting:[]});
   window.state={id:'report-a',kind:'report',version:4,draft_revision:3,published_revision:2};
   window.definition={schema_version:2,metadata:[{locale:'en-US',title:'Weekly operations'}],locale:'en-US',timezone:'UTC',partial_failure:'fail_closed',widgets:[{id:'intro',kind:'text',grid:{column:0,row:0,width:12,height:1},presentation:{},text:{format:'plain',text:'Synthetic weekly overview'}}],filters:[]};
   const target={kind:'report',id:'report-a',revision:2};
@@ -3548,12 +3548,24 @@ export function initializeSyntheticHost(samples, embedded, mappingSamples, datas
     if(!view.output?.table)view.page_bounds.limit=limit;
     return view;
   };
+  window.startPublishedConsumerFixture=()=>{
+    // This is a separate immutable published fixture, built only from published
+    // baseline components. It does not promote or relabel the private draft.
+    Object.assign(window,{consumerOnly:true,publishedPagesCatalog:true,pagesCatalog:false,compactCatalog:false,datasetMode:false,viewDelay:0,denyPrivate:true,denial:'',pageVisualValues:true});
+    const d=clone(publishedDefinition),main={id:'main',title:'Summary',widgets:d.widgets,filters:d.filters||[]};
+    delete d.widgets;delete d.filters;delete d.defaults;d.schema_version=3;
+    const heading={id:'published-detail-heading',kind:'text',grid:{column:0,row:0,width:6,height:1},presentation:{},text:{format:'plain',text:'Published detail page'}};
+    const table=clone(main.widgets.find(w=>w.block?.outputs.includes('table-main')));table.id='published-detail-table';table.grid={column:6,row:2,width:6,height:4};table.presentation.title='Published revenue detail';
+    d.report_pages=[main,{id:'published-details',title:'Details',widgets:[heading,table]},{id:'published-empty',title:'Empty notes',widgets:[]}];
+    window.publishedPagesDefinition=clone(d);
+    runDefinitions.set('published-pages',{definition:clone(d),revision:2,private:false});
+  };
   const blockViews=new Map();
   window.syntheticPrivateBlocks=blockViews;
   const blockKey=(id,revision)=>id+'@'+revision;
   const approvedView=()=>({data_validation:'not_performed',block:{schema_version:2,state:{id:'approved-block',version:8,draft_revision:0,published_revision:7},revision:7,digest:'a'.repeat(64),execution_digest:'b'.repeat(64),private:false,parameters:[{name:'maximum',type:'integer',default:{literal:'10'}}],expected_schema:mappingSamples.columns.map(c=>({name:c.name,type:c.type})),outputs:[{id:'kpi-main',kind:'kpi',editable:true,mapping:clone(samples.kpi.output.chart.mapping)},{id:'trend-main',kind:'chart',editable:true,mapping:clone(samples.trend.output.chart.mapping)},{id:'table-main',kind:'table',editable:true,mapping:{version:3,kind:'table',columns:clone(mappingSamples.columns),bindings:{columns:['c0','c1']},order:[],options:{title:'',legend:{visible:true,position:'bottom'},label_max_runes:80},table:{columns:[{column:'c0',visible:true},{column:'c1',visible:true}],page_size:1,show_totals:true}}}]},output_columns:['kpi-main','trend-main','table-main'].map(output=>({output,columns:clone(mappingSamples.columns)}))});
   window.startPageAuthoringFixture=()=>{
-    Object.assign(window,{saveDelay:0,viewDelay:0,rejectSave:false,denyPrivate:false,consumerOnly:false,compactCatalog:false,denial:'',pagesCatalog:false,pageVisualValues:true,cleanPaletteTitles:true});
+    Object.assign(window,{saveDelay:0,viewDelay:0,rejectSave:false,denyPrivate:false,consumerOnly:false,publishedPagesCatalog:false,compactCatalog:false,denial:'',pagesCatalog:false,pageVisualValues:true,cleanPaletteTitles:true});
     state={id:'report-a',kind:'report',version:20,draft_revision:10,published_revision:2};definition=clone(publishedDefinition);
     definition.filters=[{label:'Summary row limit',parameter:{name:'filter_1',type:'integer',required:false,default:{literal:'10'}}}];
     definition.widgets.find(w=>w.id==='trend').bindings=[{filter:'filter_1',parameter:'maximum'}];
@@ -3582,7 +3594,7 @@ export function initializeSyntheticHost(samples, embedded, mappingSamples, datas
   // Preparation/create metadata is exact; no generic mapping mock is used here.
   window.datasetEvidence=clone(datasetSamples||{});
   window.startDatasetAuthoringFixture=()=>{
-    Object.assign(window,{datasetMode:true,datasetRetainedMode:false,datasetCreateUnknown:false,datasetCreateEffects:0,datasetPreparation:null,saveDelay:0,viewDelay:0,rejectSave:false,denyPrivate:false,consumerOnly:false,compactCatalog:false,pagesCatalog:false,pageVisualValues:false,denial:''});
+    Object.assign(window,{datasetMode:true,datasetRetainedMode:false,datasetCreateUnknown:false,datasetCreateEffects:0,datasetPreparation:null,saveDelay:0,viewDelay:0,rejectSave:false,denyPrivate:false,consumerOnly:false,publishedPagesCatalog:false,compactCatalog:false,pagesCatalog:false,pageVisualValues:false,denial:''});
     state=clone(datasetEvidence.initial_read.state);definition=clone(datasetEvidence.initial_read.definition);
     window.datasetExecuted=false;window.datasetAdmitted=false;
     blockViews.clear();
@@ -3615,6 +3627,11 @@ export function initializeSyntheticHost(samples, embedded, mappingSamples, datas
   }
   const caps=report=>({version:'report-authoring-v1',consumer:true,builder:!consumerOnly,can_create:!consumerOnly&&['new-report','report-a'].includes(report),can_open:!consumerOnly&&!!report,can_save:!consumerOnly&&!!report,can_preview:!consumerOnly&&!!report,can_execute:!consumerOnly&&!!report});
   window.dispatch=(name,a)=>{
+    // UI capability hints are not enforcement. This read-only host profile also
+    // denies draft operations, execution and every exact private retained run.
+    if(consumerOnly&&(name==='reporting_run'||name.startsWith('reporting_authoring_')&&name!=='reporting_authoring_capabilities_v1'))return failure('forbidden');
+    if(consumerOnly&&name==='reporting_view'&&(privateRuns.has(a.run)||runDefinitions.get(a.run)?.private))return failure('not_found');
+
     if(window.datasetMode&&['list_topics','describe_topic','reporting_authoring_dataset_v1','reporting_authoring_prepare_chart_v1','reporting_authoring_preparation_v1','reporting_authoring_create_prepared_v1','reporting_authoring_block_read_v1','reporting_authoring_block_validate_v1'].includes(name))return datasetDispatch(name,a);
     if(window.datasetMode&&name==='reporting_authoring_read_v1')return a.report===state.id?wrap(state.draft_revision===datasetEvidence.initial_read.revision?datasetEvidence.initial_read:datasetEvidence.final_read):failure('not_found');
     if(window.datasetMode&&name==='reporting_authoring_save_v1'){
@@ -3643,6 +3660,8 @@ export function initializeSyntheticHost(samples, embedded, mappingSamples, datas
     if(name==='reporting_authoring_create_v1'){state={id:a.id,kind:'report',version:1,draft_revision:1,published_revision:0};definition=clone(a.definition);return wrap(state);}
     if(name==='reporting_authoring_save_v1'){if(rejectSave){rejectSave=false;return failure('conflict');}if(a.expected_version!==state.version)return failure('conflict');state={...state,version:state.version+1,draft_revision:state.draft_revision+1};definition=clone(a.definition);return wrap(state);}
     if(name==='reporting_describe')return wrap(a.target.kind==='block'?{version:'reporting-view-v1',resource:{target:a.target,title:'Approved business metrics'},outputs:[{id:'kpi-main',kind:'kpi',title:outputTitles['kpi-main'],enabled:true,selected:true},{id:'trend-main',kind:'chart',title:outputTitles['trend-main'],enabled:true,selected:true},{id:'table-main',kind:'table',title:window.cleanPaletteTitles?outputTitles['table-main']:'<img src=x onerror=alert(1)>',enabled:true,selected:true},{id:'story',kind:'narrative',title:'Narrative',enabled:true,selected:true}],filters:[filter],dynamic:false,timezone:'UTC'}:{version:'reporting-view-v1',resource:{target,title:'Weekly operations'},outputs:[],filters:[filter],pages:[],dynamic:false,timezone:'UTC'});
+    if(name==='reporting_runs'&&window.publishedPagesCatalog)return wrap({version:'reporting-view-v1',items:[{kind:'report',run:'published-pages',target:{...target},state:'completed',private:false,created_at:'2026-10-03T12:00:00Z',expires_at:'2099-01-01T00:00:00Z'}],next:''});
+    if(name==='reporting_runs'&&window.pagesCatalog&&consumerOnly)return wrap({version:'reporting-view-v1',items:[],next:''});
     if(name==='reporting_runs'&&window.pagesCatalog)return wrap({version:'reporting-view-v1',items:[{kind:'report',run:'private-one',target:{...target,revision:state.draft_revision},state:'completed',private:true,created_at:'2026-10-03T12:00:00Z',expires_at:'2099-01-01T00:00:00Z'}],next:''});
     if(name==='reporting_runs')return wrap({version:'reporting-view-v1',items:[{kind:'report',run:compactCatalog?'retained-compact':'retained-one',target:{...target,revision:compactCatalog?1:2},state:'completed',private:false,created_at:'2026-10-03T12:00:00Z',expires_at:'2099-01-01T00:00:00Z'}],next:''});
     if(name==='reporting_run'){runDefinitions.set('new-run',{definition:clone(publishedDefinition),revision:2,private:false});return wrap({version:'reporting-view-v1',kind:'report',run:'new-run',state:'completed',code:'',target});}

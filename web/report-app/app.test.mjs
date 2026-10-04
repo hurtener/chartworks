@@ -105,6 +105,16 @@ test('denied output page erases the whole canvas and requests exact private-run 
 test('Consumer uses retained canonical grid without editor or Viewer debug selectors',async()=>{
  const root=installDOM(),f=canvasFixture(),app=new ReportApp(root,f.adapter);await savedCanvas(app);app.mode='consumer';app.selected={target:{kind:'report',id:'report-a',revision:2},title:'Retained report'};app.render();assert(root.textContent.includes('9007199254740993.01'));assert(root.querySelectorAll('h2').some(e=>e.textContent==='Overview'));const card=root.querySelectorAll('article').find(e=>e.dataset.widget==='metric');assert.equal(card.style.gridColumn,'4 / span 9');assert.equal(card.style.gridRow,'3 / span 2');assert(!root.querySelectorAll('select').length);assert(!root.querySelectorAll('button').some(e=>e.textContent==='Save report'));app.close();
 });
+test('Consumer distinguishes current publication metadata from an authorized private retained revision',async()=>{
+ for(const isPrivate of [true,false]){
+  const root=installDOM(),f=fixture(),base=f.adapter.call.bind(f.adapter),revision=isPrivate?14:2;
+  f.adapter.call=async(name,args)=>{if(name!=='reporting_view')return base(name,args);f.calls.push({name,args});const view=retainedStatus(args.run,'completed','report-a',isPrivate);view.summary.target.revision=revision;return {structuredContent:{result:view}};};
+  const app=new ReportApp(root,f.adapter);await app.start();app.selected=app.catalog[0];await app.openRun(isPrivate?'private-retained':'published-retained');app.render();
+  assert(root.textContent.includes('Current published revision 2'));const provenance=root.querySelectorAll('section').find(e=>e.className==='preview-provenance');assert(provenance.children.some(e=>e.textContent===`Values from revision ${revision}`));
+  const privateNotice='This private retained preview is not the published version.';assert.equal(provenance.children.some(e=>e.textContent===privateNotice),isPrivate,'private distinction is visible outside collapsed provenance');assert.equal(provenance.children.some(e=>e.textContent==='Private preview'),isPrivate);assert.equal(app.preview.summary.private,isPrivate);
+  assert.deepEqual(f.calls.map(c=>c.name),['reporting_authoring_capabilities_v1','reporting_search','reporting_view']);app.close();
+ }
+});
 test('newer retained opening wins and closing during first read cannot restore stale data',async()=>{
  const root=installDOM(),waiting=new Map(),app=new ReportApp(root,{resize(){},call:(_,args)=>new Promise(resolve=>waiting.set(args.run,()=>resolve({structuredContent:{result:retainedStatus(args.run)}})))});const first=app.openRun('first'),second=app.openRun('second');waiting.get('second')();await second;waiting.get('first')();await first;assert.equal(app.preview.summary.run,'second');const pending=app.openRun('third');app.closePreview();waiting.get('third')();await pending;assert.equal(app.preview,null);assert.equal(app.retained.value,null);app.close();
 });
