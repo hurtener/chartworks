@@ -20,8 +20,8 @@ import (
 	"github.com/hurtener/chartworks/internal/store"
 )
 
-// Real source and PostgreSQL custody. TestReportPrivateBlockBridge owns
-// composition coverage.
+// Real source and PostgreSQL custody; the happy journey keeps one report
+// identity from its saved empty canvas through private composition delivery.
 func reportDatasetFixture(t *testing.T, target string) (*phase29ExecutionFixture, *reporting.Authoring, identity.Envelope, reporting.AuthoringPrepareRequest, topics.Published, topics.Dataset, []string) {
 	t.Helper()
 	f := newPhase29Execution(t, false)
@@ -86,6 +86,29 @@ func TestReportAppDeterministicPreparation(t *testing.T) {
 	f, s, author, request, p, dataset, scopes := reportDatasetFixture(t, target)
 	ctx := t.Context()
 	before, models := f.attemptCount(t), f.f.model.requests.Load()
+	const reportID = "dataset-private-report"
+	const widgetID = "widget-c0ffee02"
+	reportScopes := append(slices.Clone(scopes), "reporting.execute", "cw.block.execute:"+target, "cw.report.read:"+reportID, "cw.report.write:"+reportID, "cw.report.preview:"+reportID, "cw.report.execute:"+reportID)
+	reportActor := phase27Actor(t, f.f, author.User(), reportScopes)
+	document := phase29Text("Dataset chart report")
+	document.SchemaVersion, document.Widgets = reporting.PagedDocumentVersion, nil
+	document.ReportPages = []reporting.ReportPage{{ID: "analysis", Title: "Analysis", Widgets: []reporting.Widget{}}, {ID: "empty", Title: "Empty", Widgets: []reporting.Widget{}}}
+	initialState, err := s.Create(ctx, reportActor, reporting.AuthoringCreateRequest{ID: reportID, Definition: document})
+	if err != nil {
+		t.Fatal("save initial empty report", err)
+	}
+	initialRead, err := s.Read(ctx, reportActor, reporting.AuthoringReadRequest{Report: reportID})
+	if err != nil || initialRead.Revision != initialState.DraftRevision || len(initialRead.Definition.ReportPages) != 2 {
+		t.Fatal("read initial empty report", initialRead, err)
+	}
+	for _, page := range initialRead.Definition.ReportPages {
+		if page.Widgets == nil || len(page.Widgets) != 0 {
+			t.Fatal("public empty page must retain an empty widget array", page.ID)
+		}
+	}
+	if f.attemptCount(t) != before || f.f.model.requests.Load() != models {
+		t.Fatal("empty report metadata executed source/model work")
+	}
 	var preparations [2]reporting.AuthoringPreparationView
 	var failures [2]error
 	var wg sync.WaitGroup
@@ -147,6 +170,26 @@ func TestReportAppDeterministicPreparation(t *testing.T) {
 	if err != nil || replay.Block.Digest != created.Block.Digest || f.attemptCount(t) != before+1 {
 		t.Fatal("create retry", replay, err)
 	}
+	// The UI saves a reference while the created chart is still unvalidated.
+	// Continue the same saved report and preserve its page/root metadata exactly.
+	widget := phase29BlockWidget(widgetID, target, 0, "chart")
+	widget.Grid = reporting.GridCell{Column: 0, Row: 0, Width: 4, Height: 3}
+	widget.Presentation.Title = "Prepared revenue"
+	widget.Block.Policy, widget.Block.Revision, widget.Block.Digest = "private_preview", created.Block.Revision, created.Block.Digest
+	document = phase27CopyNoTest(initialRead.Definition)
+	document.ReportPages[0].Widgets = []reporting.Widget{widget}
+	saveRequest := reporting.AuthoringSaveRequest{Report: reportID, ExpectedVersion: initialState.Version, Revision: initialRead.Revision, Definition: document}
+	state, err := s.Save(ctx, reportActor, saveRequest)
+	if err != nil {
+		t.Fatal("save unvalidated dataset chart reference", err)
+	}
+	finalRead, err := s.Read(ctx, reportActor, reporting.AuthoringReadRequest{Report: reportID})
+	if err != nil || !reflect.DeepEqual(finalRead.Definition, document) || finalRead.Revision != state.DraftRevision || !finalRead.Private {
+		t.Fatal("saved report changed retained identity or definition", finalRead, err)
+	}
+	if f.attemptCount(t) != before+1 || f.f.model.requests.Load() != models {
+		t.Fatal("saving unvalidated reference executed source/model work")
+	}
 	validation, err := s.ValidateBlock(ctx, author, reporting.AuthoringBlockValidateRequest{Block: target, ExpectedVersion: created.Block.State.Version, Revision: created.Block.Revision, Digest: created.Block.Digest, Arguments: []reporting.Argument{}})
 	if err != nil || validation.State.DraftState != "validated" {
 		t.Fatal(validation, err)
@@ -164,26 +207,7 @@ func TestReportAppDeterministicPreparation(t *testing.T) {
 			t.Fatal("redacted lifecycle custody stripped absence pins or exposed SQL", mode, err)
 		}
 	}
-	// Complete the same chart's native private report journey, without a
-	// publication shortcut or another source read during metadata saving.
-	const reportID = "dataset-private-report"
-	reportScopes := append(slices.Clone(scopes), "reporting.execute", "cw.block.execute:"+target, "cw.report.read:"+reportID, "cw.report.write:"+reportID, "cw.report.preview:"+reportID, "cw.report.execute:"+reportID)
-	reportActor := phase27Actor(t, f.f, author.User(), reportScopes)
-	widget := phase29BlockWidget("dataset-chart", target, 0, "chart")
-	widget.Block.Policy, widget.Block.Revision, widget.Block.Digest = "private_preview", created.Block.Revision, created.Block.Digest
-	document := phase29Text("Dataset chart report")
-	document.SchemaVersion, document.Widgets = reporting.PagedDocumentVersion, nil
-	document.ReportPages = []reporting.ReportPage{{ID: "analysis", Title: "Analysis", Widgets: []reporting.Widget{widget}}, {ID: "empty", Title: "Empty", Widgets: []reporting.Widget{}}}
-	state, err := s.Create(ctx, reportActor, reporting.AuthoringCreateRequest{ID: reportID, Definition: document})
-	if err != nil {
-		t.Fatal("save dataset chart report", err)
-	}
-	if _, err := s.Read(ctx, reportActor, reporting.AuthoringReadRequest{Report: reportID}); err != nil {
-		t.Fatal(err)
-	}
-	if f.attemptCount(t) != before+2 {
-		t.Fatal("saving metadata executed source")
-	}
+	// The same report now previews its separately validated private chart.
 	preview, err := s.Preview(ctx, reportActor, reporting.AuthoringPreviewRequest{Report: reportID, Revision: state.DraftRevision, Key: "dataset-report-preview"})
 	if err != nil || !preview.Private || preview.QueryGroups != 1 || len(preview.Pages) != 2 {
 		t.Fatal(preview, err)
@@ -194,7 +218,7 @@ func TestReportAppDeterministicPreparation(t *testing.T) {
 	}
 	readerScopes := []string{"reporting.read", "reporting.preview", "cw.run.read:" + preview.ID, "cw.report.preview:" + reportID, "cw.execution_context.use:" + dataset.Source.Context}
 	reader := phase27Actor(t, f.f, author.User(), readerScopes)
-	payload, err := f.compositions.Widget(ctx, reader, preview.ID, "analysis", "dataset-chart")
+	payload, err := f.compositions.Widget(ctx, reader, preview.ID, "analysis", widgetID)
 	if err != nil || len(payload.Outputs) != 1 || payload.Outputs[0].Chart == nil || len(payload.Outputs[0].Chart.Points) != 1 || payload.Outputs[0].Chart.Points[0].Value.Exact != "9007199254740998.625" {
 		t.Fatal("retained exact reviewed sum missing", payload, err)
 	}
@@ -220,7 +244,7 @@ func TestReportAppDeterministicPreparation(t *testing.T) {
 	if err != nil || !rootView.Summary.Private {
 		t.Fatal(rootView, err)
 	}
-	outputView, err := delivery.View(ctx, reader, reporting.DeliveryViewRequest{Kind: "report", Run: preview.ID, Page: "analysis", Widget: "dataset-chart", Output: "chart", Offset: 0, Limit: 100})
+	outputView, err := delivery.View(ctx, reader, reporting.DeliveryViewRequest{Kind: "report", Run: preview.ID, Page: "analysis", Widget: widgetID, Output: "chart", Offset: 0, Limit: 100})
 	if err != nil || outputView.Output == nil || outputView.Output.Chart == nil || outputView.Output.Chart.Points[0].Value.Exact != "9007199254740998.625" {
 		t.Fatal(outputView, err)
 	}
@@ -234,7 +258,7 @@ func TestReportAppDeterministicPreparation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := json.MarshalIndent(map[string]any{"list_topics": topicList, "describe_topic": described, "dataset": catalog, "request": request, "preparation": prepared, "created": created, "validation": validation, "report_state": state, "preview": preview, "complete": done, "payload": payload, "view_root": rootView, "view_output": outputView}, "", "  ")
+		wire, err := json.MarshalIndent(map[string]any{"initial_read": initialRead, "save_request": saveRequest, "final_read": finalRead, "list_topics": topicList, "describe_topic": described, "dataset": catalog, "request": request, "preparation": prepared, "created": created, "validation": validation, "report_state": state, "preview": preview, "complete": done, "payload": payload, "view_root": rootView, "view_output": outputView}, "", "  ")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -295,7 +319,7 @@ func TestReportAppDeterministicPreparation(t *testing.T) {
 	if _, err := s.Execute(ctx, reportActor, reporting.AuthoringExecuteRequest{Run: pending.ID}); err == nil {
 		t.Fatal("rule activation after private seal allowed execution")
 	}
-	if _, err := f.compositions.Widget(ctx, reader, preview.ID, "analysis", "dataset-chart"); err != nil {
+	if _, err := f.compositions.Widget(ctx, reader, preview.ID, "analysis", widgetID); err != nil {
 		t.Fatal("rule activation erased completed private result", err)
 	}
 	if f.attemptCount(t) != before {

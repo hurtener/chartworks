@@ -100,3 +100,13 @@ The first source set was reconstructed after workspace replacement. Earlier
 mapping/private-page/browser results are independent evidence. The five-operation
 HTTP/MCP/SDK/bridge registration is integrated separately, with no model path or
 new identity/grant mechanism.
+
+## Broader post-integration regression (2026-10-04)
+
+On immutable local `0d27a36`, all seven affected reporting/API/store/MCP/SDK/web
+packages passed their complete race suites. Actual PostgreSQL Phases27–30 each
+passed AC01–08 (32 roots, no failed or skipped criteria; 305.471 seconds for the
+acceptance run). This includes the new prepared-origin guards, forward audit
+migration and continuous saved-before-validation capture. The test cluster was
+stopped cleanly. Separate source checks pass 144 app and six shared-viewer Node
+contracts. Updated actual Chrome and real host-admission proof remain pending.
