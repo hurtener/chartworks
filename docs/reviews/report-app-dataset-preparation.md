@@ -110,3 +110,17 @@ acceptance run). This includes the new prepared-origin guards, forward audit
 migration and continuous saved-before-validation capture. The test cluster was
 stopped cleanly. Separate source checks pass 144 app and six shared-viewer Node
 contracts. Updated actual Chrome and real host-admission proof remain pending.
+
+## Preparation retention continuation (2026-10-04)
+
+The original no-cleanup statements above describe their earlier checkpoints.
+The [current preparation contract](../contracts/manual-chart-preparation-v1.md)
+now specifies the separately qualified, bounded source-only continuation:
+versioned fresh keys, positively witnessed liability, actor-only terminal cleanup
+and compact exact consumed replay. The full-payload 2 MiB reservation additionally
+reserves 132 KiB lifecycle growth within the unchanged 16/256 MiB actor/tenant
+ceilings. Pre-087 missing/insufficient evidence stays retained and charged.
+
+The migration explicitly requires quiesced old writers; it does not promise
+mixed-binary native-journal retention. Qualification for this continuation is
+recorded in [the retention review](report-app-preparation-retention.md).

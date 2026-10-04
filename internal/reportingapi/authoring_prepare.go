@@ -14,6 +14,7 @@ func authoringPrepareEntries(s *reporting.Authoring) []runtimeEndpoint {
 		authoringEntry("create_prepared", "reporting.write", "private_block_preparation_consume", "Consume private preparation into an unvalidated native block draft", s.CreatePreparedChart),
 		authoringEntry("preparation_control", "reporting.validate", "existing_source_attempt_control", "Explicitly inspect cancel or reconcile the existing preparation source attempt", s.PreparationControl),
 	}
+	out[1].definition.Errors = append(out[1].definition.Errors, api.ErrorResponse{Status: 409, Code: "preparation_contract_required"}, api.ErrorResponse{Status: 410, Code: "preparation_operation_expired"})
 	out[0].definition.ResourceLoader = "verified exact topic/source/dataset/context read reach; retained metadata only; unsupported policies explicit"
 	out[1].definition.ResourceLoader = "charts.bind; exact tenant read/write; new block read/write/preview/validate; topic write and every dependency; sources.query source/dataset/context; actor/session/operation custody before native planning/read"
 	out[2].definition.ResourceLoader = "original actor/session/tenant preparation and exact target/dependency reach; retained metadata only"
@@ -33,7 +34,7 @@ func authoringPrepareMCPBindings(r *api.Registry, s *reporting.Authoring) ([]mcp
 	if err := add(mcpserver.Bind(r, "reporting_authoring_dataset_v1", "reporting_authoring_dataset_v1", "reporting", "Read retained reviewed fields and unsupported compiler dispositions. No source or model calls.", s.Dataset, mapper)); err != nil {
 		return nil, err
 	}
-	if err := add(mcpserver.Bind(r, "reporting_authoring_prepare_chart_v1", "reporting_authoring_prepare_chart_v1", "reporting", "Explicit bounded validated PostgreSQL read from logical reviewed dimensions and one unfiltered measure. Actual observed schema only. Operation replay never queries again. Preparation is private and is not block validation.", s.PrepareDatasetChart, mapper)); err != nil {
+	if err := add(mcpserver.Bind(r, "reporting_authoring_prepare_chart_v1", "reporting_authoring_prepare_chart_v1", "reporting", "Explicit bounded validated PostgreSQL read from logical reviewed dimensions and one unfiltered measure. Actual observed schema only. Operation replay never queries again. Preparation is private and is not block validation. Fresh requests require operation_version prepare-v1 and timestamped prepare keys; retain the exact key and body for recovery.", s.PrepareDatasetChart, mapper)); err != nil {
 		return nil, err
 	}
 	if err := add(mcpserver.Bind(r, "reporting_authoring_preparation_v1", "reporting_authoring_preparation_v1", "reporting", "Read private preparation status by ID or operation under original actor/session/target authority. Never restart uncertain work.", s.Preparation, mapper)); err != nil {

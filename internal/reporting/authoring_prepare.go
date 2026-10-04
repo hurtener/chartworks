@@ -14,10 +14,11 @@ import (
 )
 
 type AuthoringPrepareRequest struct {
-	NewBlock  string                 `json:"new_block"`
-	Operation string                 `json:"operation"`
-	Intent    AuthoringDatasetIntent `json:"intent"`
-	Metadata  []Localized            `json:"metadata"`
+	NewBlock         string                 `json:"new_block"`
+	Operation        string                 `json:"operation"`
+	OperationVersion string                 `json:"operation_version,omitempty"`
+	Intent           AuthoringDatasetIntent `json:"intent"`
+	Metadata         []Localized            `json:"metadata"`
 }
 type AuthoringPreparationRequest struct {
 	NewBlock    string `json:"new_block"`
@@ -55,29 +56,31 @@ type AuthoringPreparationView struct {
 // Protected custody only, never transport input/output. Accepted inputs are
 // immutable; a terminal outcome can add observed schema but no raw rows.
 type AuthoringPreparationRecord struct {
-	ID              string                  `json:"id"`
-	Actor           string                  `json:"actor"`
-	Session         string                  `json:"session"`
-	Target          string                  `json:"target"`
-	Operation       string                  `json:"operation"`
-	InputDigest     string                  `json:"input_digest"`
-	Compiler        string                  `json:"compiler"`
-	SourceOperation string                  `json:"source_operation"`
-	Binding         exec.Binding            `json:"binding"`
-	Topics          []TopicPin              `json:"topics"`
-	References      []ResourceReference     `json:"references"`
-	Scope           []exec.RelationScope    `json:"scope"`
-	Dependencies    []Dependency            `json:"dependencies"`
-	Statement       string                  `json:"statement"`
-	Request         AuthoringPrepareRequest `json:"request"`
-	CreatedAt       time.Time               `json:"created_at"`
-	Deadline        time.Time               `json:"deadline"`
-	ExpiresAt       time.Time               `json:"expires_at"`
-	Status          string                  `json:"status"`
-	Code            string                  `json:"code"`
-	Digest          string                  `json:"digest"`
-	Revision        *Revision               `json:"revision,omitempty"`
-	Attempt         *exec.Attempt           `json:"attempt,omitempty"`
+	Consumed        *AuthoringPreparationConsumed `json:"-"`
+	Settled         bool                          `json:"-"`
+	ID              string                        `json:"id"`
+	Actor           string                        `json:"actor"`
+	Session         string                        `json:"session"`
+	Target          string                        `json:"target"`
+	Operation       string                        `json:"operation"`
+	InputDigest     string                        `json:"input_digest"`
+	Compiler        string                        `json:"compiler"`
+	SourceOperation string                        `json:"source_operation"`
+	Binding         exec.Binding                  `json:"binding"`
+	Topics          []TopicPin                    `json:"topics"`
+	References      []ResourceReference           `json:"references"`
+	Scope           []exec.RelationScope          `json:"scope"`
+	Dependencies    []Dependency                  `json:"dependencies"`
+	Statement       string                        `json:"statement"`
+	Request         AuthoringPrepareRequest       `json:"request"`
+	CreatedAt       time.Time                     `json:"created_at"`
+	Deadline        time.Time                     `json:"deadline"`
+	ExpiresAt       time.Time                     `json:"expires_at"`
+	Status          string                        `json:"status"`
+	Code            string                        `json:"code"`
+	Digest          string                        `json:"digest"`
+	Revision        *Revision                     `json:"revision,omitempty"`
+	Attempt         *exec.Attempt                 `json:"attempt,omitempty"`
 }
 
 func (AuthoringPreparationRecord) String() string     { return "authoring-preparation(redacted)" }
@@ -93,6 +96,8 @@ type AuthoringPreparationRepository interface {
 	ReadAuthoringPreparation(context.Context, identity.Envelope, string) (AuthoringPreparationRecord, error)
 	ReadAuthoringPreparationOperation(context.Context, identity.Envelope, string) (AuthoringPreparationRecord, error)
 	FinishAuthoringPreparation(context.Context, identity.Envelope, AuthoringPreparationRecord) error
+	SealAuthoringPreparation(context.Context, identity.Envelope, AuthoringPreparationRecord, exec.Receipt) error
+	SettleAuthoringPreparation(context.Context, identity.Envelope, string, bool) (AuthoringPreparationRecord, error)
 }
 
 // Repeated by storage; source-query reach is required at prepare and consume,
@@ -172,10 +177,37 @@ func minTime(a, b time.Time) time.Time {
 	return b
 }
 func (s *Authoring) PrepareDatasetChart(ctx context.Context, e identity.Envelope, in AuthoringPrepareRequest) (AuthoringPreparationView, error) {
-	if ctx == nil || !identity.Identifier(in.NewBlock) || !identity.Identifier(in.Operation) {
+	if ctx == nil || !identity.Identifier(in.NewBlock) {
 		return AuthoringPreparationView{}, ErrInvalid
 	}
 	if err := requireMappingAuthoring(e); err != nil {
+		return AuthoringPreparationView{}, err
+	}
+	if !identity.Identifier(in.Operation) {
+		return AuthoringPreparationView{}, ErrPreparationContract
+	}
+	// Retained identity wins before current compiler/publication checks, but only
+	// after exact original custody and current signed execution reach are checked.
+	blocks, err := s.blockService()
+	if err != nil {
+		return AuthoringPreparationView{}, err
+	}
+	repo, err := blocks.preparationRepo()
+	if err != nil {
+		return AuthoringPreparationView{}, err
+	}
+	if prior, readErr := repo.ReadAuthoringPreparationOperation(ctx, e, in.Operation); readErr == nil {
+		if err := RequireAuthoringPreparation(e, prior, true); err != nil {
+			return AuthoringPreparationView{}, err
+		}
+		if prior.Target != in.NewBlock || prior.InputDigest != digest(in) {
+			return AuthoringPreparationView{}, store.ErrConflict
+		}
+		return s.Preparation(ctx, e, AuthoringPreparationRequest{NewBlock: in.NewBlock, Operation: in.Operation})
+	} else if !errors.Is(readErr, store.ErrNotFound) && !errors.Is(readErr, access.ErrNotFound) {
+		return AuthoringPreparationView{}, readErr
+	}
+	if err := AuthoringPreparationAdmission(in, time.Now()); err != nil {
 		return AuthoringPreparationView{}, err
 	}
 	blocks, p, dataset, err := s.datasetPublication(ctx, e, AuthoringDatasetRequest{Topic: in.Intent.Topic, Dataset: in.Intent.Dataset})
@@ -192,10 +224,6 @@ func (s *Authoring) PrepareDatasetChart(ctx context.Context, e identity.Envelope
 		if m.Intent != nil {
 			return AuthoringPreparationView{}, ErrInvalid
 		}
-	}
-	repo, err := blocks.preparationRepo()
-	if err != nil {
-		return AuthoringPreparationView{}, err
 	}
 	if reason, err := blocks.authoringRulesDisposition(ctx, e, in.Intent.Topic); err != nil {
 		return AuthoringPreparationView{}, err
@@ -291,6 +319,13 @@ func (s *Service) runAuthoringPreparation(ctx context.Context, e identity.Envelo
 		return reject("topic_changed")
 	}
 	if err := RequireAuthoringPreparation(e, r, true); err != nil {
+		return r, err
+	}
+	repo, err := s.preparationRepo()
+	if err != nil {
+		return r, err
+	}
+	if err := repo.SealAuthoringPreparation(ctx, e, r, plan.Receipt()); err != nil {
 		return r, err
 	}
 	report, runErr := s.executor.Execute(ctx, e, plan, exec.Options{Operation: r.SourceOperation, Number: 1, Preview: true, Rows: min(s.limits.PreviewRows, s.limits.Execution.MaxRows), Bytes: min(s.limits.PreviewBytes, s.limits.Execution.MaxResultBytes)})
@@ -399,11 +434,26 @@ func (s *Authoring) preparationRecord(ctx context.Context, e identity.Envelope, 
 	return blocks, r, nil
 }
 func (s *Authoring) Preparation(ctx context.Context, e identity.Envelope, in AuthoringPreparationRequest) (AuthoringPreparationView, error) {
-	_, r, err := s.preparationRecord(ctx, e, in)
+	blocks, r, err := s.preparationRecord(ctx, e, in)
 	if err != nil {
 		return AuthoringPreparationView{}, err
 	}
-	return preparationView(r), nil
+	out := preparationView(r)
+	if r.Consumed != nil {
+		v, err := blocks.Read(ctx, e, r.Target, Reference{Revision: 1})
+		if err != nil {
+			return AuthoringPreparationView{}, err
+		}
+		if v.Digest != r.Consumed.RevisionDigest || v.ExecutionDigest != r.Consumed.ExecutionDigest {
+			return AuthoringPreparationView{}, ErrStale
+		}
+		out.Schema = clone(v.ExpectedSchema)
+		if len(v.Outputs) == 1 {
+			out.Mapping = clone(v.Outputs[0].Mapping)
+		}
+		out.ExecutionStatus, out.RemoteState = r.Consumed.Settlement.Status, r.Consumed.Settlement.RemoteState
+	}
+	return out, nil
 }
 
 // Explicit control, separate from pure metadata polling; never restarts a query.
@@ -417,6 +467,22 @@ func (s *Authoring) PreparationControl(ctx context.Context, e identity.Envelope,
 	}
 	if err := RequireAuthoringPreparation(e, r, true); err != nil {
 		return AuthoringPreparationView{}, err
+	}
+	if r.Consumed != nil {
+		return preparationView(r), nil
+	}
+	repo, err := blocks.preparationRepo()
+	if err != nil {
+		return AuthoringPreparationView{}, err
+	}
+	if in.Action != "inspect" {
+		r, err = repo.SettleAuthoringPreparation(ctx, e, r.ID, in.Action == "cancel")
+		if err != nil {
+			return AuthoringPreparationView{}, err
+		}
+		if r.Settled {
+			return preparationView(r), nil
+		}
 	}
 	control, ok := blocks.executor.(authoringPreparationControl)
 	if !ok {
@@ -432,6 +498,10 @@ func (s *Authoring) PreparationControl(ctx context.Context, e identity.Envelope,
 			return AuthoringPreparationView{}, err
 		}
 		attempt = receipt.Attempt
+		r, err = repo.SettleAuthoringPreparation(ctx, e, r.ID, in.Action == "cancel")
+		if err != nil {
+			return AuthoringPreparationView{}, err
+		}
 	}
 	out := preparationView(r)
 	out.ExecutionStatus, out.RemoteState = attempt.Status, attempt.RemoteState
@@ -455,7 +525,7 @@ func (s *Authoring) CreatePreparedChart(ctx context.Context, e identity.Envelope
 	if err != nil {
 		return AuthoringBlockView{}, err
 	}
-	if r.Target != in.NewBlock || r.Digest != in.Digest || r.Revision == nil {
+	if r.Target != in.NewBlock || r.Digest != in.Digest || (r.Revision == nil && r.Consumed == nil) {
 		return AuthoringBlockView{}, ErrStale
 	}
 	if err := RequireAuthoringPreparation(e, r, true); err != nil {
@@ -463,6 +533,9 @@ func (s *Authoring) CreatePreparedChart(ctx context.Context, e identity.Envelope
 	}
 	if r.Status == "consumed" {
 		v, err := blocks.Read(ctx, e, r.Target, Reference{Revision: 1})
+		if err == nil && r.Consumed != nil && (v.Revision != 1 || v.Digest != r.Consumed.RevisionDigest || v.ExecutionDigest != r.Consumed.ExecutionDigest) {
+			return AuthoringBlockView{}, ErrStale
+		}
 		return authoringBlockView(v), err
 	}
 	if r.Status != "prepared" || !time.Now().Before(r.ExpiresAt) {

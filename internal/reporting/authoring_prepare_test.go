@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -72,6 +73,12 @@ func (r *preparationMemory) ReadAuthoringPreparationOperation(ctx context.Contex
 		}
 	}
 	r.mu.Unlock()
+	return r.ReadAuthoringPreparation(ctx, e, id)
+}
+func (r *preparationMemory) SealAuthoringPreparation(context.Context, identity.Envelope, AuthoringPreparationRecord, exec.Receipt) error {
+	return nil
+}
+func (r *preparationMemory) SettleAuthoringPreparation(ctx context.Context, e identity.Envelope, id string, _ bool) (AuthoringPreparationRecord, error) {
 	return r.ReadAuthoringPreparation(ctx, e, id)
 }
 func (r *preparationMemory) FinishAuthoringPreparation(_ context.Context, _ identity.Envelope, in AuthoringPreparationRecord) error {
@@ -168,7 +175,7 @@ func preparationServiceFixture(t *testing.T) (*Authoring, *preparationMemory, *p
 	}
 	scopes := append(authoringBlockScopes(), "sources.read", "sources.query", "cw.source.query:warehouse")
 	e := authoringBlockActor(t, "tenant", "author", scopes)
-	inRequest := AuthoringPrepareRequest{NewBlock: "copy", Operation: "prepare-once", Intent: in, Metadata: []Localized{{Locale: "en", Title: "Revenue by region", Question: "Revenue by region", Aliases: []string{}}}}
+	inRequest := AuthoringPrepareRequest{NewBlock: "copy", Operation: "prepare:" + strconv.FormatInt(time.Now().Unix(), 10) + ":" + strings.Repeat("1", 32), OperationVersion: AuthoringPreparationOperationVersion, Intent: in, Metadata: []Localized{{Locale: "en", Title: "Revenue by region", Question: "Revenue by region", Aliases: []string{}}}}
 	return &Authoring{documents: &Documents{blocks: blocks}}, repo, boundary, e, inRequest
 }
 func TestAuthoringPreparationActualSchemaAndNoRepeatedRead(t *testing.T) {

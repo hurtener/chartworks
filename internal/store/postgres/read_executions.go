@@ -61,7 +61,7 @@ func (d *DB) BeginRead(ctx context.Context, s store.Scope, a readexec.Attempt, m
 		}
 		// Bounded metadata retention is independent of phase-28 result retention.
 		// Uncertain remote attempts are never silently erased before reconciliation.
-		if _, err := tx.Exec(ctx, `DELETE FROM chartworks.read_attempts WHERE tenant_id=$1 AND finished_at IS NOT NULL AND status<>'uncertain' AND created_at<clock_timestamp()-interval '24 hours'`, s.Tenant()); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM chartworks.read_attempts a WHERE a.tenant_id=$1 AND a.finished_at IS NOT NULL AND a.status IN('succeeded','empty','truncated','cancelled','timed_out','failed','interrupted') AND a.remote_state IN('stopped','not_issued') AND a.created_at<clock_timestamp()-interval '24 hours' AND NOT EXISTS(SELECT 1 FROM chartworks.authoring_preparations p WHERE p.tenant_id=a.tenant_id AND p.actor_id=a.actor_id AND p.source_operation=a.operation_id AND (p.settlement IS NULL OR p.settlement->>'kind'<>'attempt' OR p.settlement->>'attempt' IS DISTINCT FROM a.attempt_id OR p.settlement->>'manifest' IS DISTINCT FROM a.manifest_hash OR p.settlement->>'status' IS DISTINCT FROM a.status OR p.settlement->>'remote_state' IS DISTINCT FROM a.remote_state OR (p.settlement->>'finished_at')::timestamptz IS DISTINCT FROM a.finished_at))`, s.Tenant()); err != nil {
 			return err
 		}
 		previous, err := scanRead(tx.QueryRow(ctx, `SELECT `+readAttemptColumns+` FROM chartworks.read_attempts WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$3 ORDER BY attempt_number DESC LIMIT 1`, s.Tenant(), s.Actor(), a.Manifest.Operation))

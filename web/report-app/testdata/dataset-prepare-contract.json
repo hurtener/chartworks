@@ -1,10 +1,11 @@
 {
   "dataset": {
+    "filter_compiler": "reviewed-dataset-postgres-v2",
     "compiler": "reviewed-dataset-postgres-v1",
     "topic": {
       "topic": "commerce",
       "version": "v1",
-      "digest": "c01562b3db5806c1b75f408a1c644cafdc2a213ebf624a9413bed68869999e27"
+      "digest": "7cbfd29fe886323e4ce9a2678000857c2bf12be06af54e03ca109d098444d24b"
     },
     "dataset": "ds:95b3449b842ed4ac7c5306c17930e519",
     "source": "topic-source",
@@ -35,19 +36,20 @@
     ],
     "limitations": [
       "PostgreSQL only; zero to two direct dimensions and one reviewed measure.",
-      "No filters, group policies, calendar bucketing, joins, arbitrary KPI expressions, active rules or amount-completeness policies in the initial compiler.",
+      "The v1 branch is unfiltered. The v2 branch supports only the advertised required-default filters; group policies, calendar bucketing, joins, arbitrary KPI expressions, active rules and amount-completeness policies remain unsupported.",
       "Prepare reads actual schema. Create remains private and unvalidated; Validate is a separate explicit read."
     ],
     "supported": true
   },
   "request": {
     "new_block": "dataset-private-chart",
-    "operation": "dataset-prepare-one",
+    "operation": "prepare:1791133823:11111111111111111111111111111111",
+    "operation_version": "prepare-v1",
     "intent": {
       "topic": {
         "topic": "commerce",
         "version": "v1",
-        "digest": "c01562b3db5806c1b75f408a1c644cafdc2a213ebf624a9413bed68869999e27"
+        "digest": "7cbfd29fe886323e4ce9a2678000857c2bf12be06af54e03ca109d098444d24b"
       },
       "dataset": "ds:95b3449b842ed4ac7c5306c17930e519",
       "dimensions": [],

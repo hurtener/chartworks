@@ -415,3 +415,48 @@ test('removing another filter keeps the paused selected filter stage intact',asy
  button('Resume filter edits').emit('click');assert.equal(input('Find values').value,'East');assert.deepEqual(stage.state.items,['North']);assert.equal(stage.lookup.values[0].value,'East');assert.equal(f.calls.length,calls);
  button('Back to Components').emit('click');button('Remove filter',0).emit('click');assert.equal(app.filters.editor,null,'removing the edited filter deliberately clears its stage');app.close();
 });
+
+test('dataset Prepare generates its contract only after long staging and host allocation finish', async t => {
+ const {app,native,f}=await datasetAppFixture();t.after(()=>app.close());
+ let now=1791095400000,keys=0,release; t.mock.method(Date,'now',()=>now);
+ const s=await stageDataset(app);s.operation=()=>{keys++;return `prepare:${Math.floor(Date.now()/1000)}:${'a'.repeat(32)}`;};
+ now+=86400000;s.edit(d=>{d.title='Long reviewed setup';});assert.equal(keys,0);
+ const allocate=f.adapter.allocateTarget;f.adapter.allocateTarget=request=>new Promise(resolve=>{release=()=>resolve(allocate(request));});
+ const pending=app.prepareDataset();assert.equal(keys,0);now+=86400000;release();await pending;
+ const request=native.calls.find(c=>c.name.includes('prepare_chart')).args;
+ assert.equal(request.operation,`prepare:${Math.floor(now/1000)}:${'a'.repeat(32)}`);assert.equal(request.operation_version,'prepare-v1');assert.equal(keys,1);
+ const pinned=structuredClone(s.request);app.cancelDataset();await app.openDataset();await app.inspectDataset();assert.deepEqual(s.request,pinned);assert.equal(keys,1);
+});
+
+test('controller preserves rejected preparation across close and makes review a metadata-only action', async t => {
+ for(const code of ['preparation_operation_expired','preparation_contract_required']){
+  const {app,root,native}=await datasetAppFixture();t.after(()=>app.close());const s=await stageDataset(app),invoke=s.invoke;let prepareCalls=0;
+  s.invoke=async(name,args)=>{if(name.includes('prepare_chart')){prepareCalls++;throw appError(code);}return invoke(name,args);};
+  await assert.rejects(app.prepareDataset(),e=>e.code===code);const request=structuredClone(s.request);
+  app.render();assert(root.textContent.includes('rejected'));assert(!root.querySelectorAll('button').some(b=>['Prepare chart','Inspect preparation','Create private chart'].includes(b.textContent)));
+  assert(root.querySelectorAll('button').some(b=>b.textContent==='Review setup for new preparation'));
+  app.cancelDataset();await app.openDataset();assert.deepEqual(s.request,request);assert.equal(s.rejected,code);assert.equal(prepareCalls,1);
+  const before=native.calls.length;await app.reviewDatasetPreparation();assert.deepEqual(native.calls.slice(before).map(c=>c.name),['list_topics']);assert.equal(prepareCalls,1);assert.equal(s.custody,null);assert.equal(app.datasetCustody.size,0);
+  await s.selectTopic(s.topics[0]);await s.selectDataset('orders');s.edit(d=>{d.dimensions=['region'];d.measure='revenue';});
+  await assert.rejects(app.prepareDataset(),e=>e.code===code);assert.equal(prepareCalls,2);assert.notEqual(s.request.operation,request.operation);assert.equal(s.request.new_block,request.new_block);
+ }
+});
+
+test('unknown Prepare controller never offers deliberate pre-admission review or silently dispatches again', async t => {
+ const {app,root}=await datasetAppFixture();t.after(()=>app.close());const s=await stageDataset(app);let count=0;
+ s.invoke=async()=>{count++;throw appError('preparation_operation_expired',true);};
+ await assert.rejects(app.prepareDataset());const pinned=structuredClone(s.request);app.render();
+ assert(root.textContent.includes('Preparation outcome is unknown'));
+ assert(!root.querySelectorAll('button').some(b=>b.textContent==='Review setup for new preparation'));
+ await assert.rejects(app.reviewDatasetPreparation(),/busy/);await assert.rejects(app.prepareDataset(),/busy/);assert.equal(count,1);assert.deepEqual(s.request,pinned);
+});
+
+test('rejected preparation review is bound to its stage and closing fences its metadata reply', async t => {
+ const {app,root}=await datasetAppFixture();t.after(()=>app.close());const s=await stageDataset(app);
+ s.invoke=async()=>{throw appError('preparation_operation_expired');};await assert.rejects(app.prepareDataset());
+ const {DatasetSession}=await import('./dataset.js');
+ await assert.rejects(app.reviewDatasetPreparation(new DatasetSession(()=>{})),/stale_validation/);assert.equal(s.rejected,'preparation_operation_expired');
+ let resolve;s.invoke=()=>new Promise(done=>{resolve=()=>done([]);});const pending=app.reviewDatasetPreparation();assert.equal(s.pending,true);
+ app.close();const message=app.message;resolve();await pending;
+ assert.equal(app.message,message);assert.equal(app.datasetSession,null);assert.equal(s.request,null);assert.equal(s.rejected,'');assert.deepEqual(s.topics,[]);assert(root.textContent.includes('This report app is closed'));
+});

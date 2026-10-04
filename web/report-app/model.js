@@ -6,7 +6,7 @@ export const APP_MAX_RESULT = 4 << 20;
 export const APP_MAX_WIRE = 16 << 20;
 export const AUTHORING_VERSION = 'report-authoring-v1';
 export const authoringTool = action => `reporting_authoring_${action}_v1`;
-const modelCodes = new Set(['invalid_request','forbidden','conflict','unavailable','busy','stale_validation','limit_exceeded','unauthenticated','not_found','expired','cancelled_or_timed_out']);
+const modelCodes = new Set(['invalid_request','forbidden','conflict','unavailable','busy','stale_validation','limit_exceeded','unauthenticated','not_found','expired','cancelled_or_timed_out','preparation_contract_required','preparation_operation_expired']);
 export function appError(code, unknown = false) { const e = new Error(modelCodes.has(code) ? code : 'unavailable'); e.code = e.message; e.unknown = unknown; return e; }
 export function copyData(value) { boundedJSON(value, 2 << 20); return JSON.parse(JSON.stringify(value)); }
 export function validID(value) { return typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(value); }

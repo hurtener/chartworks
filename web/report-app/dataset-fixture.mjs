@@ -1,4 +1,5 @@
 // Synthetic dataset/preparation DTOs for source tests; no actual-source proof.
+export const datasetOperation='prepare:1791095400:0123456789abcdef0123456789abcdef';
 export const datasetClone=value=>JSON.parse(JSON.stringify(value));
 export const datasetTopic={topic:'sales',version:'v1',digest:'a'.repeat(64),name:'Reviewed sales'};
 export const datasetPublication={state:{topic:'sales',version:'v1',active:true,archived:false},definition:{topic:'sales',version:'v1',datasets:[{id:'orders',name:'Orders'}]},digest:datasetTopic.digest};

@@ -83,3 +83,25 @@ func TestAuthoringPreparationActualUIRequestContract(t *testing.T) {
 		t.Fatal("missing required question silently accepted")
 	}
 }
+
+func TestAuthoringPreparationVersionReachesTypedDomainDisposition(t *testing.T) {
+	entry := authoringPrepareEntries(nil)[1]
+	request := reporting.AuthoringPrepareRequest{NewBlock: "chart", Operation: "prepare:1800000000:" + strings.Repeat("a", 32), Intent: reporting.AuthoringDatasetIntent{Topic: reporting.TopicPin{Topic: "topic", Version: "v1", Digest: strings.Repeat("a", 64)}, Dataset: "sales", Dimensions: []string{}, Measure: "revenue", Mapping: reporting.AuthoringChartMapping{Kind: charts.KPI, Bindings: charts.Bindings{Value: "m"}, Order: []charts.Order{}, Options: charts.DefaultOptions()}}, Metadata: []reporting.Localized{{Locale: "en", Title: "Revenue", Question: "Revenue", Aliases: []string{}}}}
+	for _, version := range []string{"", "prepare-v1", "unknown-version"} {
+		request.OperationVersion = version
+		raw, _ := json.Marshal(request)
+		if err := entry.definition.Request.Validate(raw, MaxBodyBytes); err != nil {
+			t.Fatal("transport hid typed contract disposition", version, err)
+		}
+	}
+	for _, tc := range []struct {
+		err    error
+		status int
+		code   string
+	}{{reporting.ErrPreparationContract, 409, "preparation_contract_required"}, {reporting.ErrPreparationOperationExpired, 410, "preparation_operation_expired"}} {
+		status, code := httpFault(tc.err)
+		if status != tc.status || code != tc.code {
+			t.Fatal(status, code)
+		}
+	}
+}

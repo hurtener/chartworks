@@ -93,3 +93,12 @@ column display intent. Existing JSON digests and drift checks include the comple
 mapping; migration 043 adds forward bounds without rewriting v1/v2 publications.
 Definition transfer remains native and exact. Foreign mapping belongs to Phase 34.
 See [D-079](../decisions/2026-09-22-rich-output-display.md).
+
+## Bounded preparation liability and retention continuation
+
+AC02/AC03/AC08: the [preparation contract](../contracts/manual-chart-preparation-v1.md)
+adds explicitly versioned fresh admission, positive durable execution settlement,
+requesting-actor-only terminal cleanup and compact exact consumed replay receipts.
+Native revision, provenance, validation and publication remain independently
+immutable. Unknown legacy liabilities remain retained and charged. Source-only
+qualification is separate from UI integration, production cleanup and release.

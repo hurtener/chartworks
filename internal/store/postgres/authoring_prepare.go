@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
@@ -15,6 +16,9 @@ import (
 )
 
 var _ reporting.AuthoringPreparationRepository = (*DB)(nil)
+
+// Full payload plus bounded receipt, admitted manifest and settlement growth.
+const preparationReservationBytes = (2 << 20) + (64 << 10) + (64 << 10) + (4 << 10)
 
 func (d *DB) AuthoringRulesActive(ctx context.Context, e identity.Envelope, pin reporting.TopicPin) (active bool, err error) {
 	if err = access.Require(e, "topics.read", access.Resource{Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: pin.Topic}); err != nil {
@@ -89,9 +93,12 @@ func authoringPreparationRecordTx(ctx context.Context, tx pgx.Tx, e identity.Env
 	}
 	suffix := ""
 	if lock {
-		suffix = " AND p.expires_at>clock_timestamp() FOR UPDATE"
+		suffix = " FOR UPDATE"
 	}
 	r, err := scanAuthoringPreparation(tx.QueryRow(ctx, `SELECT p.record FROM chartworks.authoring_preparations p WHERE p.tenant_id=$1 AND p.`+coordinate+`=$2 AND p.actor_id=$3 AND p.session_id=$4 AND `+authoringPreparationEligibility+suffix, e.Tenant(), key, e.User(), e.Session(), grants, execute))
+	if errors.Is(err, pgx.ErrNoRows) && !lock {
+		return readConsumedPreparationTx(ctx, tx, e, key, operation, execute, grants)
+	}
 	if err == nil {
 		err = reporting.RequireAuthoringPreparation(e, r, execute)
 	}
@@ -159,12 +166,30 @@ func (d *DB) ReserveAuthoringPreparation(ctx context.Context, e identity.Envelop
 	if marshalErr != nil || len(raw) > 2<<20 {
 		return out, false, store.ErrInvalid
 	}
+	// Authenticated retained lookup precedes all new-contract checks and cleanup.
+	if prior, priorErr := d.ReadAuthoringPreparationOperation(ctx, e, r.Operation); priorErr == nil {
+		if err := reporting.RequireAuthoringPreparation(e, prior, true); err != nil {
+			return out, false, err
+		}
+		if prior.InputDigest != r.InputDigest || prior.Target != r.Target {
+			return out, false, store.ErrConflict
+		}
+		return prior, false, nil
+	} else if !errors.Is(priorErr, store.ErrNotFound) {
+		return out, false, priorErr
+	}
+	if err = reporting.AuthoringPreparationAdmission(r.Request, time.Now()); err != nil {
+		return
+	}
+	if err = d.pruneAuthoringPreparations(ctx, e); err != nil {
+		return
+	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "chart-prepare:"+e.Tenant()); err != nil {
 			return err
 		}
 		var priorExists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.authoring_preparations WHERE tenant_id=$1 AND actor_id=$2 AND session_id=$3 AND operation_id=$4)`, e.Tenant(), e.User(), e.Session(), r.Operation).Scan(&priorExists); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.authoring_preparations WHERE tenant_id=$1 AND actor_id=$2 AND session_id=$3 AND operation_id=$4 UNION ALL SELECT 1 FROM chartworks.authoring_preparation_consumed WHERE tenant_id=$1 AND actor_id=$2 AND session_id=$3 AND operation_id=$4)`, e.Tenant(), e.User(), e.Session(), r.Operation).Scan(&priorExists); err != nil {
 			return err
 		}
 		if priorExists {
@@ -181,18 +206,21 @@ func (d *DB) ReserveAuthoringPreparation(ctx context.Context, e identity.Envelop
 			out = prior
 			return nil
 		}
+		if err := reporting.AuthoringPreparationAdmission(r.Request, time.Now()); err != nil {
+			return err
+		}
 		if err := authoringPreparationFence(ctx, tx, e, r); err != nil {
 			return err
 		}
 		var count, actorCount int
 		var bytes, actorBytes int64
 		var exists bool
-		// Accepted reads reserve worst-case outcome bytes. Expiry never erases
-		// unknown liability. This bounded first slice does not claim auto-cleanup.
-		if err := tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE actor_id=$2),COALESCE(sum(CASE WHEN status='accepted' THEN 2097152 ELSE octet_length(record::text) END),0),COALESCE(sum(CASE WHEN status='accepted' THEN 2097152 ELSE octet_length(record::text) END) FILTER(WHERE actor_id=$2),0) FROM chartworks.authoring_preparations WHERE tenant_id=$1`, e.Tenant(), e.User()).Scan(&count, &actorCount, &bytes, &actorBytes); err != nil {
+		// Unsettled records reserve worst-case outcome bytes, including uncertain
+		// or logical failed custody. Compact receipts remain byte-charged.
+		if err := tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE full_payload),count(*) FILTER(WHERE full_payload AND actor_id=$2),COALESCE(sum(charged),0),COALESCE(sum(charged) FILTER(WHERE actor_id=$2),0) FROM (SELECT actor_id,true AS full_payload,CASE WHEN chartworks.preparation_has_liability(p) OR status IN('accepted','uncertain') THEN GREATEST($3,octet_length(record::text)+COALESCE(octet_length(read_receipt::text),0)+COALESCE(octet_length(admitted_manifest::text),0)+COALESCE(octet_length(settlement::text),0)) ELSE octet_length(record::text)+COALESCE(octet_length(read_receipt::text),0)+COALESCE(octet_length(admitted_manifest::text),0)+COALESCE(octet_length(settlement::text),0) END AS charged FROM chartworks.authoring_preparations p WHERE tenant_id=$1 UNION ALL SELECT actor_id,false,octet_length(record::text) FROM chartworks.authoring_preparation_consumed WHERE tenant_id=$1) charges`, e.Tenant(), e.User(), preparationReservationBytes).Scan(&count, &actorCount, &bytes, &actorBytes); err != nil {
 			return err
 		}
-		if count >= 10000 || actorCount >= 128 || bytes+(2<<20) > 256<<20 || actorBytes+(2<<20) > 16<<20 {
+		if count >= 10000 || actorCount >= 128 || bytes+preparationReservationBytes > 256<<20 || actorBytes+preparationReservationBytes > 16<<20 {
 			return readexec.ErrLimit
 		}
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.block_heads WHERE tenant_id=$1 AND block_id=$2)`, e.Tenant(), r.Target).Scan(&exists); err != nil {
@@ -201,7 +229,7 @@ func (d *DB) ReserveAuthoringPreparation(ctx context.Context, e identity.Envelop
 		if exists {
 			return store.ErrConflict
 		}
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.authoring_preparations p WHERE p.tenant_id=$1 AND p.actor_id=$2 AND p.target_id=$3 AND p.status IN('accepted','uncertain') AND (p.deadline>clock_timestamp() OR EXISTS(SELECT 1 FROM chartworks.read_attempts a WHERE a.tenant_id=p.tenant_id AND a.actor_id=p.actor_id AND a.operation_id=p.source_operation AND (a.status IN('accepted','dispatching','running','uncertain') OR a.remote_state='unknown'))))`, e.Tenant(), e.User(), r.Target).Scan(&exists); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.authoring_preparations p WHERE p.tenant_id=$1 AND p.actor_id=$2 AND p.target_id=$3 AND chartworks.preparation_has_liability(p))`, e.Tenant(), e.User(), r.Target).Scan(&exists); err != nil {
 			return err
 		}
 		if exists {
@@ -286,6 +314,22 @@ func (d *DB) FinishAuthoringPreparation(ctx context.Context, e identity.Envelope
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		prior, err := authoringPreparationRecordTx(ctx, tx, e, r.ID, false, true, true)
+		if err != nil {
+			return err
+		}
+		if prior.Status != "accepted" || prior.InputDigest != r.InputDigest {
+			return store.ErrConflict
+		}
+		meta, err := preparationLifecycleTx(ctx, tx, e.Tenant(), r.ID)
+		if err != nil {
+			return err
+		}
+		// Verify against accepted custody, not caller-supplied attempt coordinates.
+		proof, err := preparationSettlementTx(ctx, tx, e, prior, meta, r.Status == "failed")
+		if err != nil {
+			return err
+		}
 		if r.Status == "prepared" {
 			if err := authoringPreparationFence(ctx, tx, e, r); err != nil {
 				return err
@@ -298,12 +342,17 @@ func (d *DB) FinishAuthoringPreparation(ctx context.Context, e identity.Envelope
 		if err != nil || len(raw) > 2<<20 {
 			return store.ErrInvalid
 		}
-		tag, err := tx.Exec(ctx, `UPDATE chartworks.authoring_preparations SET status=$5,record=$6 WHERE tenant_id=$1 AND preparation_id=$2 AND actor_id=$3 AND session_id=$4 AND status='accepted' AND expires_at>clock_timestamp()`, e.Tenant(), r.ID, e.User(), e.Session(), r.Status, raw)
+		tag, err := tx.Exec(ctx, `UPDATE chartworks.authoring_preparations SET status=$5,record=$6,settlement=$7 WHERE tenant_id=$1 AND preparation_id=$2 AND actor_id=$3 AND session_id=$4 AND status='accepted' AND expires_at>clock_timestamp()`, e.Tenant(), r.ID, e.User(), e.Session(), r.Status, raw, proof)
 		if err != nil {
 			return err
 		}
 		if tag.RowsAffected() != 1 {
 			return store.ErrConflict
+		}
+		if proof != nil {
+			if err := assertPreparationSettledTx(ctx, tx, e.Tenant(), r.ID); err != nil {
+				return err
+			}
 		}
 		scope, _ := store.NewScope(e.Tenant(), e.User())
 		if err := auditJob(ctx, tx, scope, "authoring.preparation_"+r.Status, r.ID); err != nil {
@@ -326,7 +375,7 @@ func consumeAuthoringPreparation(ctx context.Context, tx pgx.Tx, e identity.Enve
 	if err := reporting.RequireAuthoringPreparation(e, r, true); err != nil {
 		return err
 	}
-	if r.Status != "prepared" || r.Digest != m.Preparation.Digest || r.Target != m.ID || r.Revision == nil || m.Revision == nil || readexec.Hash(r.Revision) != readexec.Hash(m.Revision) || readexec.Hash(r.References) != readexec.Hash(m.References) || m.Topic != r.Topics[0].Topic {
+	if r.Status != "prepared" || !time.Now().Before(r.ExpiresAt) || r.Digest != m.Preparation.Digest || r.Target != m.ID || r.Revision == nil || m.Revision == nil || readexec.Hash(r.Revision) != readexec.Hash(m.Revision) || readexec.Hash(r.References) != readexec.Hash(m.References) || m.Topic != r.Topics[0].Topic {
 		return store.ErrConflict
 	}
 	if err := authoringPreparationFence(ctx, tx, e, r); err != nil {
@@ -335,6 +384,12 @@ func consumeAuthoringPreparation(ctx context.Context, tx pgx.Tx, e identity.Enve
 	if err := preparationAttempt(ctx, tx, e, r); err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `UPDATE chartworks.authoring_preparations SET status='consumed',record=jsonb_set(record,'{status}','"consumed"') WHERE tenant_id=$1 AND preparation_id=$2`, e.Tenant(), r.ID)
-	return err
+	tag, err := tx.Exec(ctx, `UPDATE chartworks.authoring_preparations SET status='consumed',record=jsonb_set(record,'{status}','"consumed"') WHERE tenant_id=$1 AND preparation_id=$2 AND status='prepared' AND expires_at>clock_timestamp()`, e.Tenant(), r.ID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return reporting.ErrStale
+	}
+	return nil
 }

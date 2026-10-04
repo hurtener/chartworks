@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"github.com/jackc/pgx/v5/pgconn"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/access"
@@ -33,5 +34,16 @@ func TestAuthoringPreparationStorageRejectsUnsealedShapesBeforeSQL(t *testing.T)
 	}
 	if err := consumeAuthoringPreparation(context.Background(), nil, identity.Envelope{}, reporting.Mutation{}); err != nil {
 		t.Fatal("ordinary create changed", err)
+	}
+}
+
+func TestAuthoringPreparationDatabaseContractErrorsRemainTyped(t *testing.T) {
+	for _, tc := range []struct {
+		code string
+		want error
+	}{{"CW001", reporting.ErrPreparationContract}, {"CW002", reporting.ErrPreparationOperationExpired}, {"CW003", reporting.ErrBusy}} {
+		if got := safe(&pgconn.PgError{Code: tc.code, Message: "private driver text"}); !errors.Is(got, tc.want) {
+			t.Fatal(tc.code, got)
+		}
 	}
 }

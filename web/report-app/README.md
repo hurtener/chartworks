@@ -265,8 +265,27 @@ preparation/digest and inserts an unvalidated private reference on the selected
 page. Save report remains source-free; Validate data and Private preview are
 separate deliberate actions. Preparation and private creation do not publish.
 
-Once preparation dispatches, the operation and target stay pinned. All uncertain
-or failed dispatch replies retain custody; Inspect preparation reads metadata by
+Only an explicit Prepare, after host allocation succeeds, creates
+`operation_version: "prepare-v1"` and a
+`prepare:<canonical Unix seconds>:<32 lowercase hex>` operation. Opening or
+editing setup never creates or ages that key. Native admission alone enforces its
+inclusive five-minute past / 30-second future window under current authority;
+the client clock grants no authority. The request, version, operation and target
+remain pinned through status, source control and Create. Status/control/Create
+retain their existing DTOs; no version field is added to those requests.
+
+Typed `preparation_contract_required` (409) and
+`preparation_operation_expired` (410) replies with no unknown outcome explicitly
+mean rejection before admission. They retain the attempted custody and expose
+Review setup for new preparation. That action reloads metadata only; selecting
+the reviewed fields and choosing Prepare again deliberately creates a new key
+and source-read attempt. An expired/future key advises checking the device clock;
+a contract rejection advises reopening an updated app. Neither error silently
+refreshes keys, falls back to legacy admission or starts a paid/source query.
+Legacy retained custody still supports exact status/control/Create recovery.
+
+All other failed or uncertain dispatch replies retain the unknown-outcome fence;
+Inspect preparation reads metadata by
 exact operation/preparation and cannot rerun a query. Original-attempt inspection,
 cancellation and reconciliation are separate explicit controls. Unknown create
 requires exact consumed custody before the explicit Recover created chart action
@@ -274,6 +293,16 @@ can use the server's consumed read branch. Closing setup retains at most16 bound
 recovery records in the current app window, discarding topic/dataset/schema
 buffers; reopening requires a new authorized status read. Closing the app clears
 all client state. There is no automatic retry or source execution on control edits.
+
+`preparation.test.mjs` and controller tests cover canonical keys, negative
+spellings, long staged/host-allocation delays, deliberate rejection recovery,
+legacy retained custody and unknown-outcome fences. `preparation-bundle.test.mjs`
+executes the generated IIFE through both MCP and embedded transports with typed
+error envelopes. The Node-only hosted fixture reads the same native capture,
+with its existing safe-field/time projection, rather than maintaining a second
+embedded DTO copy. A parity test prevents legacy contract drift.
+This deterministic synthetic coverage is not hosted-browser
+or native PostgreSQL proof.
 
 Source tests use clearly synthetic DTOs. Actual PostgreSQL preparation, hosted
 browser interaction and pixels qualify this lane separately. The current

@@ -7,9 +7,11 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/charts"
 	readexec "github.com/hurtener/chartworks/internal/exec"
@@ -77,7 +79,7 @@ func reportDatasetFixture(t *testing.T, target string) (*phase29ExecutionFixture
 	}
 	options := charts.DefaultOptions()
 	options.Title = "Prepared revenue"
-	request := reporting.AuthoringPrepareRequest{NewBlock: target, Operation: "dataset-prepare-one", Intent: reporting.AuthoringDatasetIntent{Topic: catalog.Topic, Dataset: catalog.Dataset, Dimensions: []string{}, Measure: measure.ID, Mapping: reporting.AuthoringChartMapping{Kind: charts.KPI, Bindings: charts.Bindings{Value: measure.Binding}, Order: []charts.Order{}, Options: options}}, Metadata: []reporting.Localized{{Locale: "en-US", Title: "Prepared revenue", Question: "Prepared revenue", Description: "", Aliases: []string{}}}}
+	request := reporting.AuthoringPrepareRequest{NewBlock: target, Operation: "prepare:" + strconv.FormatInt(time.Now().Unix(), 10) + ":" + strings.Repeat("1", 32), OperationVersion: reporting.AuthoringPreparationOperationVersion, Intent: reporting.AuthoringDatasetIntent{Topic: catalog.Topic, Dataset: catalog.Dataset, Dimensions: []string{}, Measure: measure.ID, Mapping: reporting.AuthoringChartMapping{Kind: charts.KPI, Bindings: charts.Bindings{Value: measure.Binding}, Order: []charts.Order{}, Options: options}}, Metadata: []reporting.Localized{{Locale: "en-US", Title: "Prepared revenue", Question: "Prepared revenue", Description: "", Aliases: []string{}}}}
 	return f, s, author, request, p, dataset, scopes
 }
 
@@ -253,7 +255,7 @@ func TestReportAppDeterministicPreparation(t *testing.T) {
 	}
 	// Optional synthetic fixture export for the two host-adapter browser tests.
 	// No bearer, SQL, native control handle or source credential is included.
-	if path := os.Getenv("CHARTWORKS_DATASET_FIXTURE_PATH"); path != "" {
+	if path, contractPath := os.Getenv("CHARTWORKS_DATASET_FIXTURE_PATH"), os.Getenv("CHARTWORKS_DATASET_CONTRACT_PATH"); path != "" || contractPath != "" {
 		catalog, err := s.Dataset(ctx, author, reporting.AuthoringDatasetRequest{Topic: request.Intent.Topic, Dataset: dataset.ID})
 		if err != nil {
 			t.Fatal(err)
@@ -284,8 +286,19 @@ func TestReportAppDeterministicPreparation(t *testing.T) {
 			}
 		}
 		checkPublic(public)
-		if err := os.WriteFile(path, wire, 0600); err != nil {
-			t.Fatal(err)
+		if path != "" {
+			if err := os.WriteFile(path, wire, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if contractPath != "" {
+			contract, err := json.MarshalIndent(map[string]any{"dataset": catalog, "request": request}, "", "  ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(contractPath, contract, 0600); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	pending, err := s.Preview(ctx, reportActor, reporting.AuthoringPreviewRequest{Report: reportID, Revision: state.DraftRevision, Key: "dataset-rule-race-preview"})

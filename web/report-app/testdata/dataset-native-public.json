@@ -1,25 +1,25 @@
 {
   "complete": {
-    "id": "d8a66ad9da6be17763b7642485812254",
+    "id": "037a98ce5d3d26770cbf37d5d080905f",
     "kind": "report",
     "document": "dataset-private-report",
-    "revision": 1,
-    "manifest_digest": "8d708ed13887d3351c68d165fff30b9408c2b509b7c7d0ad858d8dfec4a3613e",
+    "revision": 2,
+    "manifest_digest": "b875de31e9f80295d46acb57cc75e57c8836735d7ebf283b40136c0abc76a532",
     "state": "completed",
     "private": true,
     "complete": true,
     "mixed_freshness": false,
     "redacted": false,
-    "created_at": "2026-10-04T00:44:31.20604Z",
-    "expires_at": "2026-10-05T00:44:31.20604Z",
-    "finished_at": "2026-10-03T21:44:31.875393-03:00",
+    "created_at": "2026-10-04T17:10:24.266516Z",
+    "expires_at": "2026-10-05T17:10:24.266516Z",
+    "finished_at": "2026-10-04T14:10:24.982813-03:00",
     "pages": [
       {
         "locale": "en-US",
         "timezone": "UTC",
         "id": "analysis",
         "report": "dataset-private-report",
-        "revision": 1,
+        "revision": 2,
         "title": "Analysis",
         "widgets": [
           {
@@ -60,16 +60,18 @@
               "timeout_ms": 60000,
               "query_attempts": 3
             },
-            "id": "dataset-chart",
+            "id": "widget-c0ffee02",
             "kind": "block",
             "state": "completed",
             "grid": {
               "column": 0,
               "row": 0,
-              "width": 12,
-              "height": 1
+              "width": 4,
+              "height": 3
             },
-            "presentation": {},
+            "presentation": {
+              "title": "Prepared revenue"
+            },
             "outputs": [
               "chart"
             ],
@@ -79,12 +81,12 @@
               "certification": "none",
               "health": {
                 "status": "healthy",
-                "observed_at": "2026-10-04T00:44:31.119486472Z",
-                "dependency_digest": "4269fba0a2d2476b3dafb6460a2199d4046439465b55c4aae3e7e2526eecd8f7",
+                "observed_at": "2026-10-04T17:10:24.200227131Z",
+                "dependency_digest": "f39ad9be2a546e1726af5495604f4bde94130328a6df87bfaefa3e0e6ff44dbe",
                 "reason": "validated_observation"
               }
             },
-            "observed_at": "2026-10-03T21:44:31.593619-03:00"
+            "observed_at": "2026-10-04T14:10:24.646775-03:00"
           }
         ]
       },
@@ -93,13 +95,13 @@
         "timezone": "UTC",
         "id": "empty",
         "report": "dataset-private-report",
-        "revision": 1,
+        "revision": 2,
         "title": "Empty",
         "widgets": []
       }
     ],
     "query_groups": 1,
-    "retained_bytes": 10950
+    "retained_bytes": 10982
   },
   "created": {
     "block": {
@@ -109,7 +111,7 @@
           "field": "m_46f93a6a01617b80efa06168",
           "status": "unknown",
           "basis": "reviewed_query_dependencies",
-          "provenance_digest": "eac973c40c2768c31a9ac25606cb1b5b64ee9efb2f10fc4f0fc791233b3a1ee6"
+          "provenance_digest": "33b346f333a77df366d7b35cf006dabf22a42c45974389fd4a95cdbad53a1b5c"
         }
       ],
       "state": {
@@ -120,13 +122,13 @@
         "published_revision": 0,
         "draft_state": "draft",
         "archived": false,
-        "created_at": "2026-10-03T21:44:31.024467-03:00",
-        "updated_at": "2026-10-03T21:44:31.024467-03:00"
+        "created_at": "2026-10-04T14:10:24.010159-03:00",
+        "updated_at": "2026-10-04T14:10:24.01016-03:00"
       },
       "revision": 1,
-      "revision_id": "cbcc007cf2ddccaefa0ee344545bc955",
-      "digest": "3eb53159d2d64f9521b415d217034500906543d96e0ea45954650be9dbc94ed5",
-      "execution_digest": "5a4597a0b8c7170a488a4e8a790afef68adb770aa91142f49e5ad99a2365ab17",
+      "revision_id": "56655596d6a405d58e3e7b1d3c12baa0",
+      "digest": "ea5565ae8ed1a17fc8711733757df90316f105ec3bdd9bf136a91f0aaa0236f9",
+      "execution_digest": "7b4e084883fe3561609c91bd224ad5e1a539e5f41f7d41dbb463b1919162b460",
       "metadata": [
         {
           "locale": "en-US",
@@ -142,7 +144,7 @@
         {
           "topic": "commerce",
           "version": "v1",
-          "digest": "e342702f7e0e264befe5a74f61efe60f5a070fb5248bad0b607d23785d182477"
+          "digest": "7cbfd29fe886323e4ce9a2678000857c2bf12be06af54e03ca109d098444d24b"
         }
       ],
       "parameters": [],
@@ -215,7 +217,7 @@
         }
       ],
       "actor": "operator",
-      "created_at": "2026-10-04T00:44:30.960215624Z",
+      "created_at": "2026-10-04T17:10:23.931325626Z",
       "private": true,
       "trust": {
         "publication": "draft",
@@ -259,11 +261,12 @@
     "data_validation": "not_performed"
   },
   "dataset": {
+    "filter_compiler": "reviewed-dataset-postgres-v2",
     "compiler": "reviewed-dataset-postgres-v1",
     "topic": {
       "topic": "commerce",
       "version": "v1",
-      "digest": "e342702f7e0e264befe5a74f61efe60f5a070fb5248bad0b607d23785d182477"
+      "digest": "7cbfd29fe886323e4ce9a2678000857c2bf12be06af54e03ca109d098444d24b"
     },
     "dataset": "ds:95b3449b842ed4ac7c5306c17930e519",
     "source": "topic-source",
@@ -294,7 +297,7 @@
     ],
     "limitations": [
       "PostgreSQL only; zero to two direct dimensions and one reviewed measure.",
-      "No filters, group policies, calendar bucketing, joins, arbitrary KPI expressions, active rules or amount-completeness policies in the initial compiler.",
+      "The v1 branch is unfiltered. The v2 branch supports only the advertised required-default filters; group policies, calendar bucketing, joins, arbitrary KPI expressions, active rules and amount-completeness policies remain unsupported.",
       "Prepare reads actual schema. Create remains private and unvalidated; Validate is a separate explicit read."
     ],
     "supported": true
@@ -309,8 +312,8 @@
       "generations": [
         {
           "context": "topic-source:v1",
-          "generation": "e80129b21ff375853b836d86c93fb95f6b746b9b993b8fcb98b6e7c31999e732",
-          "space": "a834385ce5bc359636a4446dc29aaef47dddb82f9f0597f461eb84647aec6806",
+          "generation": "48634d2ff7bf8c3fbd4c353caf4c2bc2f1f324e103b05d5a76fe215f6fb9170e",
+          "space": "a85267d1250d333b5f18fff057bf4fe9312c11ec9253ac90fefc5deb280f1118",
           "facets": 9
         }
       ]
@@ -420,8 +423,122 @@
       ],
       "canonical_entities": null
     },
-    "digest": "e342702f7e0e264befe5a74f61efe60f5a070fb5248bad0b607d23785d182477",
-    "published_at": "2026-10-03T21:44:30.761274-03:00"
+    "digest": "7cbfd29fe886323e4ce9a2678000857c2bf12be06af54e03ca109d098444d24b",
+    "published_at": "2026-10-04T14:10:23.611492-03:00"
+  },
+  "final_read": {
+    "state": {
+      "kind": "report",
+      "id": "dataset-private-report",
+      "version": 2,
+      "latest_revision": 2,
+      "draft_revision": 2,
+      "review_revision": 0,
+      "published_revision": 0,
+      "archived": false,
+      "created_at": "2026-10-04T14:10:23.823964-03:00",
+      "updated_at": "2026-10-04T14:10:24.104649-03:00"
+    },
+    "revision": 2,
+    "digest": "5aa84adb9d53d7cc6ce7a322f9fa847805dfa8725133ebcf2f42d2adc4d72265",
+    "private": true,
+    "definition": {
+      "schema_version": 3,
+      "metadata": [
+        {
+          "locale": "en-US",
+          "title": "Dataset chart report"
+        },
+        {
+          "locale": "es-AR",
+          "title": "Informe sintético"
+        }
+      ],
+      "locale": "en-US",
+      "timezone": "UTC",
+      "report_pages": [
+        {
+          "id": "analysis",
+          "title": "Analysis",
+          "widgets": [
+            {
+              "id": "widget-c0ffee02",
+              "kind": "block",
+              "grid": {
+                "column": 0,
+                "row": 0,
+                "width": 4,
+                "height": 3
+              },
+              "presentation": {
+                "title": "Prepared revenue"
+              },
+              "block": {
+                "digest": "ea5565ae8ed1a17fc8711733757df90316f105ec3bdd9bf136a91f0aaa0236f9",
+                "block": "dataset-private-chart",
+                "revision": 1,
+                "outputs": [
+                  "chart"
+                ],
+                "policy": "private_preview",
+                "narrative": false
+              }
+            }
+          ]
+        },
+        {
+          "id": "empty",
+          "title": "Empty",
+          "widgets": []
+        }
+      ],
+      "partial_failure": "fail_closed"
+    }
+  },
+  "initial_read": {
+    "state": {
+      "kind": "report",
+      "id": "dataset-private-report",
+      "version": 1,
+      "latest_revision": 1,
+      "draft_revision": 1,
+      "review_revision": 0,
+      "published_revision": 0,
+      "archived": false,
+      "created_at": "2026-10-04T14:10:23.823964-03:00",
+      "updated_at": "2026-10-04T14:10:23.823964-03:00"
+    },
+    "revision": 1,
+    "digest": "3ecba0fa42d5c8c547c5fa93938806bd10e9eec4341367ce32ab3e46972a4352",
+    "private": true,
+    "definition": {
+      "schema_version": 3,
+      "metadata": [
+        {
+          "locale": "en-US",
+          "title": "Dataset chart report"
+        },
+        {
+          "locale": "es-AR",
+          "title": "Informe sintético"
+        }
+      ],
+      "locale": "en-US",
+      "timezone": "UTC",
+      "report_pages": [
+        {
+          "id": "analysis",
+          "title": "Analysis",
+          "widgets": []
+        },
+        {
+          "id": "empty",
+          "title": "Empty",
+          "widgets": []
+        }
+      ],
+      "partial_failure": "fail_closed"
+    }
   },
   "list_topics": [
     {
@@ -430,13 +547,13 @@
       "revision": 1,
       "name": "Commerce",
       "description": "Synthetic draft",
-      "digest": "e342702f7e0e264befe5a74f61efe60f5a070fb5248bad0b607d23785d182477",
-      "published_at": "2026-10-03T21:44:30.761274-03:00"
+      "digest": "7cbfd29fe886323e4ce9a2678000857c2bf12be06af54e03ca109d098444d24b",
+      "published_at": "2026-10-04T14:10:23.611492-03:00"
     }
   ],
   "payload": {
     "page": "analysis",
-    "widget": "dataset-chart",
+    "widget": "widget-c0ffee02",
     "state": "completed",
     "outputs": [
       {
@@ -445,7 +562,7 @@
             "field": "m_46f93a6a01617b80efa06168",
             "status": "allowed",
             "basis": "reviewed_query_dependencies",
-            "provenance_digest": "26a6d81f14aeb57f4fd0b2dc96c03b02b04a9270aa3c69190380cfc72d3329c7"
+            "provenance_digest": "46bae458ed65b5006ecc0ea6aff351e98615e0d61cf786f60e064ed1937e3711"
           }
         ],
         "intent": {
@@ -463,7 +580,7 @@
         "id": "chart",
         "kind": "kpi",
         "state": "succeeded",
-        "digest": "89e8d42479c7bdde597d356f7775924ada3147faf4a53d3f92f94fbbc667f619",
+        "digest": "da31dbf20f10d9d1f2373a434bf7f4fa72455076686b0a902a0d2e7cc5884d41",
         "chart": {
           "version": 1,
           "kind": "kpi",
@@ -596,10 +713,10 @@
     ]
   },
   "preparation": {
-    "preparation": "15a237393b0097abc352045b905a5d64",
+    "preparation": "3b05c48c91a9e389de5e91c79f8cc57d",
     "new_block": "dataset-private-chart",
-    "operation": "dataset-prepare-one",
-    "digest": "f36f698bd487588713da2809f45c237963c961cf02161afe5f981ff7fe9cfa5d",
+    "operation": "prepare:1791133823:11111111111111111111111111111111",
+    "digest": "3e8c2189ac5620cd1065774e0f53dd89902a4dde765a20eab0961cfcd7c9bc11",
     "status": "prepared",
     "schema": [
       {
@@ -650,31 +767,31 @@
         "label_max_runes": 80
       }
     },
-    "expires_at": "2026-10-04T00:59:30.913183763Z",
+    "expires_at": "2026-10-04T17:25:23.86615146Z",
     "validation": "native_validation_required",
     "execution_status": "succeeded",
     "remote_state": "stopped"
   },
   "preview": {
-    "id": "d8a66ad9da6be17763b7642485812254",
+    "id": "037a98ce5d3d26770cbf37d5d080905f",
     "kind": "report",
     "document": "dataset-private-report",
-    "revision": 1,
-    "manifest_digest": "8d708ed13887d3351c68d165fff30b9408c2b509b7c7d0ad858d8dfec4a3613e",
+    "revision": 2,
+    "manifest_digest": "b875de31e9f80295d46acb57cc75e57c8836735d7ebf283b40136c0abc76a532",
     "state": "sealed",
     "private": true,
     "complete": false,
     "mixed_freshness": false,
     "redacted": false,
-    "created_at": "2026-10-04T00:44:31.20604Z",
-    "expires_at": "2026-10-05T00:44:31.20604Z",
+    "created_at": "2026-10-04T17:10:24.266516Z",
+    "expires_at": "2026-10-05T17:10:24.266516Z",
     "pages": [
       {
         "locale": "en-US",
         "timezone": "UTC",
         "id": "analysis",
         "report": "dataset-private-report",
-        "revision": 1,
+        "revision": 2,
         "title": "Analysis",
         "widgets": [
           {
@@ -715,16 +832,18 @@
               "timeout_ms": 60000,
               "query_attempts": 3
             },
-            "id": "dataset-chart",
+            "id": "widget-c0ffee02",
             "kind": "block",
             "state": "pending",
             "grid": {
               "column": 0,
               "row": 0,
-              "width": 12,
-              "height": 1
+              "width": 4,
+              "height": 3
             },
-            "presentation": {},
+            "presentation": {
+              "title": "Prepared revenue"
+            },
             "outputs": [
               "chart"
             ],
@@ -734,8 +853,8 @@
               "certification": "none",
               "health": {
                 "status": "healthy",
-                "observed_at": "2026-10-04T00:44:31.119486472Z",
-                "dependency_digest": "4269fba0a2d2476b3dafb6460a2199d4046439465b55c4aae3e7e2526eecd8f7",
+                "observed_at": "2026-10-04T17:10:24.200227131Z",
+                "dependency_digest": "f39ad9be2a546e1726af5495604f4bde94130328a6df87bfaefa3e0e6ff44dbe",
                 "reason": "validated_observation"
               }
             }
@@ -747,34 +866,35 @@
         "timezone": "UTC",
         "id": "empty",
         "report": "dataset-private-report",
-        "revision": 1,
+        "revision": 2,
         "title": "Empty",
         "widgets": []
       }
     ],
     "query_groups": 1,
-    "retained_bytes": 5558
+    "retained_bytes": 5589
   },
   "report_state": {
     "kind": "report",
     "id": "dataset-private-report",
-    "version": 1,
-    "latest_revision": 1,
-    "draft_revision": 1,
+    "version": 2,
+    "latest_revision": 2,
+    "draft_revision": 2,
     "review_revision": 0,
     "published_revision": 0,
     "archived": false,
-    "created_at": "2026-10-03T21:44:31.175239-03:00",
-    "updated_at": "2026-10-03T21:44:31.175239-03:00"
+    "created_at": "2026-10-04T14:10:23.823964-03:00",
+    "updated_at": "2026-10-04T14:10:24.104649-03:00"
   },
   "request": {
     "new_block": "dataset-private-chart",
-    "operation": "dataset-prepare-one",
+    "operation": "prepare:1791133823:11111111111111111111111111111111",
+    "operation_version": "prepare-v1",
     "intent": {
       "topic": {
         "topic": "commerce",
         "version": "v1",
-        "digest": "e342702f7e0e264befe5a74f61efe60f5a070fb5248bad0b607d23785d182477"
+        "digest": "7cbfd29fe886323e4ce9a2678000857c2bf12be06af54e03ca109d098444d24b"
       },
       "dataset": "ds:95b3449b842ed4ac7c5306c17930e519",
       "dimensions": [],
@@ -805,6 +925,63 @@
       }
     ]
   },
+  "save_request": {
+    "report": "dataset-private-report",
+    "expected_version": 1,
+    "revision": 1,
+    "definition": {
+      "schema_version": 3,
+      "metadata": [
+        {
+          "locale": "en-US",
+          "title": "Dataset chart report"
+        },
+        {
+          "locale": "es-AR",
+          "title": "Informe sintético"
+        }
+      ],
+      "locale": "en-US",
+      "timezone": "UTC",
+      "report_pages": [
+        {
+          "id": "analysis",
+          "title": "Analysis",
+          "widgets": [
+            {
+              "id": "widget-c0ffee02",
+              "kind": "block",
+              "grid": {
+                "column": 0,
+                "row": 0,
+                "width": 4,
+                "height": 3
+              },
+              "presentation": {
+                "title": "Prepared revenue"
+              },
+              "block": {
+                "digest": "ea5565ae8ed1a17fc8711733757df90316f105ec3bdd9bf136a91f0aaa0236f9",
+                "block": "dataset-private-chart",
+                "revision": 1,
+                "outputs": [
+                  "chart"
+                ],
+                "policy": "private_preview",
+                "narrative": false
+              }
+            }
+          ]
+        },
+        {
+          "id": "empty",
+          "title": "Empty",
+          "widgets": []
+        }
+      ],
+      "partial_failure": "fail_closed"
+    }
+  },
   "validation": {
     "state": {
       "id": "dataset-private-chart",
@@ -814,14 +991,14 @@
       "published_revision": 0,
       "draft_state": "validated",
       "archived": false,
-      "created_at": "2026-10-03T21:44:31.024467-03:00",
-      "updated_at": "2026-10-03T21:44:31.140314-03:00"
+      "created_at": "2026-10-04T14:10:24.010159-03:00",
+      "updated_at": "2026-10-04T14:10:24.227483-03:00"
     },
     "evidence": {
-      "id": "8b55f979810451c018957e952b93ddd0",
+      "id": "4d7fff663d6d92148ea9e7f2acd01312",
       "revision": 1,
-      "definition_digest": "3eb53159d2d64f9521b415d217034500906543d96e0ea45954650be9dbc94ed5",
-      "execution_digest": "5a4597a0b8c7170a488a4e8a790afef68adb770aa91142f49e5ad99a2365ab17",
+      "definition_digest": "ea5565ae8ed1a17fc8711733757df90316f105ec3bdd9bf136a91f0aaa0236f9",
+      "execution_digest": "7b4e084883fe3561609c91bd224ad5e1a539e5f41f7d41dbb463b1919162b460",
       "schema_digest": "f408819d52279e8d85fa4a42073d0eee36676d36b4647fadd7bbecb01dcd2d9b",
       "schema": [
         {
@@ -831,8 +1008,8 @@
           "native_type": "numeric"
         }
       ],
-      "created_at": "2026-10-04T00:44:31.119486472Z",
-      "expires_at": "2026-10-05T00:44:31.119486472Z"
+      "created_at": "2026-10-04T17:10:24.200227131Z",
+      "expires_at": "2026-10-05T17:10:24.200227131Z"
     }
   },
   "view_output": {
@@ -876,23 +1053,23 @@
     "version": "reporting-view-v1",
     "summary": {
       "kind": "report",
-      "run": "d8a66ad9da6be17763b7642485812254",
+      "run": "037a98ce5d3d26770cbf37d5d080905f",
       "target": {
         "kind": "report",
         "id": "dataset-private-report",
-        "revision": 1
+        "revision": 2
       },
       "state": "completed",
       "code": "",
       "private": true,
-      "created_at": "2026-10-03T21:44:31.20604-03:00",
-      "expires_at": "2026-10-04T21:44:31.20604-03:00"
+      "created_at": "2026-10-04T14:10:24.266516-03:00",
+      "expires_at": "2026-10-05T14:10:24.266516-03:00"
     },
     "selection": {
       "kind": "report",
-      "run": "d8a66ad9da6be17763b7642485812254",
+      "run": "037a98ce5d3d26770cbf37d5d080905f",
       "page": "analysis",
-      "widget": "dataset-chart",
+      "widget": "widget-c0ffee02",
       "output": "chart",
       "offset": 0,
       "limit": 100
@@ -926,7 +1103,7 @@
         "timezone": "UTC",
         "id": "analysis",
         "report": "dataset-private-report",
-        "revision": 1,
+        "revision": 2,
         "title": "Analysis",
         "widgets": [
           {
@@ -967,16 +1144,18 @@
               "timeout_ms": 60000,
               "query_attempts": 3
             },
-            "id": "dataset-chart",
+            "id": "widget-c0ffee02",
             "kind": "block",
             "state": "completed",
             "grid": {
               "column": 0,
               "row": 0,
-              "width": 12,
-              "height": 1
+              "width": 4,
+              "height": 3
             },
-            "presentation": {},
+            "presentation": {
+              "title": "Prepared revenue"
+            },
             "outputs": [
               "chart"
             ],
@@ -986,12 +1165,12 @@
               "certification": "none",
               "health": {
                 "status": "healthy",
-                "observed_at": "2026-10-04T00:44:31.119486472Z",
-                "dependency_digest": "4269fba0a2d2476b3dafb6460a2199d4046439465b55c4aae3e7e2526eecd8f7",
+                "observed_at": "2026-10-04T17:10:24.200227131Z",
+                "dependency_digest": "f39ad9be2a546e1726af5495604f4bde94130328a6df87bfaefa3e0e6ff44dbe",
                 "reason": "validated_observation"
               }
             },
-            "observed_at": "2026-10-03T21:44:31.593619-03:00"
+            "observed_at": "2026-10-04T14:10:24.646775-03:00"
           }
         ]
       },
@@ -1000,7 +1179,7 @@
         "timezone": "UTC",
         "id": "empty",
         "report": "dataset-private-report",
-        "revision": 1,
+        "revision": 2,
         "title": "Empty",
         "widgets": []
       }
@@ -1011,12 +1190,12 @@
       "certification": "none",
       "health": {
         "status": "healthy",
-        "observed_at": "2026-10-04T00:44:31.119486472Z",
-        "dependency_digest": "4269fba0a2d2476b3dafb6460a2199d4046439465b55c4aae3e7e2526eecd8f7",
+        "observed_at": "2026-10-04T17:10:24.200227131Z",
+        "dependency_digest": "f39ad9be2a546e1726af5495604f4bde94130328a6df87bfaefa3e0e6ff44dbe",
         "reason": "validated_observation"
       }
     },
-    "observed_at": "2026-10-03T21:44:31.593619-03:00",
+    "observed_at": "2026-10-04T14:10:24.646775-03:00",
     "mixed_freshness": false,
     "redacted": false,
     "output": {
@@ -1025,7 +1204,7 @@
           "field": "m_46f93a6a01617b80efa06168",
           "status": "allowed",
           "basis": "reviewed_query_dependencies",
-          "provenance_digest": "26a6d81f14aeb57f4fd0b2dc96c03b02b04a9270aa3c69190380cfc72d3329c7"
+          "provenance_digest": "46bae458ed65b5006ecc0ea6aff351e98615e0d61cf786f60e064ed1937e3711"
         }
       ],
       "intent": {
@@ -1044,7 +1223,7 @@
       "kind": "kpi",
       "state": "succeeded",
       "code": "",
-      "retained_digest": "89e8d42479c7bdde597d356f7775924ada3147faf4a53d3f92f94fbbc667f619",
+      "retained_digest": "da31dbf20f10d9d1f2373a434bf7f4fa72455076686b0a902a0d2e7cc5884d41",
       "chart": {
         "version": 1,
         "kind": "kpi",
@@ -1219,23 +1398,23 @@
     "version": "reporting-view-v1",
     "summary": {
       "kind": "report",
-      "run": "d8a66ad9da6be17763b7642485812254",
+      "run": "037a98ce5d3d26770cbf37d5d080905f",
       "target": {
         "kind": "report",
         "id": "dataset-private-report",
-        "revision": 1
+        "revision": 2
       },
       "state": "completed",
       "code": "",
       "private": true,
-      "created_at": "2026-10-03T21:44:31.20604-03:00",
-      "expires_at": "2026-10-04T21:44:31.20604-03:00"
+      "created_at": "2026-10-04T14:10:24.266516-03:00",
+      "expires_at": "2026-10-05T14:10:24.266516-03:00"
     },
     "selection": {
       "kind": "report",
-      "run": "d8a66ad9da6be17763b7642485812254",
+      "run": "037a98ce5d3d26770cbf37d5d080905f",
       "page": "analysis",
-      "widget": "dataset-chart",
+      "widget": "widget-c0ffee02",
       "output": "chart",
       "offset": 0,
       "limit": 100
@@ -1269,7 +1448,7 @@
         "timezone": "UTC",
         "id": "analysis",
         "report": "dataset-private-report",
-        "revision": 1,
+        "revision": 2,
         "title": "Analysis",
         "widgets": [
           {
@@ -1310,16 +1489,18 @@
               "timeout_ms": 60000,
               "query_attempts": 3
             },
-            "id": "dataset-chart",
+            "id": "widget-c0ffee02",
             "kind": "block",
             "state": "completed",
             "grid": {
               "column": 0,
               "row": 0,
-              "width": 12,
-              "height": 1
+              "width": 4,
+              "height": 3
             },
-            "presentation": {},
+            "presentation": {
+              "title": "Prepared revenue"
+            },
             "outputs": [
               "chart"
             ],
@@ -1329,12 +1510,12 @@
               "certification": "none",
               "health": {
                 "status": "healthy",
-                "observed_at": "2026-10-04T00:44:31.119486472Z",
-                "dependency_digest": "4269fba0a2d2476b3dafb6460a2199d4046439465b55c4aae3e7e2526eecd8f7",
+                "observed_at": "2026-10-04T17:10:24.200227131Z",
+                "dependency_digest": "f39ad9be2a546e1726af5495604f4bde94130328a6df87bfaefa3e0e6ff44dbe",
                 "reason": "validated_observation"
               }
             },
-            "observed_at": "2026-10-03T21:44:31.593619-03:00"
+            "observed_at": "2026-10-04T14:10:24.646775-03:00"
           }
         ]
       },
@@ -1343,7 +1524,7 @@
         "timezone": "UTC",
         "id": "empty",
         "report": "dataset-private-report",
-        "revision": 1,
+        "revision": 2,
         "title": "Empty",
         "widgets": []
       }
@@ -1354,12 +1535,12 @@
       "certification": "none",
       "health": {
         "status": "healthy",
-        "observed_at": "2026-10-04T00:44:31.119486472Z",
-        "dependency_digest": "4269fba0a2d2476b3dafb6460a2199d4046439465b55c4aae3e7e2526eecd8f7",
+        "observed_at": "2026-10-04T17:10:24.200227131Z",
+        "dependency_digest": "f39ad9be2a546e1726af5495604f4bde94130328a6df87bfaefa3e0e6ff44dbe",
         "reason": "validated_observation"
       }
     },
-    "observed_at": "2026-10-03T21:44:31.593619-03:00",
+    "observed_at": "2026-10-04T14:10:24.646775-03:00",
     "mixed_freshness": false,
     "redacted": false,
     "output": {
@@ -1368,7 +1549,7 @@
           "field": "m_46f93a6a01617b80efa06168",
           "status": "allowed",
           "basis": "reviewed_query_dependencies",
-          "provenance_digest": "26a6d81f14aeb57f4fd0b2dc96c03b02b04a9270aa3c69190380cfc72d3329c7"
+          "provenance_digest": "46bae458ed65b5006ecc0ea6aff351e98615e0d61cf786f60e064ed1937e3711"
         }
       ],
       "intent": {
@@ -1387,7 +1568,7 @@
       "kind": "kpi",
       "state": "succeeded",
       "code": "",
-      "retained_digest": "89e8d42479c7bdde597d356f7775924ada3147faf4a53d3f92f94fbbc667f619",
+      "retained_digest": "da31dbf20f10d9d1f2373a434bf7f4fa72455076686b0a902a0d2e7cc5884d41",
       "chart": {
         "version": 1,
         "kind": "kpi",

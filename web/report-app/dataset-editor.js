@@ -53,7 +53,7 @@ function renderDatasetLookupRecovery(parent,session,{busy,inspectFilter}){
   section.append(datasetNode('p','Status checks never repeat the source query. Closing keeps the original lookup available from Resume chart setup.','metadata'));parent.append(section);
  }
 }
-export function renderDatasetEditor(parent,session,{busy=false,allocation=null,canAllocate=false,resume,change,read,prepare,create,recover,inspect,cancel,searchFilter,inspectFilter}){
+export function renderDatasetEditor(parent,session,{busy=false,allocation=null,canAllocate=false,resume,change,read,prepare,review,create,recover,inspect,cancel,searchFilter,inspectFilter}){
  const section=datasetNode('section',undefined,'dataset-editor');section.append(datasetNode('h2','Create from dataset'),datasetNode('p','Choose reviewed fields, then deliberately prepare their actual data shape.','metadata'));
  const locked=busy||session.locked||!!allocation?.pending||!!allocation?.unknown,edit=fn=>{session.edit(fn);change();};
  if(!session.custody){
@@ -81,11 +81,12 @@ export function renderDatasetEditor(parent,session,{busy=false,allocation=null,c
  const result=session.preparation;
  if(result)section.append(datasetNode('p',`Preparation: ${result.status}${result.code?' · '+result.code:''}`,'notice'));
  if(session.custody){
-  const details=datasetNode('details');details.append(datasetNode('summary','Preparation and recovery details'),datasetNode('p',`Target: ${session.custody.new_block}`,'metadata'),datasetNode('p',`Operation: ${session.custody.operation}`,'metadata'));if(session.custody.preparation)details.append(datasetNode('p',`Preparation: ${session.custody.preparation}`,'metadata'));if(result?.expires_at)details.append(datasetNode('p',`Expires: ${result.expires_at}`,'metadata'));if(result?.execution_status||result?.remote_state)details.append(datasetNode('p',`Source attempt: ${result.execution_status||'unknown'} · ${result.remote_state||'unknown'}`,'metadata'));section.append(details);
+  const details=datasetNode('details');details.append(datasetNode('summary','Preparation and recovery details'),datasetNode('p',`Target: ${session.custody.new_block}`,'metadata'),datasetNode('p',`Operation: ${session.custody.operation}`,'metadata'),datasetNode('p',`Contract: ${session.custody.operation_version||'legacy retained operation'}`,'metadata'));if(session.custody.preparation)details.append(datasetNode('p',`Preparation: ${session.custody.preparation}`,'metadata'));if(result?.expires_at)details.append(datasetNode('p',`Expires: ${result.expires_at}`,'metadata'));if(result?.execution_status||result?.remote_state)details.append(datasetNode('p',`Source attempt: ${result.execution_status||'unknown'} · ${result.remote_state||'unknown'}`,'metadata'));section.append(details);
   if(session.unknown)section.append(datasetNode('p',session.unknown==='create'?'Chart creation outcome is unknown. Inspect exact preparation custody before recovery.':'Preparation outcome is unknown or pending. Inspect the original operation; it will not run again.','notice error'));
   if(result?.status==='prepared')section.append(datasetNode('p',`Actual schema checked: ${result.schema.length} fields. Native chart validation is still required.`, 'metadata'),datasetButton('Create private chart',create,!session.canCreate()||busy));
   if(session.canRecover())section.append(datasetButton('Recover created chart',recover,busy));
-  section.append(datasetButton('Inspect preparation',()=>inspect(''),busy||session.pending));
+  if(session.rejected)section.append(datasetNode('p',session.rejected==='preparation_operation_expired'?'The server rejected this operation before admission because its timestamp expired or is ahead. Check your device clock, then review setup.':'The server rejected this preparation contract before admission. Reopen the app if an update is needed, then review setup.','notice error'),datasetButton('Review setup for new preparation',()=>review(session),busy||session.pending),datasetNode('p','Reviewing only reloads metadata. A new source read needs another explicit Prepare chart.','metadata'));
+  else section.append(datasetButton('Inspect preparation',()=>inspect(''),busy||session.pending));
   if(['accepted','uncertain'].includes(result?.status)||session.unknown==='prepare')section.append(datasetButton('Inspect source attempt',()=>inspect('inspect'),busy||session.pending),datasetButton('Cancel source attempt',()=>inspect('cancel'),busy||session.pending),datasetButton('Reconcile source attempt',()=>inspect('reconcile'),busy||session.pending));
   section.append(datasetNode('p','Closing keeps these recovery coordinates in this report window. Source control never restarts preparation.','metadata'));
  }
