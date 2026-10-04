@@ -3676,7 +3676,14 @@ export function initializeSyntheticHost(samples, embedded, mappingSamples, datas
     if(window.datasetMode&&name==='reporting_search')return wrap({version:'reporting-view-v1',items:[{target:{kind:'report',id:state.id,revision:1},title:definition.metadata.find(m=>m.locale==='en-US').title,description:'Native PostgreSQL synthetic-source fixture; no production provider connection',locale:'en-US'}],next:''});
     if(name==='chart_catalog'||['reporting_authoring_block_read_v1','reporting_authoring_block_copy_v1','reporting_authoring_block_mapping_v1','reporting_authoring_block_validate_v1'].includes(name))return mappingDispatch(name,a);
     if(name==='reporting_authoring_capabilities_v1')return wrap(caps(a.report));
-    if(name==='reporting_search')return wrap({version:'reporting-view-v1',items:a.kind==='block'?[{target:{kind:'block',id:'approved-block',revision:7},title:'Approved business metrics',description:'Synthetic approved outputs',locale:'en-US'}]:[{target,title:'Weekly operations',description:'Synthetic retained KPI, trend and operational detail',locale:'en-US'}],next:''});
+    if(name==='reporting_search'){
+      // Closed synthetic metadata pagination exercises the native search shape;
+      // these cards do not represent a new source read or recorded source data.
+      if(!['report','block'].includes(a.kind)||typeof a.query!=='string'||new TextEncoder().encode(a.query).length>256||a.limit!==40||a.after&&a.after!=='synthetic-next')return failure('invalid_request');
+      const items=a.kind==='block'?[{target:{kind:'block',id:'approved-block',revision:7},title:'Approved business metrics',description:'Synthetic approved outputs',locale:'en-US'}]:[{target,title:'Weekly operations',description:'Synthetic retained KPI, trend and operational detail',locale:'en-US'}];
+      if(window.catalogSparseSearch&&a.query==='Synthetic'&&!a.after)return wrap({version:'reporting-view-v1',items:[],next:'synthetic-next'});
+      return wrap({version:'reporting-view-v1',items:items.filter(item=>(item.title+' '+item.description+' '+item.target.id).toLowerCase().includes(a.query.toLowerCase())),next:''});
+    }
     if(name==='reporting_authoring_drafts_v1')return wrap({items:[{id:state.id,version:state.version,revision:state.draft_revision,metadata:definition.metadata,updated_at:'2026-10-03T12:00:00Z'}],next:''});
     if(name==='reporting_authoring_read_v1')return wrap({state,revision:state.draft_revision,private:true,digest:'synthetic',definition});
     if(name==='reporting_authoring_create_v1'){state={id:a.id,kind:'report',version:1,draft_revision:1,published_revision:0};definition=clone(a.definition);return wrap(state);}

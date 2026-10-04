@@ -66,6 +66,13 @@ func New(verifier *auth.Verifier, registry *Registry, settings config.MCP, origi
 			}
 		}
 	}
+	for _, b := range registry.bindings {
+		if b.documentation != nil {
+			for _, ref := range b.documentation.References() {
+				protocol.AddResource(documentationResource(ref, b.definition.Action), s.readResource)
+			}
+		}
+	}
 	for _, app := range registry.apps() {
 		protocol.AddResource(app.resource(), s.readResource)
 	}
@@ -156,6 +163,9 @@ func (s *Server) middleware(next mcp.MethodHandler) mcp.MethodHandler {
 			if !ok || p == nil {
 				return nil, protocolError(jsonrpc.CodeInvalidParams, "invalid_request")
 			}
+			if catalog, exists := s.registry.documentation(p.URI); exists {
+				return s.readDocumentation(ctx, catalog, p.URI)
+			}
 			if _, _, ok = s.registry.resource(p.URI); !ok {
 				if _, exists := s.registry.app(p.URI); !exists {
 					return nil, protocolError(jsonrpc.CodeInvalidParams, "not_found")
@@ -193,6 +203,7 @@ func (s *Server) listResources(e identity.Envelope) *mcp.ListResourcesResult {
 			out.Resources = append(out.Resources, app.resource())
 		}
 	}
+	out.Resources = append(out.Resources, s.documentationResources(e)...)
 	return out
 }
 func (s *Server) listTemplates(e identity.Envelope) *mcp.ListResourceTemplatesResult {
@@ -205,6 +216,9 @@ func (s *Server) listTemplates(e identity.Envelope) *mcp.ListResourceTemplatesRe
 	return out
 }
 func (s *Server) readResource(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+	if catalog, exists := s.registry.documentation(req.Params.URI); exists {
+		return s.readDocumentation(ctx, catalog, req.Params.URI)
+	}
 	if _, exists := s.registry.app(req.Params.URI); exists {
 		return s.readAppResource(ctx, req.Params.URI)
 	}

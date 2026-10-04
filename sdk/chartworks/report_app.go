@@ -153,3 +153,14 @@ func (c *Client) ControlManualPreparation(ctx context.Context, in ReportAppPrepa
 	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"preparation_control", "", in, &out, 4<<20)
 	return
 }
+
+// ReportAppDocumentationRequest selects one advertised exact versioned resource.
+type ReportAppDocumentationRequest = reportingapi.ReportAppDocumentationRequest
+type ReportAppDocumentation = reportingapi.ReportAppDocumentation
+
+// ReadReportAppDocumentation reads full public contract text and its digest.
+// It shares the HTTP/MCP core, makes one request and does not load a local path.
+func (c *Client) ReadReportAppDocumentation(ctx context.Context, in ReportAppDocumentationRequest) (out ReportAppDocumentation, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"documentation", "", in, &out, 4<<20)
+	return
+}

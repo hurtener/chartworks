@@ -145,7 +145,26 @@ mutations. Bootstrap itself never edits, starts a model or expands authority.
 
 `report_app_guide_v1` / POST `guide` and the static resource
 `chartworks://report_app/guide/v1` provide versioned steps, constraints, document
-schema version and repository contract references. No hidden repository agent,
+schema version, retained repository contract references and typed full-text resource
+references. `chartworks://report_app/docs/workflows/v1` is the consumable
+[manual authoring guide](report-authoring-guide-v1.md). The explicit catalog also
+contains the full maintained application, pages, preparation, option search,
+publication, authority, filter, reporting and delivery contracts. `resources/list`
+returns only descriptions/version/digest/source references; `resources/read`
+returns the exact embedded Markdown. POST `documentation` accepts only an exact
+`uri` and uses the same native-action-protected immutable reader as MCP; the typed
+SDK method is `ReadReportAppDocumentation`. No new MCP tool is added.
+
+The catalog admits at most sixteen documents, 64 KiB each and 256 KiB in aggregate,
+under the unchanged transport response limits. Current content is ten explicitly
+embedded public documents, never arbitrary repository paths. Unknown URIs/versions,
+encoded aliases, queries and traversal fail closed. Every read requires a current
+verified envelope and `reporting.read`; MCP additionally requires `mcp.use`.
+SHA-256 and byte count identify the exact returned UTF-8 bytes. Descriptors and
+text are immutable per build; incompatible document revisions require a new
+versioned URI, and consumers must not assume the same digest across builds.
+
+No hidden repository agent,
 copied third-party prompt, user context or secret enters that resource. Agent
 profiles consume these same public interfaces and obey target operation bounds.
 

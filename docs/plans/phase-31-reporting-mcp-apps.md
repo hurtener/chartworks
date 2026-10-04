@@ -96,3 +96,14 @@ bounded static/export slice described by [D-079](../decisions/2026-09-22-rich-ou
 ## Visual authoring continuation
 
 [D-097](../decisions/2026-10-03-visual-chart-authoring.md) requires direct-grid, chart/field and genuine private-page authoring beyond D-096. Preserve existing criteria and historical evidence; qualify new domain, HTTP/MCP/SDK and browser paths separately. Scope approval does not change phase status or make unsupported controls available.
+
+## Consumable authoring documentation continuation
+
+AC01/AC07/AC08 also cover the bounded full-text authoring resources described in
+[the public workflow guide](../contracts/report-authoring-guide-v1.md). The existing
+guide tool retains its compact index and gains typed immutable document references;
+no tool count or execution/transport cap changes. Maintained public contracts are
+embedded directly, with exact versioned URI dispatch, digest/source references,
+native read authority, HTTP/MCP shared-core parity and no tenant/source/model data.
+Focused mounted-wire and immutable-catalog tests establish this resource slice;
+they do not replace the phase's domain/browser/deployed-host acceptance evidence.

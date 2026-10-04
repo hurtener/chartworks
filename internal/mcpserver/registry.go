@@ -15,6 +15,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq/generationdecision"
 	"github.com/hurtener/chartworks/internal/semantics"
+	"github.com/hurtener/chartworks/internal/staticdocs"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -82,6 +83,7 @@ func effectFor(effect string) (effects, bool) {
 
 // Binding is opaque: only Bind can connect a registered contract to a typed core.
 type Binding struct {
+	documentation                      *staticdocs.Catalog
 	app                                *AppResource
 	name, group, description, resource string
 	definition                         api.Definition
@@ -228,6 +230,9 @@ func NewRegistry(bindings []Binding) (*Registry, error) {
 			}
 			resources[b.resource] = true
 		}
+	}
+	if err := validateDocumentation(out); err != nil {
+		return nil, err
 	}
 	if err := validateApps(out); err != nil {
 		return nil, err

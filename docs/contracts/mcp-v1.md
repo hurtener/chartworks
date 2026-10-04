@@ -181,6 +181,36 @@ Topic reads expose immutable publication DTOs, never private draft payloads.
 These are retained metadata, not live source-health promises, analytical artifacts,
 HTML Apps resources or rendered charts. Reads make no source/model call.
 
+## Consumable manual-authoring documentation
+
+The existing `report_app_guide_v1` binding also associates the explicit public
+[authoring document catalog](report-authoring-guide-v1.md). These are full Markdown
+resources, not tools or repo-relative file-loading instructions. The compact guide
+retains its old fields and adds typed `resources` descriptors with URI, version,
+MIME type, description, SHA-256, byte count and source document reference.
+
+Ten maintained contracts/guides are embedded directly from their allowlisted
+repository files. No hidden agent configuration, arbitrary file loader, tenant
+content, SQL payload, credential, network callback or source/model invocation is
+present. List returns metadata; read returns exactly one document. The workflow
+entry is `chartworks://report_app/docs/workflows/v1`; the pages contract is
+`chartworks://report_app/docs/pages/v3`. Read the other exact URIs from discovery.
+
+Every read revalidates the current envelope and native `reporting.read` action,
+in addition to MCP admission and `mcp.use`. The same immutable reader serves
+registered HTTP POST `/v1/reporting/authoring/v1/documentation` with `{uri}` and the
+typed SDK. Unknown versions, query/fragment/percent aliases and unregistered paths
+are denied. Catalog registration rejects duplicate/resource-template collisions
+and mismatched or mutating action associations. The dedicated documentation
+namespace cannot shadow an independent tool resource.
+
+Limits are sixteen documents, 64 KiB each, 256 KiB in aggregate, plus unchanged
+serialized MCP response bounds. The existing 91 default / 96 optional tools and
+all request, concurrency, source and renderer limits remain unchanged. Resources
+are immutable per build; exact digests make release content changes detectable.
+Incompatible revisions use a new versioned URI. Static documentation grants no
+resource reach and does not certify host/deployment qualification.
+
 ## Transport profile, limits and clients
 
 The Streamable HTTP deployment is **stateless, JSON-response only**. POST clients

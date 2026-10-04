@@ -20,6 +20,8 @@ export function mappingVariants(catalog,kind){const entry=catalog.kinds.find(e=>
 export function mappingVariant(catalog,draft){const present=Object.keys(draft.bindings).filter(k=>Array.isArray(draft.bindings[k])?draft.bindings[k].length:!!draft.bindings[k]);return mappingVariants(catalog,draft.kind).find(v=>v.required_slots.every(k=>present.includes(k))&&present.every(k=>[...v.required_slots,...(v.optional_slots||[])].includes(k)))?.id||mappingVariants(catalog,draft.kind)[0].id;}
 export function validateMappingDraft(draft,columns,catalog){
  if(!mappingKeys(draft,['kind','bindings','order','options','kpi','table'])||!mappingKinds.has(draft.kind)||!mappingKeys(draft.bindings,['category','value','series','x','y','parent','columns','values','hierarchy','size','comparison','target'])||!Array.isArray(draft.order)||!mappingKeys(draft.options,['title','legend','label_max_runes']))throw appError('invalid_request');
+ const options=draft.options,title=options.title,lower=typeof title==='string'?title.toLowerCase():'';
+ if(typeof title!=='string'||new TextEncoder().encode(title).length>512||/[<>\x00-\x1f\x7f]/.test(title)||['javascript:','data:','://','file:','blob:'].some(value=>lower.includes(value))||lower.trimStart().startsWith('//')||!mappingKeys(options.legend,['visible','position'])||typeof options.legend.visible!=='boolean'||!['top','bottom','left','right'].includes(options.legend.position)||!mappingInteger(options.label_max_runes,1,1024))throw appError('invalid_request');
  const b=draft.bindings,present=Object.keys(b).filter(k=>Array.isArray(b[k])?b[k].length:!!b[k]);
  if(!mappingVariants(catalog,draft.kind).some(v=>v.required_slots.every(k=>present.includes(k))&&present.every(k=>[...v.required_slots,...(v.optional_slots||[]),...(draft.kind==='kpi'&&draft.kpi?['category','comparison','target']:[])].includes(k))))throw appError('invalid_request');
  const ids=[];for(const [slot,value] of Object.entries(b)){const repeated=['values','columns','hierarchy'].includes(slot);if(repeated&&!Array.isArray(value)||!repeated&&typeof value!=='string')throw appError('invalid_request');const selected=repeated?value:value?[value]:[];const eligible=new Set(bindingCandidates(columns,draft.kind,slot).map(c=>c.id));if(selected.some(id=>!eligible.has(id)))throw appError('invalid_request');ids.push(...selected);}
@@ -58,7 +60,7 @@ export class MappingSession {
   catch(e){if(!this.closed&&generation===this.generation){this.conflict=e.code==='conflict';this.unknown=e.unknown===true||['unavailable','cancelled_or_timed_out'].includes(e.code);}throw e;}finally{this.pending=false;}
  }
  async inspect(){if(!this.operation)throw appError('invalid_request');return this.invoke(authoringTool('block_read'),{block:this.operation.target,revision:this.operation.revision});}
- close(){this.closed=true;this.generation++;this.view=null;this.catalog=null;this.draft=null;this.original=null;}
+ close(){this.closed=true;this.generation++;this.displaySettingsElement=null;this.displaySettingsOpen=false;this.view=null;this.catalog=null;this.draft=null;this.original=null;}
 }
 export async function validatePrivateMapping(invoke,view,widget,page,resolution){
  const b=view.block;checkMappingView(view,widget.block.block,widget.block.revision,widget.block.outputs[0],widget.block.digest);

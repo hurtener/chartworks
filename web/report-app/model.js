@@ -1,5 +1,6 @@
 import {boundedJSON} from '../report-viewer/presentation.js';
 import {reportPages, pageContent} from './pages.js';
+import {validPageLocale,validPageTimezone} from './page-settings.js';
 
 export const APP_MAX_RESULT = 4 << 20;
 export const APP_MAX_WIRE = 16 << 20;
@@ -55,15 +56,18 @@ export function layoutPreset(widgets) {
   for(const columns of [1,2,3])if(widgets.every((widget,index)=>{const g=widget.grid;return g&&g.column===index%columns*(12/columns)&&g.row===Math.floor(index/columns)&&g.width===12/columns&&g.height===1;}))return String(columns);
   return 'custom';
 }
-export function validateManualDefinition(definition) {
+export function validateManualDefinition(definition,baseline=null) {
   boundedJSON(definition, 1 << 20);
   const pages=reportPages(definition);
   if (!manualDocument(definition) || pages.length>100 || !titleFor(definition.metadata,definition.locale).trim()) throw appError('invalid_request');
   const ids=new Set(),pageIDs=new Set();let widgets=0,filters=0,defaults=0;
   for(const page of pages){
     if(!validID(page.id)||pageIDs.has(page.id)||typeof page.title!=='string'||!page.title.trim()||page.title.length>256)throw appError('invalid_request');pageIDs.add(page.id);
-    if(page.locale){try{Intl.getCanonicalLocales(page.locale);}catch{throw appError('invalid_request');}}
-    if(page.timezone){try{new Intl.DateTimeFormat('en',{timeZone:page.timezone});}catch{throw appError('invalid_request');}}
+    // An exact native value already read from this page is retained even when
+    // this browser's Intl data is older than the service's pinned timezone data.
+    const saved=reportPages(baseline).find(value=>value.id===page.id);
+    if(page.locale!==undefined&&(typeof page.locale!=='string'||page.locale!==''&&page.locale!==saved?.locale&&!validPageLocale(page.locale)))throw appError('invalid_request');
+    if(page.timezone!==undefined&&(typeof page.timezone!=='string'||page.timezone!==''&&page.timezone!==saved?.timezone&&!validPageTimezone(page.timezone)))throw appError('invalid_request');
     widgets+=page.widgets.length;filters+=page.filters?.length||0;defaults+=page.defaults?.length||0;
     if(widgets>100||filters>100||defaults>64||definition.schema_version===2&&!page.widgets.length)throw appError('invalid_request');
     for (const w of page.widgets) {
@@ -90,7 +94,7 @@ export class DraftSession {
   async save(id) {
     if(this.pending||this.closed||this.conflict||this.uncertain||!this.dirty||!this.definition)throw appError('busy');
     if(!editableDocument(this.definition,this.supports)||!(this.state?this.capabilities.can_save:this.capabilities.can_create))throw appError('forbidden');
-    const definition=copyData(validateManualDefinition(this.definition)),generation=this.generation;
+    const definition=copyData(validateManualDefinition(this.definition,this.baseline)),generation=this.generation;
     const creating=!this.state;if(creating&&!validID(id))throw appError('invalid_request');
     const args=creating?{id,definition}:{report:this.state.id,expected_version:this.state.version,revision:this.revision,definition};
     this.pending=true;

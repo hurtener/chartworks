@@ -5,12 +5,14 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/hurtener/chartworks/docs"
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/mcpserver"
 	"github.com/hurtener/chartworks/internal/reporting"
+	"github.com/hurtener/chartworks/internal/staticdocs"
 )
 
 // ReportAppBootstrapRequest selects interaction intent, never identity or grants.
@@ -27,13 +29,14 @@ type ReportAppTarget struct {
 }
 
 type ReportAppGuide struct {
-	Version                int      `json:"version"`
-	DocumentSchemaVersion  int      `json:"document_schema_version"`
-	DocumentSchemaVersions []int    `json:"document_schema_versions"`
-	Modes                  []string `json:"modes"`
-	Steps                  []string `json:"steps"`
-	Constraints            []string `json:"constraints"`
-	Documentation          []string `json:"documentation"`
+	Version                int                    `json:"version"`
+	DocumentSchemaVersion  int                    `json:"document_schema_version"`
+	DocumentSchemaVersions []int                  `json:"document_schema_versions"`
+	Modes                  []string               `json:"modes"`
+	Steps                  []string               `json:"steps"`
+	Constraints            []string               `json:"constraints"`
+	Documentation          []string               `json:"documentation"`
+	Resources              []staticdocs.Reference `json:"resources"`
 }
 
 type ReportAppBootstrap struct {
@@ -55,8 +58,13 @@ func reportAppGuide(ctx context.Context, e identity.Envelope, _ struct{}) (Repor
 	if !e.Has("reporting.read") {
 		return ReportAppGuide{}, access.ErrForbidden
 	}
+	catalog, err := docs.ReportAuthoring()
+	if err != nil {
+		return ReportAppGuide{}, err
+	}
 	return ReportAppGuide{
-		Version: 1, DocumentSchemaVersion: reporting.DocumentVersion, DocumentSchemaVersions: []int{reporting.DocumentVersion, reporting.PagedDocumentVersion},
+		Resources: catalog.References(),
+		Version:   1, DocumentSchemaVersion: reporting.DocumentVersion, DocumentSchemaVersions: []int{reporting.DocumentVersion, reporting.PagedDocumentVersion},
 		Modes: []string{"chat", "plan", "apply"},
 		Steps: []string{
 			"Read current target capabilities and exact document revision before proposing changes.",
@@ -135,12 +143,17 @@ func reportAppBootstrapEntries(service *reporting.Authoring) []runtimeEndpoint {
 	guide := runtimeEntry("POST", "/v1/reporting/authoring/v1/guide", "reporting.read", "reportAppGuideV1", "Read static versioned report application guidance without document data", func(ctx context.Context, e identity.Envelope, _ string, _ url.Values, in struct{}) (ReportAppGuide, error) {
 		return reportAppGuide(ctx, e, in)
 	})
-	for _, entry := range []*runtimeEndpoint{&bootstrap, &guide} {
+	documentation := runtimeEntry("POST", "/v1/reporting/authoring/v1/documentation", "reporting.read", "reportAppDocumentationV1", "Read one exact immutable versioned authoring contract", func(ctx context.Context, e identity.Envelope, _ string, _ url.Values, in ReportAppDocumentationRequest) (staticdocs.Document, error) {
+		return readReportAppDocumentation(ctx, e, in)
+	})
+	for _, entry := range []*runtimeEndpoint{&bootstrap, &guide, &documentation} {
 		entry.definition.Effect = "retained_metadata_read"
 		entry.definition.Audit = "read_only_no_domain_audit"
 		entry.definition.Replay = "never"
+		entry.definition.ResourceLoader = "valid current Pengui envelope and reporting.read; closed compiled documentation URI allowlist, no tenant data"
 	}
-	return []runtimeEndpoint{bootstrap, guide}
+	bootstrap.definition.ResourceLoader = "verified Pengui reporting.read plus current exact report/tenant/dependency reach before bounded target capability projection"
+	return []runtimeEndpoint{bootstrap, guide, documentation}
 }
 
 func ReportAppBootstrapRegistry() (*api.Registry, error) {
@@ -174,5 +187,29 @@ func ReportAppBootstrapMCPBindings(s *reporting.Authoring, app mcpserver.AppReso
 	if err != nil {
 		return nil, err
 	}
+	catalog, err := docs.ReportAuthoring()
+	if err != nil {
+		return nil, err
+	}
+	guide, err = mcpserver.WithDocumentation(guide, catalog)
+	if err != nil {
+		return nil, err
+	}
 	return []mcpserver.Binding{boot, guide}, nil
 }
+
+// ReportAppDocumentationRequest is an exact catalog locator, never a file path.
+type ReportAppDocumentationRequest struct {
+	URI string `json:"uri"`
+}
+
+func readReportAppDocumentation(ctx context.Context, e identity.Envelope, in ReportAppDocumentationRequest) (staticdocs.Document, error) {
+	catalog, err := docs.ReportAuthoring()
+	if err != nil {
+		return staticdocs.Document{}, err
+	}
+	return catalog.Read(ctx, e, in.URI)
+}
+
+// ReportAppDocumentation is the immutable document returned by the shared core.
+type ReportAppDocumentation = staticdocs.Document

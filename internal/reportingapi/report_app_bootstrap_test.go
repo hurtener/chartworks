@@ -59,7 +59,7 @@ func TestReportAppBootstrapHTTPMCPAndStaticGuide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(registry.Definitions()) != 2 {
+	if len(registry.Definitions()) != 3 {
 		t.Fatal("missing registered guidance")
 	}
 	for _, d := range registry.Definitions() {
