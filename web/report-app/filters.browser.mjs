@@ -34,7 +34,7 @@ const errors = [], requests = [], assertions = [], writes = () => fixture.calls.
 const snapshot = () => fixture.snapshot();
 const original = snapshot();
 
-let socket, sequence = 0, browserError, browserStderr = '', frameID, stopping = false, runError, watchdog;
+let socket, sequence = 0, browserError, browserStderr = '', frameID, stopping = false, runError, watchdog, lastPointer;
 browser.on('error', error => browserError = error);
 browser.stderr.on('data', data => { if (browserStderr.length < 16384) browserStderr += data.toString(); });
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -73,10 +73,48 @@ async function check(expression, message) {assert.equal(await evaluate(expressio
 function equal(actual, expected, message) {assert.deepEqual(actual, expected, message);assertions.push(message);}
 async function ready() {await until(() => evaluate(`!!${root}&&!Array.from(${root}.querySelectorAll('[role=status]')).some(e=>e.textContent==='Working…')`), 'Filter operation did not settle');}
 async function textHas(text) {await until(() => evaluate(`${root}?.textContent.includes(${JSON.stringify(text)})`), 'Missing text: ' + text);await ready();}
+// Pointer readiness contract. Tests execute this exact pure function without
+// importing the hosted-only runner or starting a browser.
+function filterPointerReady(current, previous) {
+  if(!current||!previous||!Array.isArray(current.geometry)||!Array.isArray(previous.geometry)||!current.frameFits||!current.frameHit||!current.targetHit||current.quietMs<200)return false;
+  if(![current.x,current.y,current.viewportWidth,current.viewportHeight,current.resizeCount,current.quietMs,...current.geometry,...previous.geometry].every(Number.isFinite))return false;
+  if(current.x<=0||current.y<=0||current.x>=current.viewportWidth||current.y>=current.viewportHeight)return false;
+  return current.resizeCount===previous.resizeCount&&current.geometry.length===previous.geometry.length&&
+    current.geometry.every((value,index)=>Math.abs(value-previous.geometry[index])<=0.5);
+}
+// End pointer readiness contract.
 async function clickElement(expression) {
   await until(()=>evaluate(`(()=>{const e=${expression};return !!e&&!e.disabled&&e.getClientRects().length>0;})()`),'Expected control did not become enabled and visible: '+expression);
-  const point = await evaluate(`(()=>{const e=${expression};if(!e||e.disabled||!e.getClientRects().length)throw new Error('Missing enabled visible control');e.scrollIntoView({block:'center',inline:'nearest'});const r=e.getBoundingClientRect(),f=document.getElementById('app').getBoundingClientRect();return {x:f.left+r.left+r.width/2,y:f.top+r.top+r.height/2};})()`);
-  assert(point.x > 0 && point.x < 1440 && point.y > 0 && point.y < 1000, 'Control must be reachable in the actual viewport');
+  // Scrolling can resize the host iframe and change both document viewports.
+  // Never reuse the rectangle measured in the same turn as scrollIntoView.
+  await evaluate(`(()=>{const e=${expression};e.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});})()`);
+  const sample=()=>evaluate(`(()=>{
+    const e=${expression},f=document.getElementById('app'),d=f.contentDocument,w=f.contentWindow;
+    if(!e||e.disabled||!e.getClientRects().length)return null;
+    const r=e.getBoundingClientRect(),fr=f.getBoundingClientRect(),rr=${root}.getBoundingClientRect();
+    const localX=r.left+r.width/2,localY=r.top+r.height/2,x=fr.left+f.clientLeft+localX,y=fr.top+f.clientTop+localY;
+    const hit=d.elementFromPoint(localX,localY),frameHit=document.elementFromPoint(x,y)===f;
+    return {x,y,viewportWidth:innerWidth,viewportHeight:innerHeight,resizeCount,quietMs:performance.now()-lastResizeAt,
+      targetHit:hit===e||e.contains(hit),frameHit,
+      frameFits:(${publicationFrameFits.toString()})({root:{top:0,bottom:rr.height,left:0,right:rr.width,height:rr.height},frameHeight:f.clientHeight,frameWidth:f.clientWidth,resizeCount,quietMs:performance.now()-lastResizeAt}),
+      geometry:[r.left,r.top,r.width,r.height,fr.left,fr.top,fr.width,fr.height,rr.width,rr.height,scrollX,scrollY,w.scrollX,w.scrollY]};
+  })()`);
+  let previous=null,point=null;
+  await until(async()=>{
+    const current=await sample(),stable=filterPointerReady(current,previous);lastPointer={expression,current,previous,stable};previous=current;
+    if(!stable){
+      // A settled resize may leave the previously scrolled center clipped.
+      // Re-scroll only; a pointer action is never replayed automatically.
+      if(current&&current.quietMs>=200&&(!current.frameHit||!current.targetHit||current.x<=0||current.y<=0||current.x>=current.viewportWidth||current.y>=current.viewportHeight)){
+        await evaluate(`(()=>{const e=${expression};if(e&&!e.disabled)e.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});})()`);previous=null;
+      }
+      return false;
+    }
+    // A second CDP sample immediately before dispatch also hit-tests the exact
+    // element in both realms. A changed layout waits; it never retries a click.
+    const verified=await sample();if(!filterPointerReady(verified,current)){previous=verified;return false;}
+    point={x:verified.x,y:verified.y};return true;
+  },'Control did not reach stable, unobstructed pointer geometry: '+expression);
   await rpc('Input.dispatchMouseEvent', {type: 'mousePressed', ...point, button: 'left', buttons: 1, clickCount: 1});
   await rpc('Input.dispatchMouseEvent', {type: 'mouseReleased', ...point, button: 'left', buttons: 0, clickCount: 1});
   await ready();
@@ -136,10 +174,13 @@ const card = label => `Array.from(${root}.querySelectorAll('.filter-editor>secti
 const cardButton = (label, title) => `Array.from(${card(label)}.querySelectorAll('button')).find(e=>e.textContent===${JSON.stringify(title)})`;
 async function openDefaults() {
   if (!await evaluate(`${root}.querySelector('.filter-editor')?.open===true`)) await clickElement(`${root}.querySelector('.filter-editor>summary')`);
+  await until(()=>evaluate(`${root}.querySelector('.filter-editor')?.open===true`),'Business filters did not expand after its pointer click');
 }
 async function openFilter(label, mode='default') {
   await openDefaults();
   await clickElement(cardButton(label, mode==='default'?'Change saved default':'Choose temporary preview value'));
+  const legend=label+' · '+(mode==='default'?'saved default':'temporary selection');
+  await until(()=>evaluate(`(()=>{const e=${editor};return e?.querySelector('legend')?.textContent===${JSON.stringify(legend)}&&e.getClientRects().length>0&&Array.from(e.querySelectorAll('input')).some(i=>!i.disabled&&i.getClientRects().length>0);})()`),'Requested filter editor did not open: '+legend);
 }
 async function setDate(start, end) {await setInput('Start date',start);await setInput('End date · inclusive',end);}
 async function arm(request, kind='option') {
@@ -256,7 +297,7 @@ try {
   runError = error;
   if (socket?.readyState === WebSocket.OPEN) {try {await capture(screenshotPath.replace(/\.png$/, '.failure.png'), false);} catch {}}
   let state;try {state = await evaluate(`({text:${root}?.textContent.slice(0,16000),messages:hostMessages.slice(-12),hostErrors})`);} catch {}
-  console.error(JSON.stringify({mode, assertions, errors, browserStderr, calls: fixture.calls, state}, null, 2));
+  console.error(JSON.stringify({mode, assertions, errors, browserStderr, lastPointer, calls: fixture.calls, state}, null, 2));
   throw error;
 } finally {
   clearTimeout(watchdog);stopping = true;

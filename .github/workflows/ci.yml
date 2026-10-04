@@ -159,7 +159,7 @@ jobs:
       - name: Actual Chromium governed dates and multiselect in both adapters
         run: |
           set -o pipefail
-          node --test web/report-app/filters-browser-fixture.test.mjs web/report-app/filters-bundle.test.mjs
+          node --test web/report-app/filters-browser-fixture.test.mjs web/report-app/filters-browser-pointer.test.mjs web/report-app/filters-bundle.test.mjs
           node web/report-app/filters.browser.mjs "$RUNNER_TEMP/report-app-proof/mcp.html" "$RUNNER_TEMP/report-app-proof/mcp.filters.png" mcp | tee "$RUNNER_TEMP/report-app-proof/mcp.filters.log"
           node web/report-app/filters.browser.mjs "$RUNNER_TEMP/report-app-proof/embedded.html" "$RUNNER_TEMP/report-app-proof/embedded.filters.png" embedded | tee "$RUNNER_TEMP/report-app-proof/embedded.filters.log"
       - name: Retain synthetic host proof and screenshots
