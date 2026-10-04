@@ -7,10 +7,12 @@ import {presentationBrowserFixture,presentationBrowserTools,presentationStageNam
 
 // Pure compact-inspector geometry contract, executed verbatim by Node tests.
 function formattingInspectorFits(value) {
- if(!value||![1440,960].includes(value.frameWidth)||value.viewportWidth!==1440||value.viewportHeight!==1000||value.fieldCount!==1||value.selectorCount!==1||![1,2].includes(value.inputCount))return false;
- const numbers=['frameLeft','frameRight','editorHeight','editorWidth','editorClientWidth','editorScrollWidth'];
+ if(!value||![1440,960].includes(value.requestedFrameWidth)||value.viewportWidth!==1440||value.viewportHeight!==1000||value.fieldCount!==1||value.selectorCount!==1||![1,2].includes(value.inputCount))return false;
+ const numbers=['documentClientWidth','documentScrollWidth','scrollbarGutter','frameWidth','frameLeft','frameRight','editorHeight','editorWidth','editorClientWidth','editorScrollWidth'];
  if(numbers.some(key=>!Number.isFinite(value[key])))return false;
- if(value.frameLeft<0||value.frameRight>value.viewportWidth||value.frameRight-value.frameLeft!==value.frameWidth||value.editorHeight<=0||value.editorHeight>760||value.editorWidth<=0||value.editorWidth>360||value.editorClientWidth<=0||value.editorScrollWidth>value.editorClientWidth+1)return false;
+ // A desktop 100% iframe fills the measured document width, excluding its real scrollbar.
+ if(value.documentClientWidth<960||value.documentClientWidth>value.viewportWidth||value.documentScrollWidth>value.documentClientWidth||value.scrollbarGutter!==value.viewportWidth-value.documentClientWidth||value.frameWidth!==Math.min(value.requestedFrameWidth,value.documentClientWidth))return false;
+ if(value.frameLeft<0||value.frameRight>value.documentClientWidth||value.frameRight-value.frameLeft!==value.frameWidth||value.editorHeight<=0||value.editorHeight>760||value.editorWidth<=0||value.editorWidth>360||value.editorClientWidth<=0||value.editorScrollWidth>value.editorClientWidth+1)return false;
  return ['save','cancel'].every(key=>{const r=value[key];return r&&['top','bottom','left','right','width','height'].every(key=>Number.isFinite(r[key]))&&r.hit===true&&r.top>=0&&r.bottom<=value.viewportHeight&&r.left>=value.frameLeft&&r.right<=value.frameRight&&r.width>0&&r.height>0&&r.bottom>r.top&&r.right>r.left;});
 }
 // End compact-inspector geometry contract.
@@ -41,17 +43,19 @@ const proof=await runHostedBrowser({htmlPath,screenshotPath,mode,fixture,tools:p
    await check(`${inspector}.querySelectorAll('.mapping-column-list').length===1&&${fieldSelector}.selectedOptions[0]?.textContent===${JSON.stringify(name)}&&[1,2].includes(${inspector}.querySelectorAll('input').length)&&Array.from(${inspector}.querySelectorAll('input')).every(e=>(e.getAttribute('aria-label')||'').endsWith(${JSON.stringify(' · '+name)}))`,'Only '+name+' formatting inputs are rendered; other staged fields stay out of the form');
   });
  }
+ let requestedFrameWidth=1440;
  const canonicalField=name=>data.source_block.block.outputs.find(output=>output.id==='table-main').mapping.columns.find(column=>(column.display_label||column.name||column.id)===name);
  async function compactFormatting(label){
   await evaluate(`window.scrollTo(0,0);document.getElementById('app').contentWindow.scrollTo(0,0);`);
   await until(()=>evaluate('performance.now()-lastResizeAt>=200'),'Formatting host resize did not settle');
-  const geometry=await evaluate(`(()=>{const f=document.getElementById('app'),d=f.contentDocument,e=${inspector},r=e.getBoundingClientRect(),fr=f.getBoundingClientRect();const action=label=>{const b=Array.from(e.querySelectorAll('button')).find(b=>b.textContent===label),r=b.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,hit=d.elementFromPoint(x,y);return {top:fr.top+f.clientTop+r.top,bottom:fr.top+f.clientTop+r.bottom,left:fr.left+f.clientLeft+r.left,right:fr.left+f.clientLeft+r.right,width:r.width,height:r.height,hit:(hit===b||b.contains(hit))&&document.elementFromPoint(fr.left+f.clientLeft+x,fr.top+f.clientTop+y)===f};};return {viewportWidth:innerWidth,viewportHeight:innerHeight,frameWidth:f.clientWidth,frameLeft:fr.left,frameRight:fr.right,editorHeight:r.height,editorWidth:r.width,editorClientWidth:e.clientWidth,editorScrollWidth:e.scrollWidth,fieldCount:e.querySelectorAll('.mapping-column-list').length,selectorCount:e.querySelectorAll('select[aria-label="Format field"]').length,inputCount:e.querySelectorAll('input').length,save:action('Save formatting'),cancel:action('Cancel formatting')};})()`);
+  const geometry=await evaluate(`(()=>{const f=document.getElementById('app'),d=f.contentDocument,e=${inspector},r=e.getBoundingClientRect(),fr=f.getBoundingClientRect();const action=label=>{const b=Array.from(e.querySelectorAll('button')).find(b=>b.textContent===label),r=b.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,hit=d.elementFromPoint(x,y);return {top:fr.top+f.clientTop+r.top,bottom:fr.top+f.clientTop+r.bottom,left:fr.left+f.clientLeft+r.left,right:fr.left+f.clientLeft+r.right,width:r.width,height:r.height,hit:(hit===b||b.contains(hit))&&document.elementFromPoint(fr.left+f.clientLeft+x,fr.top+f.clientTop+y)===f};};return {viewportWidth:innerWidth,viewportHeight:innerHeight,requestedFrameWidth:${requestedFrameWidth},documentClientWidth:document.documentElement.clientWidth,documentScrollWidth:document.documentElement.scrollWidth,scrollbarGutter:innerWidth-document.documentElement.clientWidth,frameWidth:f.clientWidth,frameLeft:fr.left,frameRight:fr.right,editorHeight:r.height,editorWidth:r.width,editorClientWidth:e.clientWidth,editorScrollWidth:e.scrollWidth,fieldCount:e.querySelectorAll('.mapping-column-list').length,selectorCount:e.querySelectorAll('select[aria-label="Format field"]').length,inputCount:e.querySelectorAll('input').length,save:action('Save formatting'),cancel:action('Cancel formatting')};})()`);
   assert(formattingInspectorFits(geometry),label+' must keep one compact field and both actions visible without document scrolling: '+JSON.stringify(geometry));h.assertions.push(label+' fits a <=760px inspector with Save and Cancel hit-tested in the desktop viewport');formattingGeometry.push({label,...geometry});
  }
  async function resizeFormattingFrame(width){
+  assert([960,1440].includes(width),'Only the bounded narrow and desktop host widths are supported');requestedFrameWidth=width;
   const before=await evaluate('resizeCount');
-  await evaluate(`document.getElementById('app').style.width=${JSON.stringify(String(width)+'px')};`);
-  await until(()=>evaluate(`document.getElementById('app').contentWindow.innerWidth===${width}&&resizeCount>${before}&&performance.now()-lastResizeAt>=200`),'Formatting iframe width did not settle');
+  await evaluate(`document.getElementById('app').style.width=${JSON.stringify(width===1440?'100%':'960px')};`);
+  await until(()=>evaluate(`(()=>{const f=document.getElementById('app'),available=document.documentElement.clientWidth,expected=Math.min(${width},available);return available>=960&&f.clientWidth===expected&&f.contentWindow.innerWidth===expected&&resizeCount>${before}&&performance.now()-lastResizeAt>=200;})()`),'Formatting iframe width did not settle');
   await compactFormatting(width===960?'Narrow 960px formatting host':'Desktop 1440px formatting host');
  }
 
