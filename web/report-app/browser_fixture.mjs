@@ -3490,6 +3490,27 @@ export function initializeSyntheticHost(samples, embedded, mappingSamples, datas
   const wrap=value=>({structuredContent:{result:clone(value)}});
   const failure=code=>({isError:true,structuredContent:{error:{code,outcome:'not_started'}}});
   Object.assign(window,{calls:[],lastResizeAt:0,resizeCount:0,resizeMessages:[],saveDelay:0,viewDelay:0,rejectSave:false,denyPrivate:false,consumerOnly:false,publishedPagesCatalog:false,compactCatalog:false,denial:'',privateRuns:new Set(),waiting:[]});
+  Object.assign(window,{allocationSupported:true,firstCreatorOnly:false,allocationCalls:[],allocationMessages:[],allocationRecords:new Map(),allocationEffects:0,allocationDelay:5,allocationFailure:'',allocationTargetOverride:'',denyAllocatedReportCapability:false,hostEvents:[]});
+  const allocationVersion='report-app-allocation-v1';
+  const allocate=request=>{
+    if(!allocationSupported||consumerOnly)throw new Error('forbidden');
+    if(request.version!==allocationVersion||!['create_report','create_chart','copy_chart'].includes(request.intent)||!request.idempotency_key||!request.title?.trim())throw new Error('invalid_request');
+    if(request.intent==='copy_chart'&&(request.source?.block!=='approved-block'||request.source.revision!==7||request.source.expected_version!==8||request.source.digest!=='a'.repeat(64)||request.source.output!=='trend-main'))throw new Error('stale_validation');
+    const previous=allocationRecords.get(request.idempotency_key);
+    if(previous){if(JSON.stringify(previous.request)!==JSON.stringify(request))throw new Error('conflict');return clone(previous.result);}
+    const id=allocationTargetOverride||(request.intent==='create_report'?(request.title==='Synthetic named report'?'new-report':request.title==='First report'?'first-report':'closed-allocation-report'):request.intent==='copy_chart'?'private-canvas-trend':'dataset-private-chart');
+    const result={version:allocationVersion,kind:request.kind,intent:request.intent,idempotency_key:request.idempotency_key,id};
+    allocationEffects++;allocationRecords.set(request.idempotency_key,{request:clone(request),result:clone(result)});return result;
+  };
+  window.allocationProbe=allocate;
+  window.injectAllocationReply=(violation)=>{
+    const pending=allocationMessages.at(-1);if(!pending)throw new Error('No pending allocation');
+    const result=allocationRecords.get(pending.params.idempotency_key)?.result;if(!result)throw new Error('No allocation result');
+    const data=embedded?{protocol:'chartworks-report-app-v1',frame:'fixture-frame',generation:1,id:pending.id,result:clone(result)}:{jsonrpc:'2.0',id:pending.id,result:clone(result)};
+    if(violation==='correlation')data.id+=10000;
+    if(violation==='frame'){if(embedded)data.generation=99;else data.id+=20000;}
+    frame.contentWindow.dispatchEvent(new frame.contentWindow.MessageEvent('message',{data,origin:violation==='origin'?'https://wrong-host.example':location.origin,source:violation==='source'?frame.contentWindow:window}));
+  };
   window.state={id:'report-a',kind:'report',version:4,draft_revision:3,published_revision:2};
   window.definition={schema_version:2,metadata:[{locale:'en-US',title:'Weekly operations'}],locale:'en-US',timezone:'UTC',partial_failure:'fail_closed',widgets:[{id:'intro',kind:'text',grid:{column:0,row:0,width:12,height:1},presentation:{},text:{format:'plain',text:'Synthetic weekly overview'}}],filters:[]};
   const target={kind:'report',id:'report-a',revision:2};
@@ -3625,10 +3646,11 @@ export function initializeSyntheticHost(samples, embedded, mappingSamples, datas
     }
     return failure('forbidden');
   }
-  const caps=report=>({version:'report-authoring-v1',consumer:true,builder:!consumerOnly,can_create:!consumerOnly&&['new-report','report-a'].includes(report),can_open:!consumerOnly&&!!report,can_save:!consumerOnly&&!!report,can_preview:!consumerOnly&&!!report,can_execute:!consumerOnly&&!!report});
+  const caps=report=>({version:'report-authoring-v1',consumer:true,builder:!consumerOnly&&!firstCreatorOnly,can_create:!consumerOnly&&!denyAllocatedReportCapability&&['new-report','first-report','report-a'].includes(report),can_open:!consumerOnly&&!firstCreatorOnly&&!!report,can_save:!consumerOnly&&!firstCreatorOnly&&!!report,can_preview:!consumerOnly&&!firstCreatorOnly&&!!report,can_execute:!consumerOnly&&!firstCreatorOnly&&!!report});
   window.dispatch=(name,a)=>{
     // UI capability hints are not enforcement. This read-only host profile also
     // denies draft operations, execution and every exact private retained run.
+    if(firstCreatorOnly&&name.startsWith('reporting_authoring_')&&!['reporting_authoring_capabilities_v1','reporting_authoring_create_v1'].includes(name))return failure('forbidden');
     if(consumerOnly&&(name==='reporting_run'||name.startsWith('reporting_authoring_')&&name!=='reporting_authoring_capabilities_v1'))return failure('forbidden');
     if(consumerOnly&&name==='reporting_view'&&(privateRuns.has(a.run)||runDefinitions.get(a.run)?.private))return failure('not_found');
 
@@ -3683,10 +3705,20 @@ export function initializeSyntheticHost(samples, embedded, mappingSamples, datas
     if(event.source!==frame.contentWindow||event.origin!==location.origin)return;
     const m=event.data;if(embedded?m?.protocol!=='chartworks-report-app-v1':m?.jsonrpc!=='2.0')return;
     const send=result=>frame.contentWindow.postMessage(embedded?{protocol:'chartworks-report-app-v1',frame:'fixture-frame',generation:1,id:m.id,result}:{jsonrpc:'2.0',id:m.id,result},location.origin);
-    if(m.method==='initialize'&&embedded){send({challenge:'fixture-challenge-0001',tools:true,context:{theme:'light',locale:'en-US'}});return;}
-    if(m.method==='ui/initialize'&&!embedded){send({protocolVersion:'2026-01-26',hostCapabilities:{serverTools:{}},hostContext:{theme:'light',locale:'en-US'}});return;}
+    if(m.method==='initialize'&&embedded){send({challenge:'fixture-challenge-0001',tools:true,...(allocationSupported&&!consumerOnly?{capabilities:{target_allocation:{version:allocationVersion}}}:{}),context:{theme:'light',locale:'en-US'}});return;}
+    if(m.method==='ui/initialize'&&!embedded){send({protocolVersion:'2026-01-26',hostCapabilities:{serverTools:{}},hostContext:{theme:'light',locale:'en-US',...(allocationSupported&&!consumerOnly?{'chartworks/target-allocation':{version:allocationVersion}}:{})}});return;}
     if(m.method==='ui/notifications/size-changed'){window.lastResizeAt=performance.now();window.resizeCount++;window.resizeMessages.push(clone(m.params));frame.style.height=Math.min(2416,Math.max(500,Math.ceil(m.params.height)+16))+'px';return;}
-    if(m.method==='tools/call'){calls.push(clone(m.params));const result=dispatch(m.params.name,m.params.arguments);setTimeout(()=>send(result),m.params.name==='reporting_authoring_save_v1'?saveDelay:m.params.name==='reporting_view'?viewDelay||5:5);}
+    if(m.method==='app/allocate-target'){
+      allocationCalls.push(clone(m.params));allocationMessages.push(clone(m));hostEvents.push({type:'allocation',request:clone(m.params)});
+      let result,error;try{result=allocate(m.params);}catch(e){error={code:-32000,message:e.message};}
+      const behavior=allocationFailure;allocationFailure='';
+      if(behavior==='error')error={code:-32000,message:'synthetic allocation reply lost after reservation'};
+      if(result&&behavior==='key')result.idempotency_key='another-operation';
+      if(result&&behavior==='source')result.id=m.params.source.block;
+      setTimeout(()=>{if(error)frame.contentWindow.postMessage(embedded?{protocol:'chartworks-report-app-v1',frame:'fixture-frame',generation:1,id:m.id,error}:{jsonrpc:'2.0',id:m.id,error},location.origin);else send(result);},allocationDelay);
+      return;
+    }
+    if(m.method==='tools/call'){calls.push(clone(m.params));hostEvents.push({type:'tool',...clone(m.params)});const result=dispatch(m.params.name,m.params.arguments);setTimeout(()=>send(result),m.params.name==='reporting_authoring_save_v1'?saveDelay:m.params.name==='reporting_view'?viewDelay||5:5);}
   });
   window.closeApp=()=>frame.contentWindow.postMessage(embedded?{protocol:'chartworks-report-app-v1',frame:'fixture-frame',generation:1,method:'close'}:{jsonrpc:'2.0',id:900,method:'ui/resource-teardown'},location.origin);
 }

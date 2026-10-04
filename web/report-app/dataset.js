@@ -33,7 +33,8 @@ function checkPreparedIntent(value,intent){if(['prepared','consumed'].includes(v
 export class DatasetSession {
  constructor(invoke,{locale='en-US',operation=()=>crypto.randomUUID()}={}){this.invoke=invoke;this.locale=locale;this.operation=operation;this.generation=0;this.closed=false;this.pending=false;this.topics=[];this.next='';this.publication=null;this.datasets=[];this.view=null;this.draft={kind:'bar',dimensions:[],measure:'',title:'Untitled chart',pageSize:20};this.newBlock='';this.custody=null;this.preparation=null;this.unknown='';this.created=null;this.acceptedIntent=null;}
  get locked(){return this.pending||!!this.custody||this.closed;}
- valid(){try{datasetIntent(this.view,this.draft);return validID(this.newBlock);}catch{return false;}}
+ intentValid(){try{datasetIntent(this.view,this.draft);return true;}catch{return false;}}
+ valid(){return this.intentValid()&&validID(this.newBlock);}
  edit(fn){if(this.locked)throw appError('busy');const next=copyData(this.draft);fn(next);this.draft=next;}
  async read(name,args,accept){if(this.closed||this.pending||this.custody)throw appError('busy');const generation=++this.generation;this.pending=true;try{const value=await this.invoke(name,args);if(this.closed||generation!==this.generation)return null;return accept(value);}finally{this.pending=false;}}
  async loadTopics(after=''){return this.read('list_topics',{after,limit:40},items=>{if(!Array.isArray(items)||items.length>40||items.some((item,i)=>{datasetPin(item);return typeof item.name!=='string'||i>0&&item.topic<=items[i-1].topic||after&&item.topic<=after;}))throw appError('stale_validation');this.topics=after?[...this.topics,...copyData(items)].slice(0,200):copyData(items);this.next=items.length===40&&this.topics.length<200?items.at(-1).topic:'';return items;});}

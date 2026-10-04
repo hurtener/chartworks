@@ -23,6 +23,9 @@ var appScript string
 //go:embed model.js
 var modelScript string
 
+//go:embed allocation.js
+var allocationScript string
+
 //go:embed pages.js
 var pagesScript string
 
@@ -55,7 +58,7 @@ var appStyles string
 func compiledAssets() (string, string) {
 	viewer, css := reportviewer.Assets()
 	script := "const retainedPresentation = (() => {\n" + strings.ReplaceAll(viewer, "export ", "") + "\nreturn {boundedJSON,validateRetainedView,renderRetainedOutput};\n})();\nconst {boundedJSON,validateRetainedView,renderRetainedOutput}=retainedPresentation;\n"
-	for _, source := range []string{modelScript, pagesScript, mappingScript, mappingEditorScript, datasetScript, datasetEditorScript, gridScript, retainedScript, bridgeScript, appScript} {
+	for _, source := range []string{modelScript, allocationScript, pagesScript, mappingScript, mappingEditorScript, datasetScript, datasetEditorScript, gridScript, retainedScript, bridgeScript, appScript} {
 		for _, line := range strings.Split(source, "\n") {
 			if !strings.HasPrefix(line, "import ") {
 				script += line + "\n"

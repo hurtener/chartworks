@@ -1,11 +1,12 @@
+import {TARGET_ALLOCATION_UNAVAILABLE} from './allocation.js';
 import {DATASET_CHART_KINDS} from './dataset.js';
 function datasetNode(tag,text,cls){const element=document.createElement(tag);if(text!==undefined)element.textContent=String(text);if(cls)element.className=cls;return element;}
 function datasetButton(label,callback,disabled=false){const b=datasetNode('button',label);b.type='button';b.disabled=disabled;b.addEventListener('click',callback);return b;}
 function datasetInput(label,value,callback,{disabled=false,number=false}={}){const l=datasetNode('label',label),i=datasetNode('input');i.type=number?'number':'text';i.value=value;i.defaultValue=i.value;i.maxLength=number?4:256;i.disabled=disabled;i.setAttribute('aria-label',label);i.addEventListener('change',()=>callback(number?Number(i.value):i.value));l.append(i);return l;}
 function datasetSelect(label,items,value,callback,disabled=false){const l=datasetNode('label',label),s=datasetNode('select');s.setAttribute('aria-label',label);s.disabled=disabled;for(const item of items){const o=datasetNode('option',item.label);o.value=item.value;o.selected=item.value===value;o.disabled=!!item.disabled;s.append(o);}s.addEventListener('change',()=>callback(s.value));l.append(s);return l;}
-export function renderDatasetEditor(parent,session,{busy=false,change,read,prepare,create,recover,inspect,cancel}){
+export function renderDatasetEditor(parent,session,{busy=false,allocation=null,canAllocate=false,resume,change,read,prepare,create,recover,inspect,cancel}){
  const section=datasetNode('section',undefined,'dataset-editor');section.append(datasetNode('h2','Create from dataset'),datasetNode('p','Choose reviewed fields, then deliberately prepare their actual data shape.','metadata'));
- const locked=busy||session.locked,edit=fn=>{session.edit(fn);change();};
+ const locked=busy||session.locked||!!allocation?.unknown,edit=fn=>{session.edit(fn);change();};
  if(!session.custody){
   section.append(datasetButton('Refresh topics',()=>read(()=>session.loadTopics()),locked));
   for(const topic of session.topics){const button=datasetButton(topic.name||topic.topic,()=>read(()=>session.selectTopic(topic)),locked);button.className='dataset-topic';button.setAttribute('aria-pressed',String(session.publication?.topic===topic.topic));section.append(button);}if(session.next)section.append(datasetButton('More topics',()=>read(()=>session.loadTopics(session.next)),locked));
@@ -23,8 +24,9 @@ export function renderDatasetEditor(parent,session,{busy=false,change,read,prepa
   if(draft.kind==='table')section.append(datasetInput('New table page size',draft.pageSize,value=>edit(d=>{d.pageSize=value;}),{disabled:locked,number:true}));
   section.append(datasetNode('p','Aggregation and units come from the reviewed measure. Line and area charts need a temporal first dimension; pie and donut use one dimension.','metadata'));
   const limits=datasetNode('details');limits.append(datasetNode('summary','Supported preparation scope'));for(const limitation of view.limitations)limits.append(datasetNode('p',limitation,'metadata'));section.append(limits);
-  if(!session.custody)section.append(datasetInput('Host-authorized private chart ID',session.newBlock,value=>{session.newBlock=value;change();},{disabled:locked}),datasetNode('p','Use a target supplied by your authorized host. Entering an ID does not grant access.','metadata'),datasetButton('Prepare chart',prepare,locked||!session.valid()),datasetNode('p','Prepare runs one bounded source read. No data is queried while you choose fields.','metadata'));
+  if(!session.custody)section.append(datasetNode('p',!canAllocate?TARGET_ALLOCATION_UNAVAILABLE:allocation?.unknown?'Resume preparation asks your host for the same chart target before preparing data.':'Your host will prepare a private chart target when you prepare.','metadata'),datasetButton('Prepare chart',prepare,locked||!canAllocate||!session.intentValid()),datasetNode('p','Prepare runs one bounded source read. No data is queried while you choose fields.','metadata'));
  }
+ if(allocation?.unknown)section.append(datasetNode('p','Chart target creation is unconfirmed. Resume asks for the original target without reading source data.','notice'),datasetButton('Resume chart creation',resume,busy||allocation.pending||!canAllocate));
  const result=session.preparation;
  if(result)section.append(datasetNode('p',`Preparation: ${result.status}${result.code?' · '+result.code:''}`,'notice'));
  if(session.custody){

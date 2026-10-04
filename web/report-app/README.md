@@ -24,8 +24,9 @@ parent origins. Neither entrypoint falls back to the other. Both mount the same
   only after an explicit data-validation or run/preview action.
 
 Capabilities come from current server checks. The UI does not decide authority.
-For creation the host first allocates/authorizes an exact report ID; the app
-checks that ID before opening a new buffer. Buffer changes do not persist until
+For creation the user supplies a title. The app asks its negotiated trusted host
+for an opaque target through `app/allocate-target`, then checks native exact-target
+capabilities before opening a new report buffer. Internal IDs are never typed. Buffer changes do not persist until
 explicit save. CAS conflicts and uncertain mutations preserve the local buffer
 and block retries until authoritative reload. Leaving dirty work asks whether to
 discard it. Close/pagehide clears data and fences delayed results.
@@ -71,8 +72,8 @@ selected output's server-owned candidates; units, aggregation and provenance
 cannot be invented. Table column order/visibility/page size/totals and supported
 KPI row/comparison/target/sparkline controls remain explicit metadata.
 
-Public or noncurrent revisions use a private copy with a distinct host-authorized
-new block ID. A current private draft is amended under version/revision/digest
+Public or noncurrent revisions use a private copy with a distinct target allocated
+by the trusted host from the exact checked source reference. A current private draft is amended under version/revision/digest
 CAS. Successful save immediately stages only the selected report widget's exact
 `private_preview` revision/digest reference and labels it unvalidated. **Save
 report** can preserve it without any source read. Other widgets keep their pins.
@@ -213,7 +214,7 @@ measure aggregation/units, eight initial chart kinds and explicit unsupported
 reasons. No SQL, arbitrary expressions, client-supplied types or authority enter
 preparation input.
 
-Builder requires an explicit schema-v3 page and a host-authorized new block ID.
+Builder requires an explicit schema-v3 page and negotiated host target allocation.
 Field/type/page-size edits stay local. Prepare chart explicitly performs the
 bounded actual-schema source read. Create private chart consumes its exact
 preparation/digest and inserts an unvalidated private reference on the selected
@@ -253,9 +254,33 @@ are also not fully editable here; stored semantics remain protected.
 
 There is no in-app block/report publication or private-to-published reference
 rebind workflow. These require the existing independently authorized native
-lifecycle. Host-authorized IDs are still entered manually; real no-chat launch,
-allocation, authority projection/refresh and production registration remain host
-integration gates. Synthetic browser proof does not qualify them or mobile layouts.
+lifecycle. Raw target-ID entry has been removed. The versioned host allocation
+extension is optional; unsupported hosts explain that creation is unavailable.
+The actual Pengui allocation endpoint, real no-chat launch, authority
+projection/refresh and production registration remain host integration gates. Synthetic browser proof does not qualify them or mobile layouts.
 The [page contract](../../docs/contracts/report-pages-v3.md) and
 [preparation contract](../../docs/contracts/manual-chart-preparation-v1.md) retain
 their precise domain and evidence boundaries.
+
+## Trusted host target allocation
+
+MCP hosts advertise `hostContext['chartworks/target-allocation'] = {version:
+'report-app-allocation-v1'}`; embedded hosts advertise
+`capabilities.target_allocation = {version:'report-app-allocation-v1'}` in their
+initialization result. The app sends `app/allocate-target` only
+after an explicit report create, chart copy save or dataset preparation action.
+Requests bind kind, intent, display title and an opaque idempotency key; copies
+also pin the checked block/revision/version/digest/output. Replies must echo the
+exact version, kind, intent and key and contain only an opaque target ID. No
+tenant, grants, provider URL or credentials are supplied by the iframe. Native
+capability and mutation checks remain authoritative. This extension does not
+implement the still-pending Pengui allocation service.
+
+At most 32 allocation records remain in the live app window. An unconfirmed
+allocation can be explicitly resumed with its identical frozen request and key;
+no timer, navigation, metadata read or editor change retries it. Chart recovery
+only resolves allocation, then returns to explicit Save chart or Prepare chart.
+An allocation reply never proves that a native chart/report mutation committed.
+Navigation fences late adoption; host teardown closes all records and clears IDs.
+Unsupported hosts keep existing-item selection and reading available without a
+raw-ID fallback.

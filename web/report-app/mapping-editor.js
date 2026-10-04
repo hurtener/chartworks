@@ -1,4 +1,4 @@
-import {validID} from './model.js';
+import {TARGET_ALLOCATION_UNAVAILABLE} from './allocation.js';
 import {bindingCandidates, mappingColumns, mappingVariants, mappingVariant} from './mapping.js';
 const mapNode=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);if(cls)n.className=cls;return n;};
 function mapButton(label,click,disabled=false){const b=mapNode('button',label);b.type='button';b.disabled=disabled;b.addEventListener('click',click);return b;}
@@ -12,14 +12,14 @@ function mapSyncTable(d){if(d.table){const old=new Map(d.table.columns.map(c=>[c
 function mapKPI(d){if(!d.kpi)d.kpi={value_row:'first',comparison_mode:'none',show_delta:false,show_percent_delta:false,show_target_difference:false,sparkline:false,thresholds:[]};return d.kpi;}
 
 // Metadata controls only. No sample rows, canvas renderer or execution lives here.
-export function renderMappingEditor(parent,session,{busy=false,change,save,cancel,inspect}){
+export function renderMappingEditor(parent,session,{busy=false,allocation=null,canAllocate=false,resume,change,save,cancel,inspect}){
  const editor=mapNode('section',undefined,'mapping-editor');editor.append(mapNode('h2','Edit chart'));
  if(!session.view){editor.append(mapNode('p','Loading exact chart metadata…','metadata'));parent.append(editor);return;}
  const b=session.view.block,draft=session.draft,columns=mappingColumns(session.view,session.output),edit=fn=>{session.edit(fn);change();};
  editor.append(mapNode('p',`${b.state.id} · revision ${b.revision} · ${session.output}`,'metadata'),mapNode('p','Changes are staged here. Saving creates an unvalidated private chart revision. Source data runs only when you explicitly validate or preview.','metadata'));
  if(session.unknown)editor.append(mapNode('p','The save outcome is unknown. Inspect metadata and reconcile through your host before retrying.','notice error'));
  if(session.conflict)editor.append(mapNode('p','This chart changed elsewhere. Close these edits and reopen its current exact reference before trying again.','notice error'));
- const fields=mapNode('fieldset');fields.disabled=busy||session.pending||session.unknown||session.conflict;
+ const fields=mapNode('fieldset');fields.disabled=busy||session.pending||session.unknown||session.conflict||!!allocation?.unknown;
  fields.append(mapSelect('Chart type',draft.kind,session.catalog.kinds.map(e=>({value:e.kind,label:mapTitle(e.kind)})),kind=>{session.variant=null;edit(d=>{d.kind=kind;d.bindings=kind==='table'?{columns:[]}:{};d.order=[];delete d.kpi;delete d.table;if(kind==='kpi')mapKPI(d);if(kind==='table')mapTable(d);});}));
  const variants=mappingVariants(session.catalog,draft.kind),selected=variants.some(v=>v.id===session.variant)?session.variant:mappingVariant(session.catalog,draft);
  if(variants.length>1)fields.append(mapSelect('Binding variant',selected,variants.map(v=>({value:v.id,label:mapTitle(v.id)})),id=>{session.variant=id;edit(d=>{const variant=variants.find(v=>v.id===id),allowed=[...variant.required_slots,...(variant.optional_slots||[])];for(const slot of Object.keys(d.bindings))if(!allowed.includes(slot))delete d.bindings[slot];d.order=d.order.filter(o=>Object.values(d.bindings).flat().includes(o.column));});}));
@@ -44,9 +44,10 @@ export function renderMappingEditor(parent,session,{busy=false,change,save,cance
  fields.append(mapNode('h3','Sort order'));
  draft.order.forEach((order,index)=>{const row=mapNode('div',undefined,'mapping-sort');row.append(mapSelect(`Sort field ${index+1}`,order.column,sortColumns.map(c=>({value:c.id,label:mapColumnLabel(c)})),id=>edit(d=>{d.order[index].column=id;})),mapSelect(`Sort direction ${index+1}`,order.direction,[{value:'asc',label:'Ascending'},{value:'desc',label:'Descending'}],direction=>edit(d=>{d.order[index].direction=direction;})),mapButton(`Remove sort ${index+1}`,()=>edit(d=>{d.order.splice(index,1);})));fields.append(row);});
  const nextSort=sortColumns.find(c=>!draft.order.some(o=>o.column===c.id));fields.append(mapButton('Add sort',()=>edit(d=>{d.order.push({column:nextSort.id,direction:'asc'});}),!nextSort));
- if(session.copy)fields.append(mapInput('Host-authorized private chart ID',session.newBlock,value=>{session.newBlock=value;change();}),mapNode('p','Use an exact new block ID allocated by your host. An ID is only a locator; the server checks all required access.','metadata'));
+ if(session.copy)editor.append(mapNode('p',!canAllocate?TARGET_ALLOCATION_UNAVAILABLE:allocation?.unknown?'Resume chart creation asks your host for the same private copy.':'Saving will create a private copy through your host.','metadata'));
  editor.append(fields);
  if(!session.valid())editor.append(mapNode('p','Choose compatible fields for the selected type. All required slots must be filled; each field can occupy one slot.','notice'));
- editor.append(mapButton('Save chart',save,busy||session.pending||session.unknown||session.conflict||!session.dirty||!session.valid()||session.copy&&!validID(session.newBlock)),mapButton(session.unknown?'Close chart editor':'Cancel chart edits',cancel,busy||session.pending));
+ editor.append(mapButton('Save chart',save,busy||session.pending||session.unknown||session.conflict||!session.dirty||!session.valid()||session.copy&&!canAllocate||!!allocation?.unknown),mapButton(session.unknown?'Close chart editor':'Cancel chart edits',cancel,busy||session.pending));
+ if(allocation?.unknown)editor.append(mapButton('Resume chart creation',resume,busy||allocation.pending||!canAllocate));
  if(session.unknown)editor.append(mapButton('Inspect chart state',inspect,busy||session.pending));parent.append(editor);
 }
