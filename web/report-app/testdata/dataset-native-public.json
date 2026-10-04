@@ -1,0 +1,1524 @@
+{
+  "complete": {
+    "id": "d8a66ad9da6be17763b7642485812254",
+    "kind": "report",
+    "document": "dataset-private-report",
+    "revision": 1,
+    "manifest_digest": "8d708ed13887d3351c68d165fff30b9408c2b509b7c7d0ad858d8dfec4a3613e",
+    "state": "completed",
+    "private": true,
+    "complete": true,
+    "mixed_freshness": false,
+    "redacted": false,
+    "created_at": "2026-10-04T00:44:31.20604Z",
+    "expires_at": "2026-10-05T00:44:31.20604Z",
+    "finished_at": "2026-10-03T21:44:31.875393-03:00",
+    "pages": [
+      {
+        "locale": "en-US",
+        "timezone": "UTC",
+        "id": "analysis",
+        "report": "dataset-private-report",
+        "revision": 1,
+        "title": "Analysis",
+        "widgets": [
+          {
+            "selection": {
+              "definition_version": 1,
+              "version": 2,
+              "mode": "explicit",
+              "requested": [
+                "chart"
+              ],
+              "selected": [
+                "chart"
+              ],
+              "choices": [
+                {
+                  "id": "chart",
+                  "kind": "kpi",
+                  "intent": {
+                    "metadata": [
+                      {
+                        "locale": "en-US",
+                        "display_name": "Prepared revenue — Indicator · chart",
+                        "description": ""
+                      }
+                    ],
+                    "enabled": true,
+                    "default_selected": true,
+                    "display_order": 0
+                  },
+                  "selected": true,
+                  "state": "selected"
+                }
+              ]
+            },
+            "query_limits": {
+              "max_rows": 1000,
+              "max_bytes": 1048576,
+              "timeout_ms": 60000,
+              "query_attempts": 3
+            },
+            "id": "dataset-chart",
+            "kind": "block",
+            "state": "completed",
+            "grid": {
+              "column": 0,
+              "row": 0,
+              "width": 12,
+              "height": 1
+            },
+            "presentation": {},
+            "outputs": [
+              "chart"
+            ],
+            "parameters": [],
+            "trust": {
+              "publication": "draft",
+              "certification": "none",
+              "health": {
+                "status": "healthy",
+                "observed_at": "2026-10-04T00:44:31.119486472Z",
+                "dependency_digest": "4269fba0a2d2476b3dafb6460a2199d4046439465b55c4aae3e7e2526eecd8f7",
+                "reason": "validated_observation"
+              }
+            },
+            "observed_at": "2026-10-03T21:44:31.593619-03:00"
+          }
+        ]
+      },
+      {
+        "locale": "en-US",
+        "timezone": "UTC",
+        "id": "empty",
+        "report": "dataset-private-report",
+        "revision": 1,
+        "title": "Empty",
+        "widgets": []
+      }
+    ],
+    "query_groups": 1,
+    "retained_bytes": 10950
+  },
+  "created": {
+    "block": {
+      "schema_version": 1,
+      "result_policy": [
+        {
+          "field": "m_46f93a6a01617b80efa06168",
+          "status": "unknown",
+          "basis": "reviewed_query_dependencies",
+          "provenance_digest": "eac973c40c2768c31a9ac25606cb1b5b64ee9efb2f10fc4f0fc791233b3a1ee6"
+        }
+      ],
+      "state": {
+        "id": "dataset-private-chart",
+        "topic": "commerce",
+        "version": 1,
+        "draft_revision": 1,
+        "published_revision": 0,
+        "draft_state": "draft",
+        "archived": false,
+        "created_at": "2026-10-03T21:44:31.024467-03:00",
+        "updated_at": "2026-10-03T21:44:31.024467-03:00"
+      },
+      "revision": 1,
+      "revision_id": "cbcc007cf2ddccaefa0ee344545bc955",
+      "digest": "3eb53159d2d64f9521b415d217034500906543d96e0ea45954650be9dbc94ed5",
+      "execution_digest": "5a4597a0b8c7170a488a4e8a790afef68adb770aa91142f49e5ad99a2365ab17",
+      "metadata": [
+        {
+          "locale": "en-US",
+          "title": "Prepared revenue",
+          "question": "Prepared revenue",
+          "aliases": [],
+          "description": ""
+        }
+      ],
+      "source": "topic-source",
+      "context": "topic-source:v1",
+      "topics": [
+        {
+          "topic": "commerce",
+          "version": "v1",
+          "digest": "e342702f7e0e264befe5a74f61efe60f5a070fb5248bad0b607d23785d182477"
+        }
+      ],
+      "parameters": [],
+      "expected_schema": [
+        {
+          "name": "m_46f93a6a01617b80efa06168",
+          "type": "decimal",
+          "encoding": "string",
+          "native_type": "numeric"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "chart",
+          "kind": "kpi",
+          "intent": {
+            "metadata": [
+              {
+                "locale": "en-US",
+                "display_name": "Prepared revenue — Indicator · chart",
+                "description": ""
+              }
+            ],
+            "enabled": true,
+            "default_selected": true,
+            "display_order": 0
+          },
+          "mapping": {
+            "version": 1,
+            "kind": "kpi",
+            "columns": [
+              {
+                "id": "m_46f93a6a01617b80efa06168",
+                "name": "m_46f93a6a01617b80efa06168",
+                "display_label": "Revenue",
+                "type": "decimal",
+                "role": "measure",
+                "grain": "",
+                "aggregation": "sum",
+                "format": {
+                  "unit": "currency",
+                  "currency": "",
+                  "percent": "",
+                  "fraction_digits": 0
+                },
+                "provenance": {
+                  "version": 1,
+                  "source": "topic-source",
+                  "source_revision": 1,
+                  "topic": "commerce",
+                  "topic_version": "v1",
+                  "semantic_id": "revenue"
+                }
+              }
+            ],
+            "bindings": {
+              "value": "m_46f93a6a01617b80efa06168"
+            },
+            "order": [],
+            "options": {
+              "title": "Prepared revenue",
+              "legend": {
+                "visible": true,
+                "position": "bottom"
+              },
+              "label_max_runes": 80
+            }
+          },
+          "editable": true
+        }
+      ],
+      "actor": "operator",
+      "created_at": "2026-10-04T00:44:30.960215624Z",
+      "private": true,
+      "trust": {
+        "publication": "draft",
+        "certification": "none",
+        "health": {
+          "status": "unknown",
+          "reason": "not_checked"
+        }
+      }
+    },
+    "output_columns": [
+      {
+        "output": "chart",
+        "columns": [
+          {
+            "id": "m_46f93a6a01617b80efa06168",
+            "name": "m_46f93a6a01617b80efa06168",
+            "display_label": "Revenue",
+            "type": "decimal",
+            "role": "measure",
+            "grain": "",
+            "aggregation": "sum",
+            "format": {
+              "unit": "currency",
+              "currency": "",
+              "percent": "",
+              "fraction_digits": 0
+            },
+            "provenance": {
+              "version": 1,
+              "source": "topic-source",
+              "source_revision": 1,
+              "topic": "commerce",
+              "topic_version": "v1",
+              "semantic_id": "revenue"
+            }
+          }
+        ]
+      }
+    ],
+    "data_validation": "not_performed"
+  },
+  "dataset": {
+    "compiler": "reviewed-dataset-postgres-v1",
+    "topic": {
+      "topic": "commerce",
+      "version": "v1",
+      "digest": "e342702f7e0e264befe5a74f61efe60f5a070fb5248bad0b607d23785d182477"
+    },
+    "dataset": "ds:95b3449b842ed4ac7c5306c17930e519",
+    "source": "topic-source",
+    "context": "topic-source:v1",
+    "source_revision": 1,
+    "dialect": "postgres",
+    "dimensions": [],
+    "measures": [
+      {
+        "id": "revenue",
+        "binding": "m_46f93a6a01617b80efa06168",
+        "name": "Revenue",
+        "role": "measure",
+        "aggregation": "sum",
+        "unit": "currency",
+        "supported": true
+      }
+    ],
+    "chart_kinds": [
+      "bar",
+      "column",
+      "line",
+      "area",
+      "pie",
+      "donut",
+      "kpi",
+      "table"
+    ],
+    "limitations": [
+      "PostgreSQL only; zero to two direct dimensions and one reviewed measure.",
+      "No filters, group policies, calendar bucketing, joins, arbitrary KPI expressions, active rules or amount-completeness policies in the initial compiler.",
+      "Prepare reads actual schema. Create remains private and unvalidated; Validate is a separate explicit read."
+    ],
+    "supported": true
+  },
+  "describe_topic": {
+    "state": {
+      "topic": "commerce",
+      "revision": 1,
+      "version": "v1",
+      "archived": false,
+      "active": true,
+      "generations": [
+        {
+          "context": "topic-source:v1",
+          "generation": "e80129b21ff375853b836d86c93fb95f6b746b9b993b8fcb98b6e7c31999e732",
+          "space": "a834385ce5bc359636a4446dc29aaef47dddb82f9f0597f461eb84647aec6806",
+          "facets": 9
+        }
+      ]
+    },
+    "definition": {
+      "schema_version": 1,
+      "topic": "commerce",
+      "version": "v1",
+      "name": "Commerce",
+      "description": "Synthetic draft",
+      "datasets": [
+        {
+          "id": "ds:9191829286eb6e0094d70fda79214271",
+          "name": "Items",
+          "source": {
+            "source": "topic-source",
+            "context": "topic-source:v1",
+            "dataset": "ds:9191829286eb6e0094d70fda79214271",
+            "source_revision": 1
+          },
+          "columns": [
+            {
+              "sensitivity": "non_sensitive",
+              "id": "quantity",
+              "source_name": "quantity",
+              "name": "quantity",
+              "native_type": "integer",
+              "category": "numeric",
+              "nullable": true
+            },
+            {
+              "sensitivity": "non_sensitive",
+              "id": "sale_id",
+              "source_name": "sale_id",
+              "name": "sale_id",
+              "native_type": "integer",
+              "category": "numeric",
+              "nullable": true
+            }
+          ]
+        },
+        {
+          "id": "ds:95b3449b842ed4ac7c5306c17930e519",
+          "name": "Sales",
+          "source": {
+            "source": "topic-source",
+            "context": "topic-source:v1",
+            "dataset": "ds:95b3449b842ed4ac7c5306c17930e519",
+            "source_revision": 1
+          },
+          "columns": [
+            {
+              "sensitivity": "non_sensitive",
+              "id": "amount",
+              "source_name": "amount",
+              "name": "amount",
+              "native_type": "numeric(30,3)",
+              "category": "numeric",
+              "nullable": true
+            },
+            {
+              "sensitivity": "non_sensitive",
+              "id": "id",
+              "source_name": "id",
+              "name": "id",
+              "native_type": "integer",
+              "category": "numeric",
+              "nullable": false
+            }
+          ]
+        }
+      ],
+      "measures": [
+        {
+          "id": "revenue",
+          "name": "Revenue",
+          "description": "Total amount",
+          "field": {
+            "kind": "column",
+            "dataset": "ds:95b3449b842ed4ac7c5306c17930e519",
+            "id": "amount"
+          },
+          "aggregation": "sum",
+          "unit": "currency"
+        }
+      ],
+      "dimensions": null,
+      "kpis": null,
+      "joins": [
+        {
+          "id": "sales-items",
+          "name": "Sales to items",
+          "left": {
+            "kind": "column",
+            "dataset": "ds:95b3449b842ed4ac7c5306c17930e519",
+            "id": "id"
+          },
+          "right": {
+            "kind": "column",
+            "dataset": "ds:9191829286eb6e0094d70fda79214271",
+            "id": "sale_id"
+          },
+          "type": "inner",
+          "cardinality": "one_to_one",
+          "evidence": {}
+        }
+      ],
+      "canonical_entities": null
+    },
+    "digest": "e342702f7e0e264befe5a74f61efe60f5a070fb5248bad0b607d23785d182477",
+    "published_at": "2026-10-03T21:44:30.761274-03:00"
+  },
+  "list_topics": [
+    {
+      "topic": "commerce",
+      "version": "v1",
+      "revision": 1,
+      "name": "Commerce",
+      "description": "Synthetic draft",
+      "digest": "e342702f7e0e264befe5a74f61efe60f5a070fb5248bad0b607d23785d182477",
+      "published_at": "2026-10-03T21:44:30.761274-03:00"
+    }
+  ],
+  "payload": {
+    "page": "analysis",
+    "widget": "dataset-chart",
+    "state": "completed",
+    "outputs": [
+      {
+        "result_policy": [
+          {
+            "field": "m_46f93a6a01617b80efa06168",
+            "status": "allowed",
+            "basis": "reviewed_query_dependencies",
+            "provenance_digest": "26a6d81f14aeb57f4fd0b2dc96c03b02b04a9270aa3c69190380cfc72d3329c7"
+          }
+        ],
+        "intent": {
+          "metadata": [
+            {
+              "locale": "en-US",
+              "display_name": "Prepared revenue — Indicator · chart",
+              "description": ""
+            }
+          ],
+          "enabled": true,
+          "default_selected": true,
+          "display_order": 0
+        },
+        "id": "chart",
+        "kind": "kpi",
+        "state": "succeeded",
+        "digest": "89e8d42479c7bdde597d356f7775924ada3147faf4a53d3f92f94fbbc667f619",
+        "chart": {
+          "version": 1,
+          "kind": "kpi",
+          "mapping": {
+            "version": 1,
+            "kind": "kpi",
+            "columns": [
+              {
+                "id": "m_46f93a6a01617b80efa06168",
+                "name": "m_46f93a6a01617b80efa06168",
+                "display_label": "Revenue",
+                "type": "decimal",
+                "role": "measure",
+                "grain": "",
+                "aggregation": "sum",
+                "format": {
+                  "unit": "currency",
+                  "currency": "",
+                  "percent": "",
+                  "fraction_digits": 0
+                },
+                "provenance": {
+                  "version": 1,
+                  "source": "topic-source",
+                  "source_revision": 1,
+                  "topic": "commerce",
+                  "topic_version": "v1",
+                  "semantic_id": "revenue"
+                }
+              }
+            ],
+            "bindings": {
+              "value": "m_46f93a6a01617b80efa06168"
+            },
+            "order": [],
+            "options": {
+              "title": "Prepared revenue",
+              "legend": {
+                "visible": true,
+                "position": "bottom"
+              },
+              "label_max_runes": 80
+            }
+          },
+          "columns": [
+            {
+              "id": "m_46f93a6a01617b80efa06168",
+              "name": "m_46f93a6a01617b80efa06168",
+              "display_label": "Revenue",
+              "type": "decimal",
+              "role": "measure",
+              "grain": "",
+              "aggregation": "sum",
+              "format": {
+                "unit": "currency",
+                "currency": "",
+                "percent": "",
+                "fraction_digits": 0
+              },
+              "provenance": {
+                "version": 1,
+                "source": "topic-source",
+                "source_revision": 1,
+                "topic": "commerce",
+                "topic_version": "v1",
+                "semantic_id": "revenue"
+              }
+            }
+          ],
+          "rows": [],
+          "points": [
+            {
+              "row": 0,
+              "category": {
+                "null": true,
+                "value": ""
+              },
+              "series": {
+                "null": true,
+                "value": ""
+              },
+              "parent": {
+                "null": true,
+                "value": ""
+              },
+              "x": {
+                "null": true,
+                "exact": "",
+                "coordinate": null,
+                "approximate": false
+              },
+              "y": {
+                "null": true,
+                "exact": "",
+                "coordinate": null,
+                "approximate": false
+              },
+              "value": {
+                "null": false,
+                "exact": "9007199254740998.625",
+                "coordinate": 9007199254740998,
+                "approximate": true
+              }
+            }
+          ],
+          "totals": [
+            {
+              "column": "m_46f93a6a01617b80efa06168",
+              "value": {
+                "null": false,
+                "value": "9007199254740998.625"
+              },
+              "scope": "complete_result"
+            }
+          ],
+          "state": "ready",
+          "input_rows": 1,
+          "omitted_rows": 0,
+          "completeness": {
+            "status": "complete_result",
+            "reason": ""
+          },
+          "warnings": [
+            "geometry_approximate_labels_exact"
+          ]
+        },
+        "reserved_calls": 0,
+        "reserved_tokens": 0
+      }
+    ]
+  },
+  "preparation": {
+    "preparation": "15a237393b0097abc352045b905a5d64",
+    "new_block": "dataset-private-chart",
+    "operation": "dataset-prepare-one",
+    "digest": "f36f698bd487588713da2809f45c237963c961cf02161afe5f981ff7fe9cfa5d",
+    "status": "prepared",
+    "schema": [
+      {
+        "name": "m_46f93a6a01617b80efa06168",
+        "type": "decimal",
+        "encoding": "string",
+        "native_type": "numeric"
+      }
+    ],
+    "mapping": {
+      "version": 1,
+      "kind": "kpi",
+      "columns": [
+        {
+          "id": "m_46f93a6a01617b80efa06168",
+          "name": "m_46f93a6a01617b80efa06168",
+          "display_label": "Revenue",
+          "type": "decimal",
+          "role": "measure",
+          "grain": "",
+          "aggregation": "sum",
+          "format": {
+            "unit": "currency",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 0
+          },
+          "provenance": {
+            "version": 1,
+            "source": "topic-source",
+            "source_revision": 1,
+            "topic": "commerce",
+            "topic_version": "v1",
+            "semantic_id": "revenue"
+          }
+        }
+      ],
+      "bindings": {
+        "value": "m_46f93a6a01617b80efa06168"
+      },
+      "order": [],
+      "options": {
+        "title": "Prepared revenue",
+        "legend": {
+          "visible": true,
+          "position": "bottom"
+        },
+        "label_max_runes": 80
+      }
+    },
+    "expires_at": "2026-10-04T00:59:30.913183763Z",
+    "validation": "native_validation_required",
+    "execution_status": "succeeded",
+    "remote_state": "stopped"
+  },
+  "preview": {
+    "id": "d8a66ad9da6be17763b7642485812254",
+    "kind": "report",
+    "document": "dataset-private-report",
+    "revision": 1,
+    "manifest_digest": "8d708ed13887d3351c68d165fff30b9408c2b509b7c7d0ad858d8dfec4a3613e",
+    "state": "sealed",
+    "private": true,
+    "complete": false,
+    "mixed_freshness": false,
+    "redacted": false,
+    "created_at": "2026-10-04T00:44:31.20604Z",
+    "expires_at": "2026-10-05T00:44:31.20604Z",
+    "pages": [
+      {
+        "locale": "en-US",
+        "timezone": "UTC",
+        "id": "analysis",
+        "report": "dataset-private-report",
+        "revision": 1,
+        "title": "Analysis",
+        "widgets": [
+          {
+            "selection": {
+              "definition_version": 1,
+              "version": 2,
+              "mode": "explicit",
+              "requested": [
+                "chart"
+              ],
+              "selected": [
+                "chart"
+              ],
+              "choices": [
+                {
+                  "id": "chart",
+                  "kind": "kpi",
+                  "intent": {
+                    "metadata": [
+                      {
+                        "locale": "en-US",
+                        "display_name": "Prepared revenue — Indicator · chart",
+                        "description": ""
+                      }
+                    ],
+                    "enabled": true,
+                    "default_selected": true,
+                    "display_order": 0
+                  },
+                  "selected": true,
+                  "state": "selected"
+                }
+              ]
+            },
+            "query_limits": {
+              "max_rows": 1000,
+              "max_bytes": 1048576,
+              "timeout_ms": 60000,
+              "query_attempts": 3
+            },
+            "id": "dataset-chart",
+            "kind": "block",
+            "state": "pending",
+            "grid": {
+              "column": 0,
+              "row": 0,
+              "width": 12,
+              "height": 1
+            },
+            "presentation": {},
+            "outputs": [
+              "chart"
+            ],
+            "parameters": [],
+            "trust": {
+              "publication": "draft",
+              "certification": "none",
+              "health": {
+                "status": "healthy",
+                "observed_at": "2026-10-04T00:44:31.119486472Z",
+                "dependency_digest": "4269fba0a2d2476b3dafb6460a2199d4046439465b55c4aae3e7e2526eecd8f7",
+                "reason": "validated_observation"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "locale": "en-US",
+        "timezone": "UTC",
+        "id": "empty",
+        "report": "dataset-private-report",
+        "revision": 1,
+        "title": "Empty",
+        "widgets": []
+      }
+    ],
+    "query_groups": 1,
+    "retained_bytes": 5558
+  },
+  "report_state": {
+    "kind": "report",
+    "id": "dataset-private-report",
+    "version": 1,
+    "latest_revision": 1,
+    "draft_revision": 1,
+    "review_revision": 0,
+    "published_revision": 0,
+    "archived": false,
+    "created_at": "2026-10-03T21:44:31.175239-03:00",
+    "updated_at": "2026-10-03T21:44:31.175239-03:00"
+  },
+  "request": {
+    "new_block": "dataset-private-chart",
+    "operation": "dataset-prepare-one",
+    "intent": {
+      "topic": {
+        "topic": "commerce",
+        "version": "v1",
+        "digest": "e342702f7e0e264befe5a74f61efe60f5a070fb5248bad0b607d23785d182477"
+      },
+      "dataset": "ds:95b3449b842ed4ac7c5306c17930e519",
+      "dimensions": [],
+      "measure": "revenue",
+      "mapping": {
+        "kind": "kpi",
+        "bindings": {
+          "value": "m_46f93a6a01617b80efa06168"
+        },
+        "order": [],
+        "options": {
+          "title": "Prepared revenue",
+          "legend": {
+            "visible": true,
+            "position": "bottom"
+          },
+          "label_max_runes": 80
+        }
+      }
+    },
+    "metadata": [
+      {
+        "locale": "en-US",
+        "title": "Prepared revenue",
+        "question": "Prepared revenue",
+        "aliases": [],
+        "description": ""
+      }
+    ]
+  },
+  "validation": {
+    "state": {
+      "id": "dataset-private-chart",
+      "topic": "commerce",
+      "version": 2,
+      "draft_revision": 1,
+      "published_revision": 0,
+      "draft_state": "validated",
+      "archived": false,
+      "created_at": "2026-10-03T21:44:31.024467-03:00",
+      "updated_at": "2026-10-03T21:44:31.140314-03:00"
+    },
+    "evidence": {
+      "id": "8b55f979810451c018957e952b93ddd0",
+      "revision": 1,
+      "definition_digest": "3eb53159d2d64f9521b415d217034500906543d96e0ea45954650be9dbc94ed5",
+      "execution_digest": "5a4597a0b8c7170a488a4e8a790afef68adb770aa91142f49e5ad99a2365ab17",
+      "schema_digest": "f408819d52279e8d85fa4a42073d0eee36676d36b4647fadd7bbecb01dcd2d9b",
+      "schema": [
+        {
+          "name": "m_46f93a6a01617b80efa06168",
+          "type": "decimal",
+          "encoding": "string",
+          "native_type": "numeric"
+        }
+      ],
+      "created_at": "2026-10-04T00:44:31.119486472Z",
+      "expires_at": "2026-10-05T00:44:31.119486472Z"
+    }
+  },
+  "view_output": {
+    "accepted_selection": {
+      "definition_version": 1,
+      "version": 2,
+      "mode": "explicit",
+      "requested": [
+        "chart"
+      ],
+      "selected": [
+        "chart"
+      ],
+      "choices": [
+        {
+          "id": "chart",
+          "kind": "kpi",
+          "intent": {
+            "metadata": [
+              {
+                "locale": "en-US",
+                "display_name": "Prepared revenue — Indicator · chart",
+                "description": ""
+              }
+            ],
+            "enabled": true,
+            "default_selected": true,
+            "display_order": 0
+          },
+          "selected": true,
+          "state": "selected"
+        }
+      ]
+    },
+    "query_limits": {
+      "max_rows": 1000,
+      "max_bytes": 1048576,
+      "timeout_ms": 60000,
+      "query_attempts": 3
+    },
+    "version": "reporting-view-v1",
+    "summary": {
+      "kind": "report",
+      "run": "d8a66ad9da6be17763b7642485812254",
+      "target": {
+        "kind": "report",
+        "id": "dataset-private-report",
+        "revision": 1
+      },
+      "state": "completed",
+      "code": "",
+      "private": true,
+      "created_at": "2026-10-03T21:44:31.20604-03:00",
+      "expires_at": "2026-10-04T21:44:31.20604-03:00"
+    },
+    "selection": {
+      "kind": "report",
+      "run": "d8a66ad9da6be17763b7642485812254",
+      "page": "analysis",
+      "widget": "dataset-chart",
+      "output": "chart",
+      "offset": 0,
+      "limit": 100
+    },
+    "locale": "en-US",
+    "timezone": "UTC",
+    "outputs": [
+      {
+        "metadata": [
+          {
+            "locale": "en-US",
+            "display_name": "Prepared revenue — Indicator · chart",
+            "description": ""
+          }
+        ],
+        "description": "",
+        "locale": "en-US",
+        "display_order": 0,
+        "enabled": true,
+        "default_selected": true,
+        "selected": true,
+        "state": "selected",
+        "id": "chart",
+        "kind": "kpi",
+        "title": "Prepared revenue — Indicator · chart"
+      }
+    ],
+    "pages": [
+      {
+        "locale": "en-US",
+        "timezone": "UTC",
+        "id": "analysis",
+        "report": "dataset-private-report",
+        "revision": 1,
+        "title": "Analysis",
+        "widgets": [
+          {
+            "selection": {
+              "definition_version": 1,
+              "version": 2,
+              "mode": "explicit",
+              "requested": [
+                "chart"
+              ],
+              "selected": [
+                "chart"
+              ],
+              "choices": [
+                {
+                  "id": "chart",
+                  "kind": "kpi",
+                  "intent": {
+                    "metadata": [
+                      {
+                        "locale": "en-US",
+                        "display_name": "Prepared revenue — Indicator · chart",
+                        "description": ""
+                      }
+                    ],
+                    "enabled": true,
+                    "default_selected": true,
+                    "display_order": 0
+                  },
+                  "selected": true,
+                  "state": "selected"
+                }
+              ]
+            },
+            "query_limits": {
+              "max_rows": 1000,
+              "max_bytes": 1048576,
+              "timeout_ms": 60000,
+              "query_attempts": 3
+            },
+            "id": "dataset-chart",
+            "kind": "block",
+            "state": "completed",
+            "grid": {
+              "column": 0,
+              "row": 0,
+              "width": 12,
+              "height": 1
+            },
+            "presentation": {},
+            "outputs": [
+              "chart"
+            ],
+            "parameters": [],
+            "trust": {
+              "publication": "draft",
+              "certification": "none",
+              "health": {
+                "status": "healthy",
+                "observed_at": "2026-10-04T00:44:31.119486472Z",
+                "dependency_digest": "4269fba0a2d2476b3dafb6460a2199d4046439465b55c4aae3e7e2526eecd8f7",
+                "reason": "validated_observation"
+              }
+            },
+            "observed_at": "2026-10-03T21:44:31.593619-03:00"
+          }
+        ]
+      },
+      {
+        "locale": "en-US",
+        "timezone": "UTC",
+        "id": "empty",
+        "report": "dataset-private-report",
+        "revision": 1,
+        "title": "Empty",
+        "widgets": []
+      }
+    ],
+    "filters": [],
+    "trust": {
+      "publication": "draft",
+      "certification": "none",
+      "health": {
+        "status": "healthy",
+        "observed_at": "2026-10-04T00:44:31.119486472Z",
+        "dependency_digest": "4269fba0a2d2476b3dafb6460a2199d4046439465b55c4aae3e7e2526eecd8f7",
+        "reason": "validated_observation"
+      }
+    },
+    "observed_at": "2026-10-03T21:44:31.593619-03:00",
+    "mixed_freshness": false,
+    "redacted": false,
+    "output": {
+      "result_policy": [
+        {
+          "field": "m_46f93a6a01617b80efa06168",
+          "status": "allowed",
+          "basis": "reviewed_query_dependencies",
+          "provenance_digest": "26a6d81f14aeb57f4fd0b2dc96c03b02b04a9270aa3c69190380cfc72d3329c7"
+        }
+      ],
+      "intent": {
+        "metadata": [
+          {
+            "locale": "en-US",
+            "display_name": "Prepared revenue — Indicator · chart",
+            "description": ""
+          }
+        ],
+        "enabled": true,
+        "default_selected": true,
+        "display_order": 0
+      },
+      "id": "chart",
+      "kind": "kpi",
+      "state": "succeeded",
+      "code": "",
+      "retained_digest": "89e8d42479c7bdde597d356f7775924ada3147faf4a53d3f92f94fbbc667f619",
+      "chart": {
+        "version": 1,
+        "kind": "kpi",
+        "mapping": {
+          "version": 1,
+          "kind": "kpi",
+          "columns": [
+            {
+              "id": "m_46f93a6a01617b80efa06168",
+              "name": "m_46f93a6a01617b80efa06168",
+              "display_label": "Revenue",
+              "type": "decimal",
+              "role": "measure",
+              "grain": "",
+              "aggregation": "sum",
+              "format": {
+                "unit": "currency",
+                "currency": "",
+                "percent": "",
+                "fraction_digits": 0
+              },
+              "provenance": {
+                "version": 1,
+                "source": "topic-source",
+                "source_revision": 1,
+                "topic": "commerce",
+                "topic_version": "v1",
+                "semantic_id": "revenue"
+              }
+            }
+          ],
+          "bindings": {
+            "value": "m_46f93a6a01617b80efa06168"
+          },
+          "order": [],
+          "options": {
+            "title": "Prepared revenue",
+            "legend": {
+              "visible": true,
+              "position": "bottom"
+            },
+            "label_max_runes": 80
+          }
+        },
+        "columns": [
+          {
+            "id": "m_46f93a6a01617b80efa06168",
+            "name": "m_46f93a6a01617b80efa06168",
+            "display_label": "Revenue",
+            "type": "decimal",
+            "role": "measure",
+            "grain": "",
+            "aggregation": "sum",
+            "format": {
+              "unit": "currency",
+              "currency": "",
+              "percent": "",
+              "fraction_digits": 0
+            },
+            "provenance": {
+              "version": 1,
+              "source": "topic-source",
+              "source_revision": 1,
+              "topic": "commerce",
+              "topic_version": "v1",
+              "semantic_id": "revenue"
+            }
+          }
+        ],
+        "rows": [],
+        "points": [
+          {
+            "row": 0,
+            "category": {
+              "null": true,
+              "value": ""
+            },
+            "series": {
+              "null": true,
+              "value": ""
+            },
+            "parent": {
+              "null": true,
+              "value": ""
+            },
+            "x": {
+              "null": true,
+              "exact": "",
+              "coordinate": null,
+              "approximate": false
+            },
+            "y": {
+              "null": true,
+              "exact": "",
+              "coordinate": null,
+              "approximate": false
+            },
+            "value": {
+              "null": false,
+              "exact": "9007199254740998.625",
+              "coordinate": 9007199254740998,
+              "approximate": true
+            }
+          }
+        ],
+        "totals": [
+          {
+            "column": "m_46f93a6a01617b80efa06168",
+            "value": {
+              "null": false,
+              "value": "9007199254740998.625"
+            },
+            "scope": "complete_result"
+          }
+        ],
+        "state": "ready",
+        "input_rows": 1,
+        "omitted_rows": 0,
+        "completeness": {
+          "status": "complete_result",
+          "reason": ""
+        },
+        "warnings": [
+          "geometry_approximate_labels_exact"
+        ]
+      }
+    },
+    "page_bounds": {
+      "offset": 0,
+      "limit": 100,
+      "total": 1
+    }
+  },
+  "view_root": {
+    "accepted_selection": {
+      "definition_version": 1,
+      "version": 2,
+      "mode": "explicit",
+      "requested": [
+        "chart"
+      ],
+      "selected": [
+        "chart"
+      ],
+      "choices": [
+        {
+          "id": "chart",
+          "kind": "kpi",
+          "intent": {
+            "metadata": [
+              {
+                "locale": "en-US",
+                "display_name": "Prepared revenue — Indicator · chart",
+                "description": ""
+              }
+            ],
+            "enabled": true,
+            "default_selected": true,
+            "display_order": 0
+          },
+          "selected": true,
+          "state": "selected"
+        }
+      ]
+    },
+    "query_limits": {
+      "max_rows": 1000,
+      "max_bytes": 1048576,
+      "timeout_ms": 60000,
+      "query_attempts": 3
+    },
+    "version": "reporting-view-v1",
+    "summary": {
+      "kind": "report",
+      "run": "d8a66ad9da6be17763b7642485812254",
+      "target": {
+        "kind": "report",
+        "id": "dataset-private-report",
+        "revision": 1
+      },
+      "state": "completed",
+      "code": "",
+      "private": true,
+      "created_at": "2026-10-03T21:44:31.20604-03:00",
+      "expires_at": "2026-10-04T21:44:31.20604-03:00"
+    },
+    "selection": {
+      "kind": "report",
+      "run": "d8a66ad9da6be17763b7642485812254",
+      "page": "analysis",
+      "widget": "dataset-chart",
+      "output": "chart",
+      "offset": 0,
+      "limit": 100
+    },
+    "locale": "en-US",
+    "timezone": "UTC",
+    "outputs": [
+      {
+        "metadata": [
+          {
+            "locale": "en-US",
+            "display_name": "Prepared revenue — Indicator · chart",
+            "description": ""
+          }
+        ],
+        "description": "",
+        "locale": "en-US",
+        "display_order": 0,
+        "enabled": true,
+        "default_selected": true,
+        "selected": true,
+        "state": "selected",
+        "id": "chart",
+        "kind": "kpi",
+        "title": "Prepared revenue — Indicator · chart"
+      }
+    ],
+    "pages": [
+      {
+        "locale": "en-US",
+        "timezone": "UTC",
+        "id": "analysis",
+        "report": "dataset-private-report",
+        "revision": 1,
+        "title": "Analysis",
+        "widgets": [
+          {
+            "selection": {
+              "definition_version": 1,
+              "version": 2,
+              "mode": "explicit",
+              "requested": [
+                "chart"
+              ],
+              "selected": [
+                "chart"
+              ],
+              "choices": [
+                {
+                  "id": "chart",
+                  "kind": "kpi",
+                  "intent": {
+                    "metadata": [
+                      {
+                        "locale": "en-US",
+                        "display_name": "Prepared revenue — Indicator · chart",
+                        "description": ""
+                      }
+                    ],
+                    "enabled": true,
+                    "default_selected": true,
+                    "display_order": 0
+                  },
+                  "selected": true,
+                  "state": "selected"
+                }
+              ]
+            },
+            "query_limits": {
+              "max_rows": 1000,
+              "max_bytes": 1048576,
+              "timeout_ms": 60000,
+              "query_attempts": 3
+            },
+            "id": "dataset-chart",
+            "kind": "block",
+            "state": "completed",
+            "grid": {
+              "column": 0,
+              "row": 0,
+              "width": 12,
+              "height": 1
+            },
+            "presentation": {},
+            "outputs": [
+              "chart"
+            ],
+            "parameters": [],
+            "trust": {
+              "publication": "draft",
+              "certification": "none",
+              "health": {
+                "status": "healthy",
+                "observed_at": "2026-10-04T00:44:31.119486472Z",
+                "dependency_digest": "4269fba0a2d2476b3dafb6460a2199d4046439465b55c4aae3e7e2526eecd8f7",
+                "reason": "validated_observation"
+              }
+            },
+            "observed_at": "2026-10-03T21:44:31.593619-03:00"
+          }
+        ]
+      },
+      {
+        "locale": "en-US",
+        "timezone": "UTC",
+        "id": "empty",
+        "report": "dataset-private-report",
+        "revision": 1,
+        "title": "Empty",
+        "widgets": []
+      }
+    ],
+    "filters": [],
+    "trust": {
+      "publication": "draft",
+      "certification": "none",
+      "health": {
+        "status": "healthy",
+        "observed_at": "2026-10-04T00:44:31.119486472Z",
+        "dependency_digest": "4269fba0a2d2476b3dafb6460a2199d4046439465b55c4aae3e7e2526eecd8f7",
+        "reason": "validated_observation"
+      }
+    },
+    "observed_at": "2026-10-03T21:44:31.593619-03:00",
+    "mixed_freshness": false,
+    "redacted": false,
+    "output": {
+      "result_policy": [
+        {
+          "field": "m_46f93a6a01617b80efa06168",
+          "status": "allowed",
+          "basis": "reviewed_query_dependencies",
+          "provenance_digest": "26a6d81f14aeb57f4fd0b2dc96c03b02b04a9270aa3c69190380cfc72d3329c7"
+        }
+      ],
+      "intent": {
+        "metadata": [
+          {
+            "locale": "en-US",
+            "display_name": "Prepared revenue — Indicator · chart",
+            "description": ""
+          }
+        ],
+        "enabled": true,
+        "default_selected": true,
+        "display_order": 0
+      },
+      "id": "chart",
+      "kind": "kpi",
+      "state": "succeeded",
+      "code": "",
+      "retained_digest": "89e8d42479c7bdde597d356f7775924ada3147faf4a53d3f92f94fbbc667f619",
+      "chart": {
+        "version": 1,
+        "kind": "kpi",
+        "mapping": {
+          "version": 1,
+          "kind": "kpi",
+          "columns": [
+            {
+              "id": "m_46f93a6a01617b80efa06168",
+              "name": "m_46f93a6a01617b80efa06168",
+              "display_label": "Revenue",
+              "type": "decimal",
+              "role": "measure",
+              "grain": "",
+              "aggregation": "sum",
+              "format": {
+                "unit": "currency",
+                "currency": "",
+                "percent": "",
+                "fraction_digits": 0
+              },
+              "provenance": {
+                "version": 1,
+                "source": "topic-source",
+                "source_revision": 1,
+                "topic": "commerce",
+                "topic_version": "v1",
+                "semantic_id": "revenue"
+              }
+            }
+          ],
+          "bindings": {
+            "value": "m_46f93a6a01617b80efa06168"
+          },
+          "order": [],
+          "options": {
+            "title": "Prepared revenue",
+            "legend": {
+              "visible": true,
+              "position": "bottom"
+            },
+            "label_max_runes": 80
+          }
+        },
+        "columns": [
+          {
+            "id": "m_46f93a6a01617b80efa06168",
+            "name": "m_46f93a6a01617b80efa06168",
+            "display_label": "Revenue",
+            "type": "decimal",
+            "role": "measure",
+            "grain": "",
+            "aggregation": "sum",
+            "format": {
+              "unit": "currency",
+              "currency": "",
+              "percent": "",
+              "fraction_digits": 0
+            },
+            "provenance": {
+              "version": 1,
+              "source": "topic-source",
+              "source_revision": 1,
+              "topic": "commerce",
+              "topic_version": "v1",
+              "semantic_id": "revenue"
+            }
+          }
+        ],
+        "rows": [],
+        "points": [
+          {
+            "row": 0,
+            "category": {
+              "null": true,
+              "value": ""
+            },
+            "series": {
+              "null": true,
+              "value": ""
+            },
+            "parent": {
+              "null": true,
+              "value": ""
+            },
+            "x": {
+              "null": true,
+              "exact": "",
+              "coordinate": null,
+              "approximate": false
+            },
+            "y": {
+              "null": true,
+              "exact": "",
+              "coordinate": null,
+              "approximate": false
+            },
+            "value": {
+              "null": false,
+              "exact": "9007199254740998.625",
+              "coordinate": 9007199254740998,
+              "approximate": true
+            }
+          }
+        ],
+        "totals": [
+          {
+            "column": "m_46f93a6a01617b80efa06168",
+            "value": {
+              "null": false,
+              "value": "9007199254740998.625"
+            },
+            "scope": "complete_result"
+          }
+        ],
+        "state": "ready",
+        "input_rows": 1,
+        "omitted_rows": 0,
+        "completeness": {
+          "status": "complete_result",
+          "reason": ""
+        },
+        "warnings": [
+          "geometry_approximate_labels_exact"
+        ]
+      }
+    },
+    "page_bounds": {
+      "offset": 0,
+      "limit": 100,
+      "total": 1
+    }
+  }
+}

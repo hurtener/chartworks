@@ -41,7 +41,7 @@ export class DatasetSession {
  async selectDataset(id){if(!this.publication||!this.datasets.some(d=>d.id===id))throw appError('invalid_request');const pin=datasetPin(this.publication);return this.read(authoringTool('dataset'),{topic:pin,dataset:id},value=>{checkDatasetView(value,pin,id);this.view=copyData(value);this.draft.dimensions=[];this.draft.measure='';return this.view;});}
  async prepare(){
   if(this.locked||!this.valid())throw appError('busy');const intent=datasetIntent(this.view,this.draft),operation=this.operation();if(!validID(operation))throw appError('invalid_request');
-  const args={new_block:this.newBlock,operation,intent,metadata:[{locale:this.locale,title:this.draft.title.trim()}]},generation=this.generation;
+  const args={new_block:this.newBlock,operation,intent,metadata:[{locale:this.locale,title:this.draft.title.trim(),question:this.draft.title.trim(),aliases:[],description:''}]},generation=this.generation;
   this.custody={new_block:this.newBlock,operation};this.acceptedIntent=copyData(intent);this.pending=true;
   try{const value=await this.invoke(authoringTool('prepare_chart'),copyData(args));if(this.closed||generation!==this.generation)return null;try{checkPreparation(value,this.custody);checkPreparedIntent(value,this.acceptedIntent);}catch{throw appError('unavailable',true);}this.preparation=copyData(value);if(value.status==='unsupported')this.custody=null;else{this.custody.preparation=value.preparation;if(value.digest)this.custody.digest=value.digest;}this.unknown=['accepted','uncertain'].includes(value.status)?'prepare':'';return this.preparation;}
   catch(e){if(!this.closed&&generation===this.generation){this.unknown='prepare';}throw e;}finally{this.pending=false;}

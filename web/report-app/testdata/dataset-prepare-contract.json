@@ -1,0 +1,81 @@
+{
+  "dataset": {
+    "compiler": "reviewed-dataset-postgres-v1",
+    "topic": {
+      "topic": "commerce",
+      "version": "v1",
+      "digest": "c01562b3db5806c1b75f408a1c644cafdc2a213ebf624a9413bed68869999e27"
+    },
+    "dataset": "ds:95b3449b842ed4ac7c5306c17930e519",
+    "source": "topic-source",
+    "context": "topic-source:v1",
+    "source_revision": 1,
+    "dialect": "postgres",
+    "dimensions": [],
+    "measures": [
+      {
+        "id": "revenue",
+        "binding": "m_46f93a6a01617b80efa06168",
+        "name": "Revenue",
+        "role": "measure",
+        "aggregation": "sum",
+        "unit": "currency",
+        "supported": true
+      }
+    ],
+    "chart_kinds": [
+      "bar",
+      "column",
+      "line",
+      "area",
+      "pie",
+      "donut",
+      "kpi",
+      "table"
+    ],
+    "limitations": [
+      "PostgreSQL only; zero to two direct dimensions and one reviewed measure.",
+      "No filters, group policies, calendar bucketing, joins, arbitrary KPI expressions, active rules or amount-completeness policies in the initial compiler.",
+      "Prepare reads actual schema. Create remains private and unvalidated; Validate is a separate explicit read."
+    ],
+    "supported": true
+  },
+  "request": {
+    "new_block": "dataset-private-chart",
+    "operation": "dataset-prepare-one",
+    "intent": {
+      "topic": {
+        "topic": "commerce",
+        "version": "v1",
+        "digest": "c01562b3db5806c1b75f408a1c644cafdc2a213ebf624a9413bed68869999e27"
+      },
+      "dataset": "ds:95b3449b842ed4ac7c5306c17930e519",
+      "dimensions": [],
+      "measure": "revenue",
+      "mapping": {
+        "kind": "kpi",
+        "bindings": {
+          "value": "m_46f93a6a01617b80efa06168"
+        },
+        "order": [],
+        "options": {
+          "title": "Prepared revenue",
+          "legend": {
+            "visible": true,
+            "position": "bottom"
+          },
+          "label_max_runes": 80
+        }
+      }
+    },
+    "metadata": [
+      {
+        "locale": "en-US",
+        "title": "Prepared revenue",
+        "question": "Prepared revenue",
+        "aliases": [],
+        "description": ""
+      }
+    ]
+  }
+}

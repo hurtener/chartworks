@@ -75,7 +75,9 @@ func reportDatasetFixture(t *testing.T, target string) (*phase29ExecutionFixture
 	if measure.ID == "" {
 		t.Fatal("fixture measure missing")
 	}
-	request := reporting.AuthoringPrepareRequest{NewBlock: target, Operation: "dataset-prepare-one", Intent: reporting.AuthoringDatasetIntent{Topic: catalog.Topic, Dataset: catalog.Dataset, Dimensions: []string{}, Measure: measure.ID, Mapping: reporting.AuthoringChartMapping{Kind: charts.KPI, Bindings: charts.Bindings{Value: measure.Binding}, Order: []charts.Order{}, Options: charts.DefaultOptions()}}, Metadata: []reporting.Localized{{Locale: "en", Title: "Revenue", Question: "Revenue", Aliases: []string{}}}}
+	options := charts.DefaultOptions()
+	options.Title = "Prepared revenue"
+	request := reporting.AuthoringPrepareRequest{NewBlock: target, Operation: "dataset-prepare-one", Intent: reporting.AuthoringDatasetIntent{Topic: catalog.Topic, Dataset: catalog.Dataset, Dimensions: []string{}, Measure: measure.ID, Mapping: reporting.AuthoringChartMapping{Kind: charts.KPI, Bindings: charts.Bindings{Value: measure.Binding}, Order: []charts.Order{}, Options: options}}, Metadata: []reporting.Localized{{Locale: "en-US", Title: "Prepared revenue", Question: "Prepared revenue", Description: "", Aliases: []string{}}}}
 	return f, s, author, request, p, dataset, scopes
 }
 
@@ -145,7 +147,7 @@ func TestReportAppDeterministicPreparation(t *testing.T) {
 	if err != nil || replay.Block.Digest != created.Block.Digest || f.attemptCount(t) != before+1 {
 		t.Fatal("create retry", replay, err)
 	}
-	validation, err := f.blocks.Validate(ctx, author, target, reporting.ValidateRequest{ExpectedVersion: created.Block.State.Version, Revision: created.Block.Revision})
+	validation, err := s.ValidateBlock(ctx, author, reporting.AuthoringBlockValidateRequest{Block: target, ExpectedVersion: created.Block.State.Version, Revision: created.Block.Revision, Digest: created.Block.Digest, Arguments: []reporting.Argument{}})
 	if err != nil || validation.State.DraftState != "validated" {
 		t.Fatal(validation, err)
 	}
@@ -199,6 +201,32 @@ func TestReportAppDeterministicPreparation(t *testing.T) {
 	if state.PublishedRevision != 0 || f.attemptCount(t) != before+3 || f.f.model.requests.Load() != models {
 		t.Fatal("private journey published or exceeded its three explicit reads")
 	}
+	// Actual retained delivery wrappers and topic-discovery projections are the
+	// same public core methods used by both host adapters. They add no read work.
+	_, topicService := newPhase18Service(t, f.f)
+	topicList, err := topicService.List(ctx, author, topics.ListRequest{After: "", Limit: 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	described, err := topicService.Read(ctx, author, request.Intent.Topic.Topic, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivery, err := reporting.NewDelivery(f.blocks, f.runs, f.documents, f.compositions, f.f.f.db, f.limits.Viewer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootView, err := delivery.View(ctx, reader, reporting.DeliveryViewRequest{Kind: "report", Run: preview.ID, Offset: 0, Limit: 100})
+	if err != nil || !rootView.Summary.Private {
+		t.Fatal(rootView, err)
+	}
+	outputView, err := delivery.View(ctx, reader, reporting.DeliveryViewRequest{Kind: "report", Run: preview.ID, Page: "analysis", Widget: "dataset-chart", Output: "chart", Offset: 0, Limit: 100})
+	if err != nil || outputView.Output == nil || outputView.Output.Chart == nil || outputView.Output.Chart.Points[0].Value.Exact != "9007199254740998.625" {
+		t.Fatal(outputView, err)
+	}
+	if f.attemptCount(t) != before+3 || f.f.model.requests.Load() != models {
+		t.Fatal("retained delivery or topic metadata executed source/model work")
+	}
 	// Optional synthetic fixture export for the two host-adapter browser tests.
 	// No bearer, SQL, native control handle or source credential is included.
 	if path := os.Getenv("CHARTWORKS_DATASET_FIXTURE_PATH"); path != "" {
@@ -206,10 +234,32 @@ func TestReportAppDeterministicPreparation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := json.MarshalIndent(map[string]any{"dataset": catalog, "request": request, "preparation": prepared, "created": created, "validation": validation, "report_state": state, "preview": preview, "complete": done, "payload": payload}, "", "  ")
+		wire, err := json.MarshalIndent(map[string]any{"list_topics": topicList, "describe_topic": described, "dataset": catalog, "request": request, "preparation": prepared, "created": created, "validation": validation, "report_state": state, "preview": preview, "complete": done, "payload": payload, "view_root": rootView, "view_output": outputView}, "", "  ")
 		if err != nil {
 			t.Fatal(err)
 		}
+		var public any
+		if err := json.Unmarshal(wire, &public); err != nil {
+			t.Fatal(err)
+		}
+		var checkPublic func(any)
+		checkPublic = func(value any) {
+			switch value := value.(type) {
+			case map[string]any:
+				for key, child := range value {
+					switch key {
+					case "sql", "statement", "attempt", "remote", "manifest", "session", "token", "credential", "authorization":
+						t.Fatal("private native custody in public fixture", key)
+					}
+					checkPublic(child)
+				}
+			case []any:
+				for _, child := range value {
+					checkPublic(child)
+				}
+			}
+		}
+		checkPublic(public)
 		if err := os.WriteFile(path, wire, 0600); err != nil {
 			t.Fatal(err)
 		}

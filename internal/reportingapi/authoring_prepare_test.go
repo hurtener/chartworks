@@ -2,6 +2,7 @@ package reportingapi
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -46,5 +47,39 @@ func TestAuthoringPreparationSchemasRejectClientExecutionMaterial(t *testing.T) 
 		if entries[1].definition.Request.Validate(bad, MaxBodyBytes) == nil {
 			t.Fatal("open intent", field)
 		}
+	}
+}
+
+func TestAuthoringPreparationActualUIRequestContract(t *testing.T) {
+	wire, err := os.ReadFile("../../web/report-app/testdata/dataset-prepare-contract.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Dataset reporting.AuthoringDatasetView `json:"dataset"`
+		Request json.RawMessage                `json:"request"`
+	}
+	if err := json.Unmarshal(wire, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	entry := authoringPrepareEntries(nil)[1]
+	if entry.schemaErr != nil || entry.definition.Request.Validate(fixture.Request, MaxBodyBytes) != nil {
+		t.Fatal("actual DatasetSession.prepare output does not match the closed API schema", entry.schemaErr)
+	}
+	var request reporting.AuthoringPrepareRequest
+	if err := json.Unmarshal(fixture.Request, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.Intent.Topic != fixture.Dataset.Topic || request.Intent.Dataset != fixture.Dataset.Dataset || len(request.Metadata) != 1 || request.Metadata[0].Locale != "en-US" || request.Metadata[0].Question != request.Metadata[0].Title || request.Intent.Mapping.Options.Title != request.Metadata[0].Title {
+		t.Fatal("UI request lost reviewed pins or required manual metadata")
+	}
+	var missing map[string]any
+	if err := json.Unmarshal(fixture.Request, &missing); err != nil {
+		t.Fatal(err)
+	}
+	delete(missing["metadata"].([]any)[0].(map[string]any), "question")
+	bad, _ := json.Marshal(missing)
+	if entry.definition.Request.Validate(bad, MaxBodyBytes) == nil {
+		t.Fatal("missing required question silently accepted")
 	}
 }
