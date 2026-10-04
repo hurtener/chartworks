@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "84" || len(manifest) != 84 {
+	if err != nil || SchemaVersion() != "85" || len(manifest) != 85 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -92,6 +92,7 @@ func TestSafeErrors(t *testing.T) {
 		{81, "migrations/082_protected_clarification_origin.sql", "protected_saved_route_equal"},
 		{82, "migrations/083_private_document_block_refs.sql", "document_private_publication_guard"},
 		{83, "migrations/084_authoring_preparations.sql", "immutable_authoring_preparation"},
+		{84, "migrations/085_authoring_preparation_audit.sql", "authoring.preparation_reserved"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {

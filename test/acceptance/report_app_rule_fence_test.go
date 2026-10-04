@@ -47,7 +47,7 @@ func TestReportAppPreparedRulePublicationFence(t *testing.T) {
 				t.Fatal(err)
 			}
 			definition := semantics.RuleSetDefinition{SchemaVersion: semantics.SchemaVersion, ID: "prepared-origin-rules", Version: "rules-v1", Topic: publication.State.Topic, TopicVersion: publication.State.Version, PackDigest: publication.Digest,
-				Rules: []semantics.RuleDefinition{{ID: "require-reviewed-dataset", Version: "v1", Category: semantics.RuleStructural, Class: semantics.RuleExecutionConstraint, Scope: semantics.RuleScope{Kind: semantics.RuleScopeTopic}, Priority: 100, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "Synthetic concurrent review"}, Constraint: &semantics.Constraint{Kind: semantics.ConstraintRequireReference, Target: semantics.Reference{Kind: semantics.KindDataset, ID: request.Intent.Dataset}}}}}
+				Rules: []semantics.RuleDefinition{{ID: "require-reviewed-dataset", Version: "v1", Category: semantics.RuleStructural, Class: semantics.RuleExecutionConstraint, Scope: semantics.RuleScope{Kind: semantics.RuleScopeTopic}, Priority: 100, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "phase17-review"}, Constraint: &semantics.Constraint{Kind: semantics.ConstraintRequireReference, Target: semantics.Reference{Kind: semantics.KindDataset, ID: request.Intent.Dataset}}}}}
 			draft, err := rules.Save(ctx, f.blockAuthor, rulesets.SaveRequest{Definition: definition, Change: "Review first rule activation"})
 			if err != nil {
 				t.Fatal(err)
