@@ -153,6 +153,7 @@ jobs:
       - name: Actual Chromium explicit publication in both adapters
         run: |
           set -o pipefail
+          node --test web/report-app/publication-browser-fixture.test.mjs
           node web/report-app/publication.browser.mjs "$RUNNER_TEMP/report-app-proof/mcp.html" "$RUNNER_TEMP/report-app-proof/mcp.publication.png" mcp | tee "$RUNNER_TEMP/report-app-proof/mcp.publication.log"
           node web/report-app/publication.browser.mjs "$RUNNER_TEMP/report-app-proof/embedded.html" "$RUNNER_TEMP/report-app-proof/embedded.publication.png" embedded | tee "$RUNNER_TEMP/report-app-proof/embedded.publication.log"
       - name: Retain synthetic host proof and screenshots

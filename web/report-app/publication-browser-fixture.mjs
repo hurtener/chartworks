@@ -29,6 +29,17 @@ export function publicationBrowserFixture() {
   }};
 }
 
+// Pure screenshot geometry contract, also serialized into the browser. Match
+// the host's minimum height rather than treating legitimate floor padding as
+// an unstable blank tail. Containment remains strict: no clipping is allowed.
+export function publicationFrameFits({root, frameHeight, frameWidth, resizeCount, quietMs}) {
+  if (![root.top, root.bottom, root.left, root.right, root.height, frameHeight, frameWidth, resizeCount, quietMs].every(Number.isFinite)) return false;
+  const expectedHeight = Math.min(2416, Math.max(500, Math.ceil(root.height) + 16));
+  return resizeCount > 0 && quietMs >= 200 && root.height > 0 && frameWidth > 0 &&
+    root.top >= 0 && root.bottom <= frameHeight && root.left >= 0 && root.right <= frameWidth + 1 &&
+    frameHeight < 2416 && Math.abs(frameHeight - expectedHeight) <= 2;
+}
+
 // This function is serialized into the synthetic parent page. The CDP binding
 // relays only tool calls to the same Node publicationFixture used by bundle tests.
 export function initializePublicationHost(embedded, names) {

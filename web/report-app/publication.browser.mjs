@@ -9,7 +9,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {once} from 'node:events';
 import {cleanupBrowserFixture} from './browser_cleanup.mjs';
-import {publicationBrowserFixture, initializePublicationHost, publicationTools, publicationWrites} from './publication-browser-fixture.mjs';
+import {publicationBrowserFixture, initializePublicationHost, publicationTools, publicationWrites, publicationFrameFits} from './publication-browser-fixture.mjs';
 
 assert.equal(process.env.GITHUB_ACTIONS, 'true', 'Publication Chromium proof runs only in the hosted CI job');
 const [htmlPath, screenshotPath, mode] = process.argv.slice(2);
@@ -88,7 +88,7 @@ async function disabled(label) {
 }
 async function capture(path, settle = true) {
   await evaluate(`window.scrollTo(0,0);document.getElementById('app').contentWindow.scrollTo(0,0);`);
-  if (settle) await until(() => evaluate(`(()=>{const f=document.getElementById('app'),r=${root}.getBoundingClientRect();return resizeCount>0&&performance.now()-lastResizeAt>=200&&r.top>=0&&r.bottom<=f.clientHeight&&f.clientHeight-r.bottom<=18&&r.left>=0&&r.right<=f.clientWidth+1&&f.clientHeight<2416;})()`), 'Screenshot must fit the current complete app without clipping');
+  if (settle) await until(() => evaluate(`(()=>{const f=document.getElementById('app'),r=${root}.getBoundingClientRect();return (${publicationFrameFits.toString()})({root:r,frameHeight:f.clientHeight,frameWidth:f.clientWidth,resizeCount,quietMs:performance.now()-lastResizeAt});})()`), 'Screenshot must fit the current complete app without clipping');
   const metrics = await rpc('Page.getLayoutMetrics'), size = metrics.cssContentSize || metrics.contentSize;
   if (settle) assert(size.width <= 1600 && size.height <= 6000, 'Proof must not silently crop controls');
   const result = await rpc('Page.captureScreenshot', {format: 'png', captureBeyondViewport: true, fromSurface: true, clip: {x: 0, y: 0, width: Math.min(1600, Math.ceil(size.width)), height: Math.min(6000, Math.ceil(size.height)), scale: 1}});
