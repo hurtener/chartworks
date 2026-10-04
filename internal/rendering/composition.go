@@ -2,14 +2,13 @@ package rendering
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
-	"sort"
 	"strings"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/reporting"
 )
@@ -17,6 +16,9 @@ import (
 // renderComposition preserves the accepted page/widget geometry. Every widget is
 // read separately through Delivery, while each chart crosses the sealed worker.
 func (s *Service) renderComposition(ctx context.Context, e identity.Envelope, in Request, root reporting.DeliveryViewResult) (Rendition, error) {
+	if root.Redacted {
+		return Rendition{}, access.ErrNotFound
+	}
 	if len(root.Pages) == 0 {
 		return Rendition{}, ErrInvalid
 	}
@@ -33,12 +35,7 @@ func (s *Service) renderComposition(ctx context.Context, e identity.Envelope, in
 	if in.Format == "svg" {
 		actualHeight = compositionHeight(pages)
 	}
-	provenance := sha256.New()
-	rootWire, _ := json.Marshal(struct {
-		Summary reporting.DeliveryRunSummary
-		Pages   []reporting.CompositionPageSummary
-	}{root.Summary, pages})
-	_, _ = provenance.Write(rootWire)
+	provenance := compositionProvenance(root)
 	var b strings.Builder
 	if in.Format == "html" {
 		fmt.Fprintf(&b, "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'\"><style>body{margin:0}main{width:%dpx}.page{display:grid;grid-template-columns:repeat(12,1fr);grid-auto-rows:32px;gap:8px}.widget{overflow:hidden;border:1px solid #ddd;padding:8px}</style></head><body><main>", in.Width)
@@ -47,13 +44,7 @@ func (s *Service) renderComposition(ctx context.Context, e identity.Envelope, in
 	}
 	pageY := 0
 	for _, page := range pages {
-		widgets := append([]reporting.CompositionWidgetSummary(nil), page.Widgets...)
-		sort.SliceStable(widgets, func(i, j int) bool {
-			if widgets[i].Grid.Row == widgets[j].Grid.Row {
-				return widgets[i].Grid.Column < widgets[j].Grid.Column
-			}
-			return widgets[i].Grid.Row < widgets[j].Grid.Row
-		})
+		widgets := orderedCompositionWidgets(page)
 		if in.Format == "html" {
 			fmt.Fprintf(&b, "<section class=\"page\" data-page=\"%s\"><h1 style=\"grid-column:1/13\">%s</h1>", html.EscapeString(page.ID), html.EscapeString(page.Title))
 		} else {
@@ -83,18 +74,16 @@ func (s *Service) renderComposition(ctx context.Context, e identity.Envelope, in
 			switch {
 			case view.Text != nil:
 				content = html.EscapeString(view.Text.Text)
-				textSum := sha256.Sum256([]byte(view.Text.Format + "\x00" + view.Text.Text))
-				_, _ = provenance.Write(textSum[:])
 			case view.Output != nil:
 				rendered, renderErr := s.render(ctx, request, view)
 				if renderErr != nil {
 					return Rendition{}, renderErr
 				}
 				content = rendered.Content
-				_, _ = provenance.Write([]byte(view.Output.RetainedDigest))
 			default:
 				continue
 			}
+			appendCompositionProvenance(provenance, view)
 			if b.Len()+len(content) > s.maxBytes {
 				return Rendition{}, reporting.ErrBudget
 			}

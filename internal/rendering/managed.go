@@ -102,7 +102,7 @@ func (s *Service) Generate(ctx context.Context, e identity.Envelope, in Request)
 	}
 	now := time.Now().UTC()
 	expires := now.Add(s.options.Retention)
-	view, err := s.viewer.View(ctx, e, in.View)
+	view, err := s.authorizeRendition(ctx, e, in, r.SourceDigest)
 	if err != nil {
 		return Rendition{}, err
 	}
@@ -173,7 +173,7 @@ func (s *Service) Read(ctx context.Context, e identity.Envelope, in ReadRequest)
 		return Rendition{}, reporting.ErrExpired
 	}
 	// Re-read the artifact through its current exact reach. This performs no execution.
-	if _, err = s.viewer.View(ctx, e, record.Request.View); err != nil {
+	if _, err = s.authorizeRendition(ctx, e, record.Request, record.Rendition.SourceDigest); err != nil {
 		return Rendition{}, err
 	}
 	return record.Rendition, nil
@@ -199,7 +199,7 @@ func (s *Service) List(ctx context.Context, e identity.Envelope, in ListRequest)
 	}
 	out := ListResult{Items: []Rendition{}}
 	for _, record := range records {
-		if _, x := s.viewer.View(ctx, e, record.Request.View); x == nil && time.Now().Before(record.Rendition.ExpiresAt) {
+		if _, x := s.authorizeRendition(ctx, e, record.Request, record.Rendition.SourceDigest); x == nil && time.Now().Before(record.Rendition.ExpiresAt) {
 			out.Items = append(out.Items, record.Rendition)
 		}
 	}

@@ -1,13 +1,20 @@
 package acceptance
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/rendering"
 	"github.com/hurtener/chartworks/internal/reporting"
@@ -79,6 +86,14 @@ func phase32NewPagesFixture(t *testing.T) phase32PagesFixture {
 		definition.ReportPages = append(definition.ReportPages, page)
 		expected = append(expected, phase32PageExpectation{id: id, page: page, cells: cells})
 	}
+	// A source-free page stays legitimately visible after source-context reach
+	// is withdrawn. Full rendition reads must not confuse that partial metadata
+	// projection with authority over the two hidden data pages.
+	note := phase27Copy(t, definition.ReportPages[0].Widgets[0])
+	note.ID, note.Text.Text, note.Presentation.Title = "note-notes", "Retained notes <note>", "Note notes"
+	notes := reporting.ReportPage{ID: "notes", Title: "Page notes <retained>", Locale: "en-US", Timezone: "UTC", Widgets: []reporting.Widget{note}}
+	definition.ReportPages = append(definition.ReportPages, notes)
+	expected = append(expected, phase32PageExpectation{id: notes.ID, page: notes})
 	state := d.report(t, "renderer-paged-report", definition, false)
 	preview, err := d.compositions.Admit(ctx, d.execute, "report", state.ID, reporting.CompositionRequest{Key: "renderer-private-pages", Reference: reporting.DocumentReference{Revision: state.DraftRevision}, Preview: true})
 	if err != nil || !preview.Private || preview.QueryGroups != 2 {
@@ -153,9 +168,11 @@ func phase32NewPagesFixture(t *testing.T) phase32PagesFixture {
 					t.Fatal(tc.name, "widget changed in retained manifest", i, j)
 				}
 			}
-			selected, err := f.delivery.View(ctx, actor, reporting.DeliveryViewRequest{Kind: tc.kind, Run: tc.run, Page: want.id, Widget: want.page.Widgets[1].ID, Limit: 10})
-			if err != nil || selected.Output == nil || selected.Output.Table == nil || len(selected.Output.Table.Rows)*2 != len(want.cells) || selected.Timezone != want.page.Timezone {
-				t.Fatal(tc.name, "same-dataset page filter/settings isolation", i, selected, err)
+			if len(want.cells) != 0 {
+				selected, err := f.delivery.View(ctx, actor, reporting.DeliveryViewRequest{Kind: tc.kind, Run: tc.run, Page: want.id, Widget: want.page.Widgets[1].ID, Limit: 10})
+				if err != nil || selected.Output == nil || selected.Output.Table == nil || len(selected.Output.Table.Rows)*2 != len(want.cells) || selected.Timezone != want.page.Timezone {
+					t.Fatal(tc.name, "same-dataset page filter/settings isolation", i, selected, err)
+				}
 			}
 		}
 	}
@@ -189,15 +206,16 @@ func phase32ReportPages(t *testing.T) {
 				if format == "html" {
 					phase32AssertPagesHTML(t, rendered.Content, tc.pages)
 				} else {
-					if rendered.Height != len(tc.pages)*408 || strings.Count(rendered.Content, `data-kind="table"`) != len(tc.pages) {
+					copies := len(tc.pages) / 3
+					if rendered.Height != copies*(408+408+88) || strings.Count(rendered.Content, `data-kind="table"`) != copies*2 {
 						t.Fatal("SVG lost page extent or table", rendered.Height)
 					}
-					for _, id := range []string{"overview", "detail"} {
-						if strings.Count(rendered.Content, "Page "+id+" &lt;retained&gt;") != len(tc.pages)/2 || strings.Count(rendered.Content, "Retained "+id+" &lt;note&gt;") != len(tc.pages)/2 {
+					for _, id := range []string{"overview", "detail", "notes"} {
+						if strings.Count(rendered.Content, "Page "+id+" &lt;retained&gt;") != copies || strings.Count(rendered.Content, "Retained "+id+" &lt;note&gt;") != copies {
 							t.Fatal("SVG lost page title/text", id)
 						}
 					}
-					if strings.Count(rendered.Content, "9,007,199,254,740,993.125") != len(tc.pages)/2 || strings.Count(rendered.Content, "5.500") != len(tc.pages) {
+					if strings.Count(rendered.Content, "9,007,199,254,740,993.125") != copies || strings.Count(rendered.Content, "5.500") != copies*2 {
 						t.Fatal("SVG changed exact page-local values")
 					}
 				}
@@ -210,8 +228,20 @@ func phase32ReportPages(t *testing.T) {
 				}
 				deniedScopes := slices.DeleteFunc(slices.Clone(p.scopes), func(scope string) bool { return scope == "cw.execution_context.use:"+d.base.Context })
 				denied := phase27Actor(t, d.f, p.actor.User(), deniedScopes)
+				partial, err := p.f.delivery.View(t.Context(), denied, request.View)
+				if err != nil || !partial.Redacted || len(partial.Pages) == 0 || len(partial.Pages) >= len(tc.pages) || partial.Text == nil {
+					t.Fatal("partial withdrawal must preserve authorized metadata/text", partial, err)
+				}
 				if output, err := service.Read(t.Context(), denied, rendering.ReadRequest{ID: rendered.ID}); err == nil || output.Content != "" {
 					t.Fatal("withdrawn context exposed retained bytes", err)
+				}
+				if listed, err := service.List(t.Context(), denied, rendering.ListRequest{Limit: 10}); err != nil || len(listed.Items) != 0 {
+					t.Fatal("withdrawn context exposed rendition list bytes", listed, err)
+				}
+				for _, call := range []func(context.Context, identity.Envelope, rendering.Request) (rendering.Rendition, error){service.Export, service.Generate} {
+					if output, err := call(t.Context(), denied, request); !errors.Is(err, access.ErrNotFound) || output.Content != "" || output.ID != "" {
+						t.Fatal("partial metadata authorized a full output", err)
+					}
 				}
 				if tc.private {
 					other := phase27Actor(t, d.f, "renderer-other-reader", p.scopes)
@@ -295,7 +325,11 @@ func phase32AssertPagesHTML(t *testing.T, content string, expected []phase32Page
 		return ""
 	}
 	pages := elements(document, "section")
-	if len(pages) != len(expected) || len(elements(document, "article")) != len(expected)*2 || len(elements(document, "script")) != 0 || strings.Count(content, "<!doctype html>") != 1 {
+	widgetCount := 0
+	for _, page := range expected {
+		widgetCount += len(page.page.Widgets)
+	}
+	if len(pages) != len(expected) || len(elements(document, "article")) != widgetCount || len(elements(document, "script")) != 0 || strings.Count(content, "<!doctype html>") != 1 {
 		t.Fatal("full HTML lost pages/widgets or requires a script")
 	}
 	for i, want := range expected {
@@ -329,5 +363,126 @@ func phase32AssertPagesHTML(t *testing.T, content string, expected []phase32Page
 				t.Fatal("HTML changed exact page-local values", i, cells)
 			}
 		}
+	}
+}
+
+type phase32NoRetainedProcess struct{ calls int }
+
+func (p *phase32NoRetainedProcess) Process(context.Context, rendering.SealedWork) (rendering.Rendition, error) {
+	p.calls++
+	return rendering.Rendition{}, rendering.ErrWorker
+}
+
+// This is a retained-access regression, not renderer qualification. It stores
+// synthetic old bytes under actual immutable composition provenance, then uses
+// the production PostgreSQL repository and Delivery authorization boundaries.
+// The processor always fails and must never be called.
+func TestPhase32FullRenditionReauthorization(t *testing.T) {
+	p := phase32NewPagesFixture(t)
+	d := p.f.domain
+	processor := &phase32NoRetainedProcess{}
+	service, err := rendering.NewManaged(p.f.delivery, d.f.f.db, processor, 4<<20, phase32Options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	queries, lookups, models := d.attemptCount(t), d.f.f.lookups.Load(), d.f.model.requests.Load()
+	deniedScopes := slices.DeleteFunc(slices.Clone(p.scopes), func(scope string) bool { return scope == "cw.execution_context.use:"+d.base.Context })
+	denied := phase27Actor(t, d.f, p.actor.User(), deniedScopes)
+	privateID := ""
+	for _, tc := range p.cases {
+		t.Run(tc.name, func(t *testing.T) {
+			request := rendering.Request{View: reporting.DeliveryViewRequest{Kind: tc.kind, Run: tc.run, Limit: 10}, Full: true, Format: "html", Theme: "light", Width: 800, Height: 420}
+			root, err := p.f.delivery.View(t.Context(), p.actor, request.View)
+			if err != nil {
+				t.Fatal(err)
+			}
+			provenance := sha256.New()
+			body, _ := json.Marshal(struct {
+				Summary reporting.DeliveryRunSummary
+				Pages   []reporting.CompositionPageSummary
+			}{root.Summary, root.Pages})
+			_, _ = provenance.Write(body)
+			for _, page := range root.Pages {
+				widgets := slices.Clone(page.Widgets)
+				sort.SliceStable(widgets, func(i, j int) bool {
+					if widgets[i].Grid.Row == widgets[j].Grid.Row {
+						return widgets[i].Grid.Column < widgets[j].Grid.Column
+					}
+					return widgets[i].Grid.Row < widgets[j].Grid.Row
+				})
+				for _, widget := range widgets {
+					if widget.State != "completed" {
+						continue
+					}
+					selected := request.View
+					selected.Page, selected.Widget = page.ID, widget.ID
+					view, err := p.f.delivery.View(t.Context(), p.actor, selected)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if view.Text != nil {
+						hash := sha256.Sum256([]byte(view.Text.Format + "\x00" + view.Text.Text))
+						_, _ = provenance.Write(hash[:])
+					} else if view.Output != nil {
+						_, _ = provenance.Write([]byte(view.Output.RetainedDigest))
+					}
+				}
+			}
+			content := "Synthetic previously retained full bytes: " + tc.name
+			digest := sha256.Sum256([]byte(content))
+			id := "rnd-" + hex.EncodeToString(digest[:16])
+			if tc.private {
+				privateID = id
+			}
+			record, err := d.f.f.db.PutRendition(t.Context(), rendering.Record{Tenant: p.actor.Tenant(), Actor: p.actor.User(), Session: p.actor.Session(), Private: tc.private, Request: request, Rendition: rendering.Rendition{
+				ID: id, Version: rendering.Version, Format: "html", WorkerVersion: "historical-test", ThemeVersion: "theme-v1", SourceDigest: hex.EncodeToString(provenance.Sum(nil)), Digest: hex.EncodeToString(digest[:]), Content: content, Bytes: len(content), CreatedAt: time.Now(), ExpiresAt: root.Summary.Expires,
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if read, err := service.Read(t.Context(), p.actor, rendering.ReadRequest{ID: id}); err != nil || read.Content != record.Rendition.Content {
+				t.Fatal("full original authority must read historical bytes", err)
+			}
+			partial, err := p.f.delivery.View(t.Context(), denied, request.View)
+			if err != nil || !partial.Redacted || len(partial.Pages) == 0 || len(partial.Pages) >= len(root.Pages) || partial.Text == nil {
+				t.Fatal("legitimate partial metadata/text projection was lost", partial, err)
+			}
+			if read, err := service.Read(t.Context(), denied, rendering.ReadRequest{ID: id}); !errors.Is(err, access.ErrNotFound) || read.Content != "" || read.ID != "" {
+				t.Fatal("partial authority exposed full historical bytes", err)
+			}
+			for _, call := range []func(context.Context, identity.Envelope, rendering.Request) (rendering.Rendition, error){service.Export, service.Generate} {
+				if output, err := call(t.Context(), denied, request); !errors.Is(err, access.ErrNotFound) || output.Content != "" || output.ID != "" {
+					t.Fatal("partial root authorized full export/generation", err)
+				}
+			}
+		})
+	}
+	listed, err := service.List(t.Context(), p.actor, rendering.ListRequest{Limit: 10})
+	if err != nil || len(listed.Items) != len(p.cases) {
+		t.Fatal("authorized rendition list", listed, err)
+	}
+	for _, item := range listed.Items {
+		if item.Content == "" {
+			t.Fatal("list contract contains bytes, not metadata-only receipts")
+		}
+	}
+	if listed, err := service.List(t.Context(), denied, rendering.ListRequest{Limit: 10}); err != nil || len(listed.Items) != 0 {
+		t.Fatal("partial authority exposed list metadata/bytes", listed, err)
+	}
+	other := phase27Actor(t, d.f, "renderer-other-reader", p.scopes)
+	if read, err := service.Read(t.Context(), other, rendering.ReadRequest{ID: privateID}); err == nil || read.Content != "" {
+		t.Fatal("publication erased private actor custody", err)
+	}
+	if listed, err := service.List(t.Context(), other, rendering.ListRequest{Limit: 10}); err != nil || len(listed.Items) != 2 {
+		t.Fatal("foreign actor list mixed private/public reach", listed, err)
+	} else {
+		for _, item := range listed.Items {
+			if item.ID == privateID {
+				t.Fatal("foreign actor list exposed private bytes")
+			}
+		}
+	}
+	if processor.calls != 0 || d.attemptCount(t) != queries || d.f.f.lookups.Load() != lookups || d.f.model.requests.Load() != models {
+		t.Fatal("retained access re-rendered or queried a source/model", processor.calls)
 	}
 }
