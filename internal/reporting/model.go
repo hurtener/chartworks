@@ -251,6 +251,8 @@ type RulePin struct {
 
 // Provenance records the server-derived origin of an authored revision.
 type Provenance struct {
+	// RuleAbsence is a server-owned prepared-origin fence, never client input.
+	RuleAbsence      []TopicPin                `json:"rule_absence,omitempty"`
 	CaptureDigest    string                    `json:"capture_digest,omitempty"`
 	Kind             string                    `json:"kind"`
 	ParentRevision   int64                     `json:"parent_revision,omitempty"`

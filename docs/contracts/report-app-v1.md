@@ -153,6 +153,6 @@ uses native bounded source validation, returns narrowed evidence/schema and CAS
 coordinates, and never publishes. Its source work may carry cost and is not
 idempotent or automatically retried. Metadata alone cannot attribute an unknown
 request. Source validation, private report preview and public eligibility changes
-remain separate user actions. Mounted inventory is78 default/83 with optional
+remain separate user actions. Mounted inventory is83 default/88 with optional
 renditions under the unchanged96-tool ceiling; execution and transport budgets
 are unchanged.

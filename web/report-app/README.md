@@ -200,3 +200,33 @@ Its deterministic cleanup regressions need no browser:
 ```sh
 node --test web/report-app/browser_cleanup.test.mjs
 ```
+
+### Dataset-first private chart setup
+
+`dataset.js` owns one immutable preparation operation; `dataset-editor.js` renders
+reviewed field controls without chart samples. Topic and dataset selection use the
+existing `list_topics` / `describe_topic` metadata tools and the authoring dataset
+projection. The projection supplies exact reviewed field IDs, binding aliases,
+measure aggregation/units, eight initial chart kinds and explicit unsupported
+reasons. No SQL, arbitrary expressions, client-supplied types or authority enter
+preparation input.
+
+Builder requires an explicit schema-v3 page and a host-authorized new block ID.
+Field/type/page-size edits stay local. Prepare chart explicitly performs the
+bounded actual-schema source read. Create private chart consumes its exact
+preparation/digest and inserts an unvalidated private reference on the selected
+page. Save report remains source-free; Validate data and Private preview are
+separate deliberate actions. No publication occurs.
+
+Once preparation dispatches, the operation and target stay pinned. All uncertain
+or failed dispatch replies retain custody; Inspect preparation reads metadata by
+exact operation/preparation and cannot rerun a query. Original-attempt inspection,
+cancellation and reconciliation are separate explicit controls. Unknown create
+requires exact consumed custody before the explicit Recover created chart action
+can use the server's consumed read branch. Closing setup retains at most16 bounded
+recovery records in the current app window, discarding topic/dataset/schema
+buffers; reopening requires a new authorized status read. Closing the app clears
+all client state. There is no automatic retry or source execution on control edits.
+
+Source tests use clearly synthetic DTOs. Actual PostgreSQL preparation, hosted
+browser interaction and pixels qualify this lane separately.

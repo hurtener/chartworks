@@ -56,10 +56,12 @@ func effectFor(effect string) (effects, bool) {
 		return effects{readOnly: true, idempotent: true}, true
 	case "migration_import_commit", "migration_cutover_commit", "migration_erase_commit":
 		return effects{persists: true, idempotent: true}, true
-	case "current_topic_reuse_or_private_draft_write", "report_document_draft_cas_commit", "private_composition_reservation", "block_draft_cas_commit", "private_block_copy_commit":
+	case "current_topic_reuse_or_private_draft_write", "report_document_draft_cas_commit", "private_composition_reservation", "block_draft_cas_commit", "private_block_copy_commit", "private_block_preparation_consume":
 		return effects{persists: true}, true
-	case "explicit_bounded_source_read_private_evidence", "bounded_frozen_source_read_retained_composition", "bounded_validated_distinct_source_read", "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "nlq_example_import", "nlq_example_requalification_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration":
+	case "bounded_source_read_private_preparation", "explicit_bounded_source_read_private_evidence", "bounded_frozen_source_read_retained_composition", "bounded_validated_distinct_source_read", "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "nlq_example_import", "nlq_example_requalification_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration":
 		return effects{openWorld: true, persists: true, paid: true}, true
+	case "existing_source_attempt_control":
+		return effects{openWorld: true, persists: true}, true
 	case "model_and_proposal_commit":
 		return effects{openWorld: true, persists: true, paid: true}, true
 	case "atomic_proposal_and_draft_commit":

@@ -4,3 +4,7 @@
 
 /* Dense bars must stay inside their allocated slot, including their outline. */
 .chart rect[data-series-id]{stroke-width:0}
+
+.kpi{container-type:inline-size;overflow-x:auto;overflow-wrap:normal;max-width:100%}.kpi-value{display:block;white-space:nowrap;font-size:clamp(1rem,calc(100cqw / var(--kpi-width)),3rem);letter-spacing:-.025em;line-height:1.2}.kpi-unit{display:block;white-space:normal;font-size:1rem;font-weight:500;letter-spacing:0}.amount-disclosure{margin:10px 0}.amount-warning{font-size:.9rem;margin:4px 0}.rendering-details,.amount-evidence,.kpi-trend-values,.result-details{margin:6px 0}.rendering-details>summary,.amount-evidence>summary,.kpi-trend-values>summary,.result-details>summary{min-height:28px;padding:3px 0;font-size:.85rem}.output-warning{padding:8px 10px}.chart text{paint-order:stroke;stroke:var(--bg);stroke-width:3px;stroke-linejoin:round}
+
+.chart-axis-label{display:none}.chart-axis{display:flex;justify-content:space-between;gap:12px;font-size:.78rem;line-height:1.35;padding:0 8px;margin:4px 0 8px}.chart-axis span{min-width:0;max-width:45%;overflow-wrap:anywhere}.chart-axis span:last-child{text-align:right}.chart-axis span:not(:first-child):not(:last-child){text-align:center}

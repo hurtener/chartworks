@@ -339,7 +339,8 @@ function renderLines(parent,c,w) {
     }
     flush(); color++;
   }
-  categories.forEach((label,i) => { if (i % Math.max(1,Math.ceil(categories.length/10)) === 0) { const t = svg('text',{x:65+i*680/Math.max(1,categories.length-1),y:380}); t.textContent = shorten(label,22); t.append(svg('title',{},label)); s.append(t); } });
+  categories.forEach((label,i) => { if (i % Math.max(1,Math.ceil(categories.length/10)) === 0) { const t = svg('text',{x:65+i*680/Math.max(1,categories.length-1),y:385,class:'chart-axis-label','text-anchor':i===0?'start':i===categories.length-1?'end':'middle'}); t.textContent = shorten(label,22); t.append(svg('title',{},label)); s.append(t); } });
+  const axis=element('div',undefined,'chart-axis');axis.setAttribute('aria-label',columnLabel(columnFor(c,'category'))||w.category);const step=Math.max(1,Math.ceil((categories.length-1)/4));categories.forEach((label,i)=>{if(i===0||i===categories.length-1||i%step===0)axis.append(element('span',label));});parent.append(axis);
   if ((groups.size > 1 || c.version === 2) && c.mapping?.options?.legend?.visible !== false) legend(parent,Array.from(names.values()));
 }
 
@@ -429,10 +430,10 @@ export function renderChart(parent, chart, language='en', timezone='UTC') {
   if(chart.kind==='table'){renderTable(parent,array(chart.columns),array(chart.rows),w,w.values,array(chart.totals),[],timezone);return;}
   if(ready && chart.kind==='kpi'){
     const valueColumn=columnFor(chart,'value'),targetColumn=columnFor(chart,'target'),percentColumn={type:'decimal',format:{percent:'whole'}},k=chart.kpi_result;
-    parent.append(element('p',exact(k?.value||chart.points[0]?.value,valueColumn,w.null),'kpi'));
+    const cell=k?.value||chart.points[0]?.value,formatted=exact(cell,valueColumn,w.null),format=valueColumn?.format||{},number=exact(cell,{...valueColumn,format:{...format,currency:'',currency_symbol:'',unit:''}},w.null),units=cell?.null?'':[text(format.currency_symbol)||text(format.currency),text(format.unit)].filter(Boolean).join(' '),display=element('p',undefined,'kpi'),value=element('span',number,'kpi-value');display.setAttribute('aria-label',formatted);display.style.setProperty('--kpi-width',String(Math.max(8,Array.from(number).length*.66)));value.setAttribute('title',cellValue(cell,w.null));display.append(value);if(units)display.append(element('span',' '+units,'kpi-unit'));parent.append(display);
     for(const [label,v,column] of [['Comparison',k?.comparison,valueColumn],['Delta',k?.delta,valueColumn],['Percent delta',k?.percent_delta,percentColumn],['Target',k?.target,targetColumn],['Target difference',k?.target_difference,valueColumn]])if(v)parent.append(element('p',`${label}: ${exact(v,column,w.null)}`,'metadata'));
     if(k?.threshold_state)parent.append(element('p',`${text(k.threshold_label)||k.threshold_state} · ${k.threshold_state}`,'badge'));
-    if(array(k?.sparkline).length){const line=element('p',k.sparkline.map(v=>exact(v,valueColumn,w.null,timezone)).join(' → '),'metadata');line.setAttribute('aria-label','Sparkline exact values');parent.append(line);}
+    if(array(k?.sparkline).length){const values=element('details',undefined,'kpi-trend-values'),line=element('p',k.sparkline.map(v=>exact(v,valueColumn,w.null,timezone)).join(' → '),'metadata');line.setAttribute('aria-label','Sparkline exact values');values.append(element('summary',language==='es'?'Valores de tendencia':'Trend values'),line);parent.append(values);}
   }
   else if(ready && ['bar','column','grouped_bar','stacked_bar','stacked_column'].includes(chart.kind))renderScales(parent,chart,w,renderBars);
   else if(ready && ['line','area'].includes(chart.kind))renderScales(parent,chart,w,renderLines);
@@ -440,14 +441,15 @@ export function renderChart(parent, chart, language='en', timezone='UTC') {
   else if(ready && chart.kind==='scatter')renderScatter(parent,chart,w);
   else if(ready && chart.kind==='heatmap')renderHeatmap(parent,chart,w);
   else if(ready && chart.kind==='treemap')(chart.version === 2 ? renderHierarchy : renderTreemap)(parent,chart,w);
-  parent.append(element('p',w.geometry,'metadata'));
+  const diagnostics=element('details',undefined,'rendering-details');diagnostics.append(element('summary',language==='es'?'Detalles del gráfico':'Chart details'));if(chart.kind!=='kpi')diagnostics.append(element('p',w.geometry,'metadata'));
   if (chart.version === 2) {
     const t = chart.transformation;
-    parent.append(element('p',`${w.missingValues}: ${t.missing_points} · ${w.gaps}: ${t.gap_points} · ${w.omittedRows}: ${chart.omitted_rows} / ${chart.input_rows} · ${w.zeroSize}: ${t.zero_size_points} · ${w.scope}: ${t.scope}`,'transformation'),element('p',`${t.method} · ${t.null_policy} · ${t.duplicate_policy}`,'metadata'),element('p',w.resolution,'metadata'));
-    if (['line','area'].includes(chart.kind)) parent.append(element('p',`${columnFor(chart,'category')?.name} · ${w.grain}: ${columnFor(chart,'category')?.grain || 'unspecified'} / ${chart.mapping.order[0]?.direction}`,'metadata'));
+    if(t.missing_points||t.gap_points||chart.omitted_rows)parent.append(element('p',`${w.missingValues}: ${t.missing_points} · ${w.gaps}: ${t.gap_points} · ${w.omittedRows}: ${chart.omitted_rows}`,'notice output-warning'));
+    diagnostics.append(element('p',`${w.missingValues}: ${t.missing_points} · ${w.gaps}: ${t.gap_points} · ${w.omittedRows}: ${chart.omitted_rows} / ${chart.input_rows} · ${w.zeroSize}: ${t.zero_size_points} · ${w.scope}: ${t.scope}`,'transformation'),element('p',`${t.method} · ${t.null_policy} · ${t.duplicate_policy}`,'metadata'),element('p',w.resolution,'metadata'));
+    if (['line','area'].includes(chart.kind)) diagnostics.append(element('p',`${columnFor(chart,'category')?.name} · ${w.grain}: ${columnFor(chart,'category')?.grain || 'unspecified'} / ${chart.mapping.order[0]?.direction}`,'metadata'));
   }
-  for(const warning of array(chart.warnings))parent.append(element('p',text(warning),'metadata'));
-  accessiblePoints(parent,chart,w);
+  for(const warning of array(chart.warnings))if(warning!=='geometry_approximate_labels_exact')parent.append(element('p',text(warning),'notice output-warning'));
+  accessiblePoints(parent,chart,w);if(chart.kind!=='kpi'||chart.version===2)parent.append(diagnostics);
 }
 
 // A deliberately small implementation of the established MCP Apps postMessage
@@ -505,14 +507,15 @@ function selectControl(label,items,current,onchange,locale='en') {
 // Display order and accepted execution order are different contracts. A new,
 // explicitly requested filter run retains the latter and the accepted caps.
 // Reviewed completeness is independent of transport truncation and display labels.
-export function amountDisclosureLines(disclosures, locale='en') {
-  const es=locale.toLowerCase().startsWith('es'), lines=[], seen=new Set(), input=array(disclosures);
+export function amountDisclosureLines(disclosures, locale='en') {return amountDisclosureGroups(disclosures,locale).flat();}
+function amountDisclosureGroups(disclosures, locale='en') {
+  const es=locale.toLowerCase().startsWith('es'), groups=[], seen=new Set(), input=array(disclosures);
   if(input.length>128)throw fail('unavailable');
   for(const d of input){
     const r=d?.result??{}, key=[text(d?.declaration),text(r.metric),text(r.unknown_count_metric)].join('\u0000');
     const validOrigin=(d?.evidence==='reviewed_definition'&&r.policy==='reviewed-amount-completeness-v1')||(d?.evidence==='analytical_receipt'&&r.policy==='proved-known-amount-result-v1');
     if(!validOrigin||r.scope!=='returned_query_rows'||!['returned_query_rows','visible_source_rows'].includes(d?.rows_scope)||!['amount','unknown_count'].includes(d?.role)||(d?.role==='unknown_count'&&d?.unit!=='count'))throw fail('unavailable');
-    if(seen.has(key))continue;seen.add(key);
+    if(seen.has(key))continue;seen.add(key);const lines=[];groups.push(lines);
     const label=shorten(text(d?.label)|| (es?'Importe conocido':'Known amount'),256);
     const status=!d?.truncation&&['complete','incomplete'].includes(r.status)?r.status:'unknown';
     const translated=es?({complete:'completo',incomplete:'incompleto',unknown:'desconocido'})[status]:status;
@@ -527,7 +530,7 @@ export function amountDisclosureLines(disclosures, locale='en') {
     if(d?.truncation)lines.push(es?'Resultado truncado; la completitud del importe es desconocida':'Result truncated; amount completeness is unknown');
     if(d?.role==='unknown_count')lines.push(es?'Unidad de la métrica mostrada: cantidad':'Displayed metric unit: count');
   }
-  return lines;
+  return groups;
 }
 
 function retainedRunOutputs(v) {
@@ -560,8 +563,8 @@ export function renderRetainedOutput(content,v,{locale='en',onPage=null}={}) {
   if(v.output.table){
     const t=v.output.table;
     renderTable(content,array(t.columns),array(t.rows),w,w.table,array(t.totals),array(t.row_indices),v.timezone);
-    if(t.completeness?.status)content.append(element('p',`Result completeness: ${text(t.completeness.status)}${t.completeness.reason?' · '+text(t.completeness.reason):''}`,'metadata'));
-    for(const warning of array(t.warnings))content.append(element('p',text(warning),'metadata'));
+    if(t.completeness?.status){const line=element('p',`Result completeness: ${text(t.completeness.status)}${t.completeness.reason?' · '+text(t.completeness.reason):''}`,t.completeness.status==='complete_result'?'metadata':'notice output-warning');if(t.completeness.status==='complete_result'){const details=element('details',undefined,'result-details');details.append(element('summary',language==='es'?'Resultado completo':'Complete returned result'),line);content.append(details);}else content.append(line);}
+    for(const warning of array(t.warnings))content.append(element('p',text(warning),'notice output-warning'));
     const b=v.page_bounds,pager=element('div',undefined,'pager');
     pager.append(element('span',`${b.offset+Math.min(1,array(t.rows).length)}–${b.offset+array(t.rows).length} / ${b.total}`));
     const prev=button(w.previous,()=>onPage?.(Math.max(0,b.offset-b.limit)));prev.disabled=!onPage||b.offset===0;
@@ -573,7 +576,7 @@ export function renderRetainedOutput(content,v,{locale='en',onPage=null}={}) {
     for(const caveat of array(v.output.narrative.caveats))content.append(element('p',text(caveat),'notice'));
     content.append(element('p',`${text(v.output.narrative.model_version)} · ${text(v.output.narrative.prompt_version)} · ${text(v.output.narrative.locale)}`,'metadata'));
   }
-  for(const line of amountDisclosureLines(v.output.amount_completeness,language))content.append(element('p',line,'metadata'));
+  for(const lines of amountDisclosureGroups(v.output.amount_completeness,language)){const panel=element('div',undefined,'amount-disclosure'),evidence=element('details',undefined,'amount-evidence');evidence.append(element('summary',language==='es'?'Evidencia del importe':'Amount evidence'));lines.forEach((line,index)=>{const secondary=index===1||index===2;(secondary?evidence:panel).append(element('p',line,secondary?'metadata':'amount-warning'));});panel.append(evidence);content.append(panel);}
 }
 
 export class Viewer {

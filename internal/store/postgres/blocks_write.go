@@ -24,6 +24,9 @@ func insertBlockRevision(ctx context.Context, tx pgx.Tx, e identity.Envelope, m 
 	if r == nil || len(r.Definition.Topics) == 0 || r.Actor != e.User() || r.Number < 1 || r.Number > int64(m.MaxRevisions) || r.Definition.Topics[0].Topic != m.Topic || reporting.DefinitionDigest(r.Definition) != r.Digest || reporting.ExecutionDigest(r.Definition) != r.ExecutionDigest {
 		return store.ErrInvalid
 	}
+	if _, err := reporting.AuthoringRuleAbsence(*r); err != nil {
+		return err
+	}
 	raw, err := json.Marshal(r.Definition)
 	if err != nil {
 		return store.ErrInvalid
@@ -125,14 +128,43 @@ func blockCurrentFence(ctx context.Context, tx pgx.Tx, e identity.Envelope, m re
 	if len(pins) == 0 || len(m.Watch) == 0 || blockFenceCoordinates(m) != nil {
 		return store.ErrInvalid
 	}
+	absence := map[string]reporting.TopicPin{}
+	for _, pin := range m.RuleAbsence {
+		found := false
+		for _, topic := range pins {
+			found = found || topic == pin
+		}
+		if !found {
+			return store.ErrInvalid
+		}
+		if prior, ok := absence[pin.Topic]; ok && prior != pin {
+			return store.ErrInvalid
+		}
+		absence[pin.Topic] = pin
+	}
+	lock := "SHARE"
+	if len(absence) > 0 {
+		// Choose exclusive mode before any topic lock, avoiding lock upgrades.
+		// Rule publication takes FOR SHARE on this same topic head.
+		lock = "UPDATE"
+	}
 	for _, pin := range pins {
 		var version, digest string
 		var archived bool
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(h.active_version,''),h.archived,COALESCE(v.digest,'') FROM chartworks.topic_publication_heads h LEFT JOIN chartworks.topic_published_versions v ON(v.tenant_id,v.topic_id,v.version_id)=(h.tenant_id,h.topic_id,h.active_version) WHERE h.tenant_id=$1 AND h.topic_id=$2 FOR SHARE OF h`, e.Tenant(), pin.Topic).Scan(&version, &archived, &digest); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(h.active_version,''),h.archived,COALESCE(v.digest,'') FROM chartworks.topic_publication_heads h LEFT JOIN chartworks.topic_published_versions v ON(v.tenant_id,v.topic_id,v.version_id)=(h.tenant_id,h.topic_id,h.active_version) WHERE h.tenant_id=$1 AND h.topic_id=$2 FOR `+lock+` OF h`, e.Tenant(), pin.Topic).Scan(&version, &archived, &digest); err != nil {
 			return err
 		}
 		if archived || version != pin.Version || digest != pin.Digest {
 			return reporting.ErrStale
+		}
+		if _, required := absence[pin.Topic]; required {
+			var active bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.topic_rule_publication_heads WHERE tenant_id=$1 AND topic_id=$2 AND active_version IS NOT NULL)`, e.Tenant(), pin.Topic).Scan(&active); err != nil {
+				return err
+			}
+			if active {
+				return reporting.ErrStale
+			}
 		}
 	}
 	if m.ID != "" {
@@ -245,6 +277,9 @@ func (d *DB) CommitBlock(ctx context.Context, e identity.Envelope, proof reporti
 			if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "blocks:"+e.Tenant()); err != nil {
 				return err
 			}
+			if err := consumeAuthoringPreparation(ctx, tx, e, m); err != nil {
+				return err
+			}
 			var count int
 			if err := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.block_heads WHERE tenant_id=$1`, e.Tenant()).Scan(&count); err != nil {
 				return err
@@ -277,7 +312,16 @@ func (d *DB) CommitBlock(ctx context.Context, e identity.Envelope, proof reporti
 			if head.Version >= 4096 && m.Kind != "preview" {
 				return readexec.ErrLimit
 			}
+			if m.Revision != nil {
+				if err := reporting.RetainAuthoringRuleAbsence(snapshot.Revision, *m.Revision); err != nil {
+					return err
+				}
+			}
 			if m.CheckCurrent {
+				m.RuleAbsence, err = reporting.AuthoringRuleAbsence(snapshot.Revision)
+				if err != nil {
+					return err
+				}
 				if err := blockCurrentFence(ctx, tx, e, m); err != nil {
 					return err
 				}

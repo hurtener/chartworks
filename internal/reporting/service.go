@@ -197,6 +197,9 @@ func (s *Service) SQL(ctx context.Context, e identity.Envelope, id string, ref R
 }
 
 func (s *Service) newRevision(e identity.Envelope, number int64, d Definition, provenance Provenance) (Revision, error) {
+	if _, err := AuthoringRuleAbsence(Revision{Definition: d, Provenance: provenance}); err != nil {
+		return Revision{}, err
+	}
 	id, err := newID()
 	if err != nil {
 		return Revision{}, err

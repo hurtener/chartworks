@@ -238,6 +238,9 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 	if err = runEligibility(e, snapshot, in.Policy, time.Now()); err != nil {
 		return RunView{}, err
 	}
+	if err := s.blocks.checkAuthoringRuleAbsence(ctx, e, snapshot.Revision); err != nil {
+		return RunView{}, err
+	}
 	d := snapshot.Revision.Definition
 	attempts := s.queryAttempts
 	if attempts == 0 {

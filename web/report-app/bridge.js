@@ -1,7 +1,7 @@
 import {boundedJSON} from '../report-viewer/app.js';
 import {appError, APP_MAX_WIRE} from './model.js';
 
-export const REPORT_APP_TOOLS = new Set(['chart_catalog','reporting_search','reporting_describe','reporting_runs','reporting_view','reporting_run','reporting_filter_options',...['capabilities','drafts','read','create','save','preview','execute','widget','block_read','block_mapping','block_copy','block_validate'].map(a=>`reporting_authoring_${a}_v1`)]);
+export const REPORT_APP_TOOLS = new Set(['chart_catalog','list_topics','describe_topic','reporting_search','reporting_describe','reporting_runs','reporting_view','reporting_run','reporting_filter_options',...['capabilities','drafts','read','create','save','preview','execute','widget','block_read','block_mapping','block_copy','block_validate','dataset','prepare_chart','preparation','create_prepared','preparation_control'].map(a=>`reporting_authoring_${a}_v1`)]);
 const wireLimit=APP_MAX_WIRE;
 function bridgeOrigin(origin,secure=false) { try { const u=new URL(origin); return u.origin===origin && (secure?u.protocol==='https:':['https:','http:'].includes(u.protocol)); } catch { return false; } }
 class ParentTransport {

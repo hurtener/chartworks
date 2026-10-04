@@ -77,7 +77,7 @@ func TestReportAppFullFactoryInventory(t *testing.T) {
 		{"delivery-and-renditions", 12, func() ([]mcpserver.Binding, error) {
 			return reportingapi.DeliveryMCPBindings(&reporting.Delivery{}, true, renderer)
 		}},
-		{"authoring", 12, func() ([]mcpserver.Binding, error) { return reportingapi.AuthoringMCPBindings(authoring, app) }},
+		{"authoring", 17, func() ([]mcpserver.Binding, error) { return reportingapi.AuthoringMCPBindings(authoring, app) }},
 		{"bootstrap", 2, func() ([]mcpserver.Binding, error) { return reportingapi.ReportAppBootstrapMCPBindings(authoring, app) }},
 	}
 	bindings := []mcpserver.Binding{}
@@ -89,18 +89,18 @@ func TestReportAppFullFactoryInventory(t *testing.T) {
 		bindings = append(bindings, group...)
 	}
 	selected, err := mcpserver.SelectGroups(bindings, defaults.MCP.Groups)
-	if err != nil || len(bindings) != 83 || len(selected) != 83 {
+	if err != nil || len(bindings) != 88 || len(selected) != 88 {
 		t.Fatal("complete configured inventory drift", len(bindings), len(selected), err)
 	}
 	registry, err := mcpserver.NewRegistry(selected)
-	if err != nil || len(registry.Manifest()) != 83 {
+	if err != nil || len(registry.Manifest()) != 88 {
 		t.Fatal("complete actual registry rejected", err)
 	}
 	names := map[string]bool{}
 	for _, tool := range registry.Manifest() {
 		names[tool.Name] = true
 	}
-	for _, name := range []string{"get_query_context", "reporting_search", "reporting_view", "reporting_rendition_create", "reporting_rendition_read", "reporting_authoring_widget_v1", "reporting_authoring_block_read_v1", "reporting_authoring_block_mapping_v1", "reporting_authoring_block_copy_v1", "reporting_authoring_block_validate_v1", "report_app_bootstrap_v1"} {
+	for _, name := range []string{"get_query_context", "reporting_search", "reporting_view", "reporting_rendition_create", "reporting_rendition_read", "reporting_authoring_widget_v1", "reporting_authoring_block_read_v1", "reporting_authoring_block_mapping_v1", "reporting_authoring_block_copy_v1", "reporting_authoring_block_validate_v1", "reporting_authoring_dataset_v1", "reporting_authoring_prepare_chart_v1", "reporting_authoring_preparation_v1", "reporting_authoring_create_prepared_v1", "reporting_authoring_preparation_control_v1", "report_app_bootstrap_v1"} {
 		if !names[name] {
 			t.Fatal("missing actual optional contract", name)
 		}

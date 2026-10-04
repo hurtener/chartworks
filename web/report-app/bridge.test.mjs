@@ -18,7 +18,7 @@ test('wrong embedded challenge closes rather than accepting authority hints',asy
 
 test('manual chart tools preserve explicit source and target without opening generic authoring',async()=>{
  const h=await connected();
- for(const action of ['block_read','block_mapping','block_copy','block_validate']) {
+ for(const action of ['block_read','block_mapping','block_copy','block_validate','dataset','prepare_chart','preparation','create_prepared','preparation_control']) {
   const name=`reporting_authoring_${action}_v1`,args={block:'source',revision:3,...(action==='block_copy'?{new_block:'private-copy'}:{})};
   const pending=h.bridge.call(name,args),message=h.sent.at(-1).message;
   assert.deepEqual(message.params,{name,arguments:args});

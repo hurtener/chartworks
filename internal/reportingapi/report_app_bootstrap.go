@@ -66,6 +66,8 @@ func reportAppGuide(ctx context.Context, e identity.Envelope, _ struct{}) (Repor
 			"For report-local changes create an explicitly authorized private block copy. Amend only its selected output under version, revision and digest CAS.",
 			"In chat mode explain options; in plan mode return a proposed change without mutation; in apply mode use an explicitly authorized target and expected-version save.",
 			"After a successful save, reopen the exact retained revision. On conflict reload and reconcile; never overwrite blindly.",
+			"For new charts use reviewed dataset metadata and only supported dimensions, measures and kinds. Preparation is an explicit bounded PostgreSQL read; create consumes its exact private digest into an unvalidated draft. Native validation is a separate deliberate read.",
+			"For unknown preparation outcomes read status by the original operation. Source attempt inspect/cancel/reconcile is an explicit mutation; never restart a query automatically.",
 			"Preview is explicit private execution. Read and redraw retained outputs without rerunning queries.",
 		},
 		Constraints: []string{
@@ -79,7 +81,7 @@ func reportAppGuide(ctx context.Context, e identity.Envelope, _ struct{}) (Repor
 			"Page IDs are stable, widget IDs report-global, and filters/defaults page-local. Never silently drop unsupported pages.",
 			"Credentials and host-only nonces stay in the trusted host and never enter iframe messages, URLs or persisted browser state.",
 		},
-		Documentation: []string{"docs/contracts/report-app-v1.md", "docs/contracts/pengui-authority.md", "docs/reporting/contracts.md", "docs/reporting/delivery.md"},
+		Documentation: []string{"docs/contracts/report-app-v1.md", "docs/contracts/manual-chart-preparation-v1.md", "docs/contracts/pengui-authority.md", "docs/reporting/contracts.md", "docs/reporting/delivery.md"},
 	}, nil
 }
 

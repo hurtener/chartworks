@@ -56,7 +56,10 @@ const blockCurrent = `EXISTS(SELECT 1 FROM chartworks.block_source_pins present 
  LEFT JOIN chartworks.topic_publication_heads th ON (th.tenant_id,th.topic_id)=(bp.tenant_id,bp.topic_id)
  LEFT JOIN chartworks.topic_published_versions tv ON (tv.tenant_id,tv.topic_id,tv.version_id)=(th.tenant_id,th.topic_id,th.active_version)
  WHERE (bp.tenant_id,bp.block_id,bp.revision)=(r.tenant_id,r.block_id,r.revision)
- AND (th.topic_id IS NULL OR th.archived OR th.active_version IS DISTINCT FROM bp.version_id OR tv.digest IS DISTINCT FROM bp.digest))`
+ AND (th.topic_id IS NULL OR th.archived OR th.active_version IS DISTINCT FROM bp.version_id OR tv.digest IS DISTINCT FROM bp.digest))
+ AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(r.provenance->'rule_absence','[]'::jsonb)) absent
+ JOIN chartworks.topic_rule_publication_heads rh ON rh.tenant_id=r.tenant_id AND rh.topic_id=absent->>'topic'
+ WHERE rh.active_version IS NOT NULL)`
 
 func blockReadArgs(e identity.Envelope, id string, ref reporting.Reference, a reporting.Access) ([]any, error) {
 	if ref.Revision < 0 || ref.Revision > 256 || ref.Draft && ref.Revision != 0 {
@@ -96,7 +99,7 @@ func blockTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, ref
 	err = tx.QueryRow(ctx, `SELECT `+blockHeadColumns+`,r.revision,r.revision_id,r.definition_version,
  CASE WHEN $9 THEN r.definition ELSE r.definition-'sql' END,
  r.digest,r.execution_digest,r.actor_id,r.created_at,
- CASE WHEN $9 THEN r.provenance ELSE jsonb_build_object('capture_digest',COALESCE(r.provenance->>'capture_digest','')) END,
+ CASE WHEN $9 THEN r.provenance ELSE jsonb_build_object('capture_digest',COALESCE(r.provenance->>'capture_digest',''),'rule_absence',r.provenance->'rule_absence') END,
  (SELECT COALESCE(jsonb_agg(jsonb_build_object('kind',rr.kind,'permission',rr.permission,'id',rr.resource_id) ORDER BY rr.kind,rr.permission,rr.resource_id),'[]'::jsonb)
   FROM chartworks.block_revision_references rr WHERE (rr.tenant_id,rr.block_id,rr.revision)=(r.tenant_id,r.block_id,r.revision)),
  v.record,a.attestation,w.withdrawal,p.created_at,(`+blockCurrent+`),bh.observation

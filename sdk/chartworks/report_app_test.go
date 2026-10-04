@@ -91,7 +91,22 @@ func TestReportAppTypedClientUsesCanonicalRoutesAndCAS(t *testing.T) {
 	if _, err := c.ValidateManualChart(t.Context(), ReportAppBlockValidateRequest{Block: "private-copy", Revision: 3, ExpectedVersion: 7}); err == nil {
 		t.Fatal("validation conflict hidden")
 	}
-	if calls != 14 || len(seen) != 14 {
+	if _, err := c.ReadManualDataset(t.Context(), ReportAppDatasetRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.PrepareManualChart(t.Context(), ReportAppPrepareRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ReadManualPreparation(t.Context(), ReportAppPreparationRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.CreatePreparedManualChart(t.Context(), ReportAppCreatePreparedRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ControlManualPreparation(t.Context(), ReportAppPreparationControlRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 19 || len(seen) != 19 {
 		t.Fatal("missing route or stale bearer", calls, seen)
 	}
 	for name, n := range seen {

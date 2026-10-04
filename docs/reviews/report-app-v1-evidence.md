@@ -57,11 +57,12 @@ No app profile, bootstrap mode, caller target or iframe message supplies grants.
 
 ## Scope limits
 
-The first slice is manual heading/published-block report composition and retained
-consumption. It does not claim advanced drag/drop, multi-page authoring, arbitrary
-NLQ widget creation, whole-catalog dynamic authority metadata, production host
-activation or complete migration parity. Existing broader release gates remain
-open independently.
+The initial slice covered manual heading/published-block composition and retained
+consumption. The following checkpoints add direct grid manipulation, inline page
+lifecycle and private chart mapping. Dataset-first creation, complete chart/page
+browser journeys, visual-quality closure, production host activation and whole-
+catalog dynamic authority remain separately qualified work. Existing broader
+release gates remain open independently.
 
 ## Reconstructed visual-authoring checkpoint (2026-10-03)
 
@@ -81,3 +82,39 @@ pass, and all operation budgets remain unchanged. Current native domain, databas
 transport integration and actual-browser qualification must rerun on this tree.
 Pre-reset PostgreSQL/race results are historical evidence only. The real Pengui
 launch/admission path remains pending; hosted browser fixtures are synthetic.
+
+## Requalified grid and private-authoring foundation (2026-10-04)
+
+Remote `51d097d0af60a837d50122a047f93c1ace742435`, tree
+`007c378538221dfe843be62085bee7d6a5039b93`, has green ordinary CI
+[37163540103](https://github.com/hurtener/chartworks/actions/runs/37163540103).
+Hosted Chrome passed 106 assertions in MCP and 106 in the explicitly registered
+embedded synthetic host: real pointer/keyboard/numeric geometry, collision and
+cancel, exact CAS save/reopen, genuine KPI/trend/table retained output, scoped
+denial clearing and query-free redraw. The 123 deterministic UI contracts also
+pass on hosted Node 22.14.0. No claim of deployed Pengui integration follows.
+
+The complete artifact `11288243918` has SHA256
+`50c98cafee20647e5ce9508815ad35b8c1263d363fe178bc7f0668f5241c389a`.
+Its source identity and both logs were verified. Actual Builder/Consumer pixels
+were inspected: the grid interaction is functional, while excessive chrome,
+oversized-number wrapping, dense provenance and small chart labels still need
+visual refinement. Mapping-inspector and multi-page browser journeys remain open.
+
+Fresh native race qualification on reconstructed local `4cc874c` (the backend
+tree published in `8a55cfe`) passed reporting, HTTP/MCP, PostgreSQL package,
+factory inventory, SDK and app checks. A separate actual PostgreSQL acceptance
+run passed all four manual report/canvas/block-authoring tests, all six page
+tests and the private-block composition bridge in 41.534 seconds. The synthetic
+cluster stopped cleanly. These are post-recovery results, not inherited passes.
+
+Dataset preparation is a subsequent increment. Its focused unit/schema/registry
+tests have passed locally, but its first actual PostgreSQL journey exposed an
+unsupported fixture measure and remains unqualified. Current-rule activation and
+preprojection custody authorization are under explicit review; no completed
+dataset-first creation-to-preview journey is claimed here.
+
+Fresh full Phase29 report/dashboard AC01–08 and Phase30 scheduling AC01–08
+regression tests also passed on that immutable reconstructed backend under real
+PostgreSQL and the race detector (236.127 seconds aggregate, no skipped/failed
+criteria). The fixture cluster was stopped after the run.

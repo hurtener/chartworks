@@ -154,6 +154,11 @@ func compositionDefinitionsTx(ctx context.Context, tx pgx.Tx, e identity.Envelop
 		if err := reporting.CheckCompositionSelections(m, group, block); err != nil {
 			return err
 		}
+		absent, err := reporting.AuthoringRuleAbsence(block.Revision)
+		if err != nil {
+			return err
+		}
+		current.RuleAbsence = append(current.RuleAbsence, absent...)
 		current.Topics = append(current.Topics, block.Revision.Definition.Topics...)
 		current.Watch = append(current.Watch, block.Validation.Dependencies...)
 	}

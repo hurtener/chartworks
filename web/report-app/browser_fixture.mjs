@@ -1,3 +1,4 @@
+import {mapCatalog} from './mapping-fixture.mjs';
 // Deterministic synthetic host, never a Pengui deployment or live-provider proof.
 // The retained shapes below are copied from TestReportAppCanvas Delivery.View
 // results. Identifiers/times and visible labels are synthetic fixture coordinates.
@@ -1935,9 +1936,13 @@ export const capturedViews = {
   }},
 };
 
+// This metadata catalog is explicitly synthetic. Field definitions and the final
+// line preview use the same recorded sale_date/amount columns as the retained DTO.
+export const browserMappingSamples={catalog:mapCatalog,columns:capturedViews.trend.output.chart.mapping.columns};
+
 // Stringified into the isolated test host. All state is disposable and belongs to
 // this fixture; the compiled application receives only normal tool DTOs.
-export function initializeSyntheticHost(samples, embedded) {
+export function initializeSyntheticHost(samples, embedded, mappingSamples) {
   const frame=document.getElementById('app');
   const clone=value=>JSON.parse(JSON.stringify(value));
   const wrap=value=>({structuredContent:{result:clone(value)}});
@@ -1959,22 +1964,39 @@ export function initializeSyntheticHost(samples, embedded) {
   publishedDefinition.widgets.forEach((widget,index)=>widget.grid=clone(visualGrid[index]));
   window.compactDefinition=clone(publishedDefinition);compactDefinition.widgets.forEach(widget=>widget.grid.height=1);
   const runDefinitions=new Map([['retained-one',{definition:clone(publishedDefinition),revision:2,private:false}],['retained-compact',{definition:clone(compactDefinition),revision:1,private:false}]]);
+  const reportPages=d=>d.schema_version===3?d.report_pages:[{id:'main',title:'Synthetic report canvas',widgets:d.widgets,filters:d.filters,defaults:d.defaults}];
   const sampleFor=output=>output==='kpi-main'?samples.kpi:output==='trend-main'?samples.trend:samples.table;
   const disclosure=()=>({label:'Synthetic known revenue',evidence:'reviewed_definition',definition_digest:'b'.repeat(64),declaration:'synthetic-known-revenue',value_field:'amount',unknown_count_field:'unknown_amount_count',query_outcome:'succeeded',rows_scope:'returned_query_rows',role:'amount',unit:'USD',result:{policy:'reviewed-amount-completeness-v1',scope:'returned_query_rows',metric:'synthetic:known_revenue',value_column:1,unknown_count_metric:'synthetic:unknown_amount_count',unknown_count_column:2,status:'incomplete',rows:[{row:0,status:'incomplete',unknown_count:'2'}]}});
   window.makeView=request=>{
     const run=runDefinitions.get(request.run);if(!run)return null;
-    const d=run.definition,page=request.page||'main',widget=d.widgets.find(w=>w.id===(request.widget||d.widgets[0].id));
-    if(page!=='main'||!widget)return null;
-    const output=request.output||(widget.block?.outputs[0]||'');
-    if(widget.kind==='text'?output!=='':!widget.block.outputs.includes(output))return null;
-    const source=widget.kind==='text'?samples.heading:output==='table-main'&&request.offset===1?samples.tableNext:sampleFor(output);
+    const d=run.definition,pages=reportPages(d),page=request.page||pages[0].id,p=pages.find(p=>p.id===page);if(!p)return null;
+    const widget=p.widgets.find(w=>w.id===(request.widget||p.widgets[0]?.id)),empty=!p.widgets.length&&!request.widget&&!request.output;
+    if(!widget&&!empty)return null;
+    const output=request.output||(widget?.block?.outputs[0]||'');
+    if(widget&&(widget.kind==='text'?output!=='':!widget.block.outputs.includes(output)))return null;
+    const source=!widget||widget.kind==='text'?samples.heading:output==='table-main'&&request.offset===1?samples.tableNext:sampleFor(output);
     const view=clone(source),limit=request.limit||100;
-    view.summary={...view.summary,kind:'report',run:request.run,target:{...target,revision:run.revision},private:run.private,state:'completed',created_at:'2026-10-03T12:00:00Z',expires_at:'2099-01-01T00:00:00Z'};
-    view.selection={kind:'report',run:request.run,page,widget:widget.id,output,offset:request.offset||0,limit};
-    view.locale=d.locale;view.timezone=d.timezone;view.filters=[filter];
-    view.pages=[{id:'main',title:'Synthetic report canvas',report:'report-a',revision:run.revision,widgets:d.widgets.map(w=>({id:w.id,kind:w.kind,state:'completed',grid:clone(w.grid),presentation:clone(w.presentation),outputs:w.block?clone(w.block.outputs):[]}))}];
-    view.outputs=widget.block?widget.block.outputs.map(id=>({id,kind:sampleFor(id).output.kind,title:outputTitles[id],enabled:true,selected:true})):[];
-    if(widget.kind==='text')view.text=clone(widget.text);
+    if(window.pageVisualValues){
+      // Deliberate synthetic visual-data projection. Original precision samples
+      // remain untouched and are fully tested before this separate scenario.
+      const numbers={'9007199254740993.125':'12450.125','5.500':'13200.500','9007199254740998.625':'25650.625'};
+      const project=value=>{if(!value||typeof value!=='object')return;for(const key of Object.keys(value)){if(typeof value[key]==='string'&&numbers[value[key]])value[key]=numbers[value[key]];else project(value[key]);}if(typeof value.exact==='string'&&value.exact){value.coordinate=Number(value.exact);value.approximate=false;}};
+      project(view.output);if(view.output?.chart)view.output.chart.warnings=[];
+    }
+    view.summary={...view.summary,kind:'report',run:request.run,target:{...target,id:run.report||target.id,revision:run.revision},private:run.private,state:'completed',created_at:'2026-10-03T12:00:00Z',expires_at:'2099-01-01T00:00:00Z'};
+    view.selection={kind:'report',run:request.run,page,widget:widget?.id||'',output,offset:request.offset||0,limit};
+    view.locale=p.locale||d.locale;view.timezone=p.timezone||d.timezone;view.filters=d.schema_version===3?pages.flatMap(p=>(p.filters||[]).map(f=>({...clone(f),page:p.id}))):[filter];
+    view.pages=pages.map(p=>({id:p.id,title:p.title,report:run.report||target.id,revision:run.revision,widgets:p.widgets.map(w=>({id:w.id,kind:w.kind,state:'completed',grid:clone(w.grid),presentation:clone(w.presentation),outputs:w.block?clone(w.block.outputs):[]}))}));
+    view.outputs=widget?.block?widget.block.outputs.map(id=>({id,kind:sampleFor(id).output.kind,title:outputTitles[id],enabled:true,selected:true})):[];
+    if(widget?.kind==='text')view.text=clone(widget.text);
+    if(empty){delete view.text;delete view.output;view.page_bounds={offset:0,limit,total:0};}
+    if(widget?.block?.policy==='private_preview'){
+      const chart=blockViews.get(widget.block.block+'@'+widget.block.revision),mapping=chart?.block.outputs.find(o=>o.id===output)?.mapping;
+      // Do not pretend the old retained sample implements a newly selected kind.
+      // The browser journey returns to the recorded line shape before preview.
+      if(!chart?.block.validation||chart.block.digest!==widget.block.digest||mapping?.kind!==view.output?.chart?.kind)return null;
+      view.output.chart.mapping=clone(mapping);
+    }
     if(view.output){
       view.output.retained_digest='synthetic-retained-'+output;
       // A separate synthetic disclosure projection exercises the renderer's
@@ -1984,18 +2006,50 @@ export function initializeSyntheticHost(samples, embedded) {
     if(!view.output?.table)view.page_bounds.limit=limit;
     return view;
   };
+  const blockViews=new Map();
+  window.syntheticPrivateBlocks=blockViews;
+  const blockKey=(id,revision)=>id+'@'+revision;
+  const approvedView=()=>({data_validation:'not_performed',block:{schema_version:2,state:{id:'approved-block',version:8,draft_revision:0,published_revision:7},revision:7,digest:'a'.repeat(64),execution_digest:'b'.repeat(64),private:false,parameters:[{name:'maximum',type:'integer',default:{literal:'10'}}],expected_schema:mappingSamples.columns.map(c=>({name:c.name,type:c.type})),outputs:[{id:'kpi-main',kind:'kpi',editable:true,mapping:clone(samples.kpi.output.chart.mapping)},{id:'trend-main',kind:'chart',editable:true,mapping:clone(samples.trend.output.chart.mapping)},{id:'table-main',kind:'table',editable:true,mapping:{version:3,kind:'table',columns:clone(mappingSamples.columns),bindings:{columns:['c0','c1']},order:[],options:{title:'',legend:{visible:true,position:'bottom'},label_max_runes:80},table:{columns:[{column:'c0',visible:true},{column:'c1',visible:true}],page_size:1,show_totals:true}}}]},output_columns:['kpi-main','trend-main','table-main'].map(output=>({output,columns:clone(mappingSamples.columns)}))});
+  window.startPageAuthoringFixture=()=>{
+    Object.assign(window,{saveDelay:0,viewDelay:0,rejectSave:false,denyPrivate:false,consumerOnly:false,compactCatalog:false,denial:'',pagesCatalog:false,pageVisualValues:true,cleanPaletteTitles:true});
+    state={id:'report-a',kind:'report',version:20,draft_revision:10,published_revision:2};definition=clone(publishedDefinition);
+    definition.filters=[{label:'Summary row limit',parameter:{name:'filter_1',type:'integer',required:false,default:{literal:'10'}}}];
+    definition.widgets.find(w=>w.id==='trend').bindings=[{filter:'filter_1',parameter:'maximum'}];
+    blockViews.clear();blockViews.set(blockKey('approved-block',7),approvedView());
+    window.pageFixtureBaseline=clone(definition);
+  };
+  function mappingDispatch(name,a){
+    if(name==='chart_catalog')return wrap(mappingSamples.catalog);
+    if(name==='reporting_authoring_block_read_v1'){const v=blockViews.get(blockKey(a.block,a.revision));return v?wrap(v):failure('not_found');}
+    const previous=blockViews.get(blockKey(a.block,a.revision));if(!previous)return failure('not_found');
+    if(a.expected_version!==previous.block.state.version||a.digest!==previous.block.digest)return failure('conflict');
+    if(name==='reporting_authoring_block_validate_v1'){
+      if(!previous.block.private)return failure('forbidden');const v=clone(previous),b=v.block;
+      b.state.version++;b.validation={id:'synthetic-validation-'+b.revision,revision:b.revision,definition_digest:b.digest,execution_digest:b.execution_digest,schema_digest:'e'.repeat(64),schema:clone(b.expected_schema),created_at:'2026-10-03T12:00:00Z',expires_at:'2099-01-01T00:00:00Z'};
+      blockViews.set(blockKey(a.block,a.revision),v);return wrap({state:b.state,evidence:b.validation});
+    }
+    const copy=name==='reporting_authoring_block_copy_v1';
+    if(copy&&(a.new_block!=='private-canvas-trend'||blockViews.has(blockKey(a.new_block,1)))||!copy&&(!previous.block.private||previous.block.state.draft_revision!==a.revision))return failure('forbidden');
+    const v=clone(previous),b=v.block,id=copy?a.new_block:a.block,revision=copy?1:a.revision+1;
+    b.state={id,version:copy?1:previous.block.state.version+1,draft_revision:revision,published_revision:0};b.revision=revision;b.private=true;b.digest=String(revision).repeat(64);b.execution_digest='f'.repeat(64);delete b.validation;
+    const output=b.outputs.find(o=>o.id===a.output);if(!output?.editable)return failure('invalid_request');
+    output.mapping={version:a.mapping.kpi||a.mapping.table?3:1,...clone(a.mapping),columns:clone(mappingSamples.columns)};output.kind=a.mapping.kind==='kpi'?'kpi':a.mapping.kind==='table'?'table':'chart';
+    blockViews.set(blockKey(id,revision),v);return wrap(v);
+  }
   const caps=report=>({version:'report-authoring-v1',consumer:true,builder:!consumerOnly,can_create:!consumerOnly&&['new-report','report-a'].includes(report),can_open:!consumerOnly&&!!report,can_save:!consumerOnly&&!!report,can_preview:!consumerOnly&&!!report,can_execute:!consumerOnly&&!!report});
   window.dispatch=(name,a)=>{
+    if(name==='chart_catalog'||['reporting_authoring_block_read_v1','reporting_authoring_block_copy_v1','reporting_authoring_block_mapping_v1','reporting_authoring_block_validate_v1'].includes(name))return mappingDispatch(name,a);
     if(name==='reporting_authoring_capabilities_v1')return wrap(caps(a.report));
     if(name==='reporting_search')return wrap({version:'reporting-view-v1',items:a.kind==='block'?[{target:{kind:'block',id:'approved-block',revision:7},title:'Approved business metrics',description:'Synthetic approved outputs',locale:'en-US'}]:[{target,title:'Weekly operations',description:'Synthetic retained KPI, trend and operational detail',locale:'en-US'}],next:''});
     if(name==='reporting_authoring_drafts_v1')return wrap({items:[{id:state.id,version:state.version,revision:state.draft_revision,metadata:definition.metadata,updated_at:'2026-10-03T12:00:00Z'}],next:''});
     if(name==='reporting_authoring_read_v1')return wrap({state,revision:state.draft_revision,private:true,digest:'synthetic',definition});
     if(name==='reporting_authoring_create_v1'){state={id:a.id,kind:'report',version:1,draft_revision:1,published_revision:0};definition=clone(a.definition);return wrap(state);}
     if(name==='reporting_authoring_save_v1'){if(rejectSave){rejectSave=false;return failure('conflict');}if(a.expected_version!==state.version)return failure('conflict');state={...state,version:state.version+1,draft_revision:state.draft_revision+1};definition=clone(a.definition);return wrap(state);}
-    if(name==='reporting_describe')return wrap(a.target.kind==='block'?{version:'reporting-view-v1',resource:{target:a.target,title:'Approved business metrics'},outputs:[{id:'kpi-main',kind:'kpi',title:outputTitles['kpi-main'],enabled:true,selected:true},{id:'trend-main',kind:'chart',title:outputTitles['trend-main'],enabled:true,selected:true},{id:'table-main',kind:'table',title:'<img src=x onerror=alert(1)>',enabled:true,selected:true},{id:'story',kind:'narrative',title:'Narrative',enabled:true,selected:true}],filters:[filter],dynamic:false,timezone:'UTC'}:{version:'reporting-view-v1',resource:{target,title:'Weekly operations'},outputs:[],filters:[filter],pages:[],dynamic:false,timezone:'UTC'});
+    if(name==='reporting_describe')return wrap(a.target.kind==='block'?{version:'reporting-view-v1',resource:{target:a.target,title:'Approved business metrics'},outputs:[{id:'kpi-main',kind:'kpi',title:outputTitles['kpi-main'],enabled:true,selected:true},{id:'trend-main',kind:'chart',title:outputTitles['trend-main'],enabled:true,selected:true},{id:'table-main',kind:'table',title:window.cleanPaletteTitles?outputTitles['table-main']:'<img src=x onerror=alert(1)>',enabled:true,selected:true},{id:'story',kind:'narrative',title:'Narrative',enabled:true,selected:true}],filters:[filter],dynamic:false,timezone:'UTC'}:{version:'reporting-view-v1',resource:{target,title:'Weekly operations'},outputs:[],filters:[filter],pages:[],dynamic:false,timezone:'UTC'});
+    if(name==='reporting_runs'&&window.pagesCatalog)return wrap({version:'reporting-view-v1',items:[{kind:'report',run:'private-one',target:{...target,revision:state.draft_revision},state:'completed',private:true,created_at:'2026-10-03T12:00:00Z',expires_at:'2099-01-01T00:00:00Z'}],next:''});
     if(name==='reporting_runs')return wrap({version:'reporting-view-v1',items:[{kind:'report',run:compactCatalog?'retained-compact':'retained-one',target:{...target,revision:compactCatalog?1:2},state:'completed',private:false,created_at:'2026-10-03T12:00:00Z',expires_at:'2099-01-01T00:00:00Z'}],next:''});
     if(name==='reporting_run'){runDefinitions.set('new-run',{definition:clone(publishedDefinition),revision:2,private:false});return wrap({version:'reporting-view-v1',kind:'report',run:'new-run',state:'completed',code:'',target});}
-    if(name==='reporting_authoring_preview_v1'){privateRuns.add('private-one');runDefinitions.set('private-one',{definition:clone(definition),revision:a.revision,private:true});return wrap({id:'private-one',kind:'report',document:a.report,revision:a.revision,private:true,state:'admitted',pages:[]});}
+    if(name==='reporting_authoring_preview_v1'){privateRuns.add('private-one');runDefinitions.set('private-one',{definition:clone(definition),report:a.report,revision:a.revision,private:true});return wrap({id:'private-one',kind:'report',document:a.report,revision:a.revision,private:true,state:'admitted',pages:[]});}
     if(name==='reporting_authoring_execute_v1')return wrap({id:a.run,kind:'report',document:state.id,revision:state.draft_revision,private:true,state:'completed',pages:[]});
     if(name==='reporting_view'){
       if(denyPrivate&&privateRuns.has(a.run))return failure('not_found');

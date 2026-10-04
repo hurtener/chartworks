@@ -14,7 +14,7 @@ func TestAuthoringRegistryParityAndClosedAuthorityInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(registry.Definitions()) != 12 {
+	if len(registry.Definitions()) != 17 {
 		t.Fatal("unexpected manual authoring operation count")
 	}
 	documents, err := DocumentsRegistry(false)
@@ -60,7 +60,7 @@ func TestAuthoringRegistryParityAndClosedAuthorityInputs(t *testing.T) {
 			if tool.Meta["chartworks/action"] != d.Action || tool.Meta["chartworks/effect"] != d.Effect {
 				t.Fatal("MCP changed operation authority/effect", d.ID)
 			}
-			read := strings.HasSuffix(d.ID, "capabilities_v1") || strings.HasSuffix(d.ID, "drafts_v1") || strings.HasSuffix(d.ID, "read_v1")
+			read := strings.HasSuffix(d.ID, "capabilities_v1") || strings.HasSuffix(d.ID, "drafts_v1") || strings.HasSuffix(d.ID, "read_v1") || strings.HasSuffix(d.ID, "dataset_v1") || strings.HasSuffix(d.ID, "preparation_v1")
 			if tool.Annotations.ReadOnlyHint != read {
 				t.Fatal("incorrect mutation annotation", d.ID)
 			}

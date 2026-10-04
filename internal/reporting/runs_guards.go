@@ -24,6 +24,9 @@ func CheckFrozenEligibility(e identity.Envelope, m RunManifest, snapshot Snapsho
 	if err := frozenTemplateSelections(m.Revision.Definition, snapshot.Revision.Definition); err != nil {
 		return err
 	}
+	if err := RetainAuthoringRuleAbsence(snapshot.Revision, m.Revision); err != nil {
+		return err
+	}
 	if snapshot.State.ID != m.Block || snapshot.Revision.Number != m.Revision.Number || snapshot.Revision.Digest != m.Revision.Digest ||
 		snapshot.Revision.ID != m.Revision.ID || snapshot.Validation == nil || snapshot.Validation.BindingDigest != exec.Hash(m.Binding) ||
 		DependencyDigest(snapshot.Validation.Dependencies, m.Revision.Definition.Topics, snapshot.Validation.Rules) != DependencyDigest(m.Dependencies, m.Revision.Definition.Topics, m.Rules) ||

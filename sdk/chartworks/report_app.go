@@ -119,3 +119,37 @@ func (c *Client) ValidateManualChart(ctx context.Context, in ReportAppBlockValid
 	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"block_validate", "", in, &out, 4<<20)
 	return
 }
+
+// Dataset-first authoring uses reviewed semantics and explicit native reads.
+type ReportAppDatasetRequest = reporting.AuthoringDatasetRequest
+type ReportAppDatasetView = reporting.AuthoringDatasetView
+type ReportAppPrepareRequest = reporting.AuthoringPrepareRequest
+type ReportAppPreparationRequest = reporting.AuthoringPreparationRequest
+type ReportAppPreparationView = reporting.AuthoringPreparationView
+type ReportAppCreatePreparedRequest = reporting.AuthoringCreatePreparedRequest
+type ReportAppPreparationControlRequest = reporting.AuthoringPreparationControlRequest
+
+func (c *Client) ReadManualDataset(ctx context.Context, in ReportAppDatasetRequest) (out ReportAppDatasetView, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"dataset", "", in, &out, 4<<20)
+	return
+}
+
+func (c *Client) PrepareManualChart(ctx context.Context, in ReportAppPrepareRequest) (out ReportAppPreparationView, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"prepare_chart", "", in, &out, 4<<20)
+	return
+}
+
+func (c *Client) ReadManualPreparation(ctx context.Context, in ReportAppPreparationRequest) (out ReportAppPreparationView, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"preparation", "", in, &out, 4<<20)
+	return
+}
+
+func (c *Client) CreatePreparedManualChart(ctx context.Context, in ReportAppCreatePreparedRequest) (out ReportAppBlockView, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"create_prepared", "", in, &out, 4<<20)
+	return
+}
+
+func (c *Client) ControlManualPreparation(ctx context.Context, in ReportAppPreparationControlRequest) (out ReportAppPreparationView, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"preparation_control", "", in, &out, 4<<20)
+	return
+}
