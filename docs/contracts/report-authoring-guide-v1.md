@@ -133,6 +133,25 @@ terminal-record cleanup is not implemented and unresolved liability is not erase
    `new_operation_allowed=true`. That flag never triggers a query automatically.
    Unresolved same-actor target liability survives a new session, key or search.
 
+## Display-only chart edits
+
+Read `chartworks://report_app/docs/presentation/v1` before changing field labels
+or numeric display precision. Inspect the selected output's versioned native
+`presentation` capability; it lists supported bound columns and fields, not
+permissions. Table-header labels and supported non-percent decimal places use a
+purpose-specific `presentation` patch on the existing block mapping/copy tools.
+Never submit a full column or format object. The transport accepts exactly one
+of `mapping` and `presentation`.
+
+Stage changes locally. Preserve the exact revision, digest and expected version;
+use a separately host-allocated private copy for a published source. The source
+needs explicit preview eligibility independently from ordinary read. Saving
+performs no source/model work and returns an unvalidated private revision.
+Explicit validation, report rebind and publication remain separate decisions.
+Reset inherits reviewed metadata. Unit/currency reassignment, percent scale,
+calculated precision, arbitrary formatter code and unsupported caption controls
+are not display edits and cannot be smuggled through the presentation patch.
+
 ## Publication is a sequence of independent decisions
 
 1. Inspect `reporting_authoring_lifecycle_v1` for exact block/report revision

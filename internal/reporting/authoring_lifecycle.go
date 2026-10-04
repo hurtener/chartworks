@@ -117,7 +117,7 @@ func (s *Authoring) inspectBlockLifecycle(ctx context.Context, e identity.Envelo
 	if err != nil {
 		return AuthoringBlockLifecycle{}, Snapshot{}, err
 	}
-	out := AuthoringBlockLifecycle{Block: authoringBlockView(project(snapshot, time.Now())).Block, PublishedAt: clone(snapshot.PublishedAt), PublicationScope: "entire_revision", AudienceEffect: "existing_authorized_readers"}
+	out := AuthoringBlockLifecycle{Block: authoringBlockView(project(snapshot, time.Now()), blocks.limits).Block, PublishedAt: clone(snapshot.PublishedAt), PublicationScope: "entire_revision", AudienceEffect: "existing_authorized_readers"}
 	if snapshot.Validation != nil {
 		out.ValidationFresh = freshValidation(snapshot, snapshot.Validation.Evidence.ID, time.Now()) == nil
 	}

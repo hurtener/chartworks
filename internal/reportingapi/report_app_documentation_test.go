@@ -97,7 +97,7 @@ func TestReportAppDocumentationMountedHTTPMCPParity(t *testing.T) {
 	var listing struct {
 		Result mcp.ListResourcesResult `json:"result"`
 	}
-	if listed.Code != 200 || json.Unmarshal(listed.Body.Bytes(), &listing) != nil || len(listing.Result.Resources) != 12 {
+	if listed.Code != 200 || json.Unmarshal(listed.Body.Bytes(), &listing) != nil || len(listing.Result.Resources) != 13 {
 		t.Fatal("mounted resource inventory", listed.Code, listed.Body.String())
 	}
 	byURI := map[string]*mcp.Resource{}

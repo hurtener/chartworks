@@ -42,11 +42,11 @@ export function publicationFrameFits({root, frameHeight, frameWidth, resizeCount
 
 // This function is serialized into the synthetic parent page. The CDP binding
 // relays only tool calls to the same Node publicationFixture used by bundle tests.
-export function initializePublicationHost(embedded, names) {
+export function initializePublicationHost(embedded, names, allocation = false) {
   const frame = document.getElementById('app'), frameID = 'publication-frame', generation = 1;
   const challenge = 'synthetic-publication-challenge', pending = new Map();
   let sequence = 0;
-  Object.assign(window, {hostMessages: [], hostCalls: [], hostErrors: [], resizeCount: 0, lastResizeAt: 0});
+  Object.assign(window, {hostMessages: [], hostCalls: [], hostAllocations: [], hostErrors: [], resizeCount: 0, lastResizeAt: 0});
   const envelope = message => embedded ? {protocol: 'chartworks-report-app-v1', frame: frameID, generation, ...message} : {jsonrpc: '2.0', ...message};
   const send = message => frame.contentWindow.postMessage(envelope(message), location.origin);
   window.completePublicationCall = (id, result) => {
@@ -54,9 +54,9 @@ export function initializePublicationHost(embedded, names) {
     if (!finish) throw new Error('Uncorrelated synthetic publication reply');
     pending.delete(id);finish(result);
   };
-  const invoke = params => new Promise(resolve => {
+  const invoke = (params, allocate = false) => new Promise(resolve => {
     const id = ++sequence;pending.set(id, resolve);
-    window.publicationInvoke(JSON.stringify({id, name: params.name, args: params.arguments}));
+    window.publicationInvoke(JSON.stringify({id, name: allocate ? 'app/allocate-target' : params.name, args: allocate ? params : params.arguments}));
   });
   frame.addEventListener('load', () => {
     if (embedded) send({method: 'bootstrap', params: {challenge}});
@@ -68,15 +68,19 @@ export function initializePublicationHost(embedded, names) {
     hostMessages.push(message);
     if (message.method === 'initialize' && embedded) {
       if (message.params?.challenge !== challenge) throw new Error('Incorrect embedded challenge');
-      send({id: message.id, result: {challenge, tools: true, capabilities: {supported_tools: names}, context: {theme: 'light', locale: 'en-US'}}});return;
+      send({id: message.id, result: {challenge, tools: true, capabilities: {supported_tools: names, ...(allocation ? {target_allocation: {version: 'report-app-allocation-v1'}} : {})}, context: {theme: 'light', locale: 'en-US'}}});return;
     }
     if (message.method === 'ui/initialize' && !embedded) {
       if (message.params?.protocolVersion !== '2026-01-26') throw new Error('Incorrect MCP protocol');
-      send({id: message.id, result: {protocolVersion: '2026-01-26', hostCapabilities: {serverTools: {}}, hostContext: {theme: 'light', locale: 'en-US', 'chartworks/supported-tools': names}}});return;
+      send({id: message.id, result: {protocolVersion: '2026-01-26', hostCapabilities: {serverTools: {}}, hostContext: {theme: 'light', locale: 'en-US', 'chartworks/supported-tools': names, ...(allocation ? {'chartworks/target-allocation': {version: 'report-app-allocation-v1'}} : {})}}});return;
     }
     if (message.method === 'ui/notifications/size-changed') {
       lastResizeAt = performance.now();resizeCount++;
       frame.style.height = Math.min(2416, Math.max(500, Math.ceil(message.params.height) + 16)) + 'px';return;
+    }
+    if (message.method === 'app/allocate-target' && allocation) {
+      hostAllocations.push(message.params);
+      void invoke(message.params, true).then(result => send({id: message.id, result})).catch(error => hostErrors.push(String(error)));return;
     }
     if (message.method === 'tools/call') {
       hostCalls.push(message.params);

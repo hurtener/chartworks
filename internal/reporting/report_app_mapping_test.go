@@ -68,3 +68,35 @@ func TestReportAppRetainedMappingIdentity(t *testing.T) {
 		})
 	}
 }
+
+// A recomputed content digest cannot authorize arbitrary effective display
+// metadata. The saved overlay alone determines the retained projection.
+func TestReportAppPresentationFrozenProjection(t *testing.T) {
+	column := charts.Column{ID: "amount", Name: "amount", Type: "decimal", Role: "measure", Format: charts.Format{FractionDigits: 3}, Provenance: charts.Provenance{Version: 1}}
+	data := charts.Data{Version: charts.Version, Columns: []charts.Column{column}, Rows: [][]charts.Cell{{{Value: "9007199254740993.125"}}}, Completeness: charts.Completeness{Status: "complete_result"}}
+	mapping, err := charts.Bind(t.Context(), data, charts.Table, charts.Bindings{Columns: []string{"amount"}}, nil, charts.DefaultOptions(), charts.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	label, digits := "Reviewed amount", 0
+	mapping, err = charts.ApplyPresentationPatch(t.Context(), mapping, charts.PresentationPatch{Version: 1, Edits: []charts.ColumnPresentationEdit{{Column: "amount", Set: &charts.ColumnPresentationSet{DisplayLabel: &label, FractionDigits: &digits}}}}, charts.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	built, err := charts.Build(t.Context(), data, mapping, charts.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := reporting.Output{ID: "table-main", Kind: "table", Mapping: &mapping}
+	retained := reporting.RetainedOutput{ID: saved.ID, Kind: saved.Kind, State: "succeeded", Chart: &built}
+	retained.Digest = retained.ContentDigest()
+	manifest := reporting.RunManifest{Outputs: []reporting.Output{saved}}
+	if err := reporting.CheckFrozenOutput(manifest, retained, false); err != nil {
+		t.Fatal("valid projected output rejected", err)
+	}
+	built.Columns[0].Format.Currency = "USD"
+	retained.Digest = retained.ContentDigest()
+	if reporting.CheckFrozenOutput(manifest, retained, false) == nil {
+		t.Fatal("unapproved semantic metadata admitted with recomputed digest")
+	}
+}

@@ -3,6 +3,7 @@ package chartworks
 import (
 	"context"
 
+	"github.com/hurtener/chartworks/internal/charts"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/reportingapi"
 )
@@ -110,6 +111,38 @@ func (c *Client) AmendManualChart(ctx context.Context, in ReportAppBlockMappingR
 
 // CopyManualChart creates an independently authorized private copy, not approval.
 func (c *Client) CopyManualChart(ctx context.Context, in ReportAppBlockCopyRequest) (out ReportAppBlockView, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"block_copy", "", in, &out, 4<<20)
+	return
+}
+
+// Presentation requests intentionally cannot carry a mapping or column metadata.
+// Optional set pointers preserve explicit zero digits and an empty display label;
+// reset names restore reviewed defaults. Capability metadata gates supported fields.
+type ReportAppBlockPresentationRequest = reporting.AuthoringBlockPresentationRequest
+type ReportAppBlockPresentationCopyRequest = reporting.AuthoringBlockPresentationCopyRequest
+type ReportAppPresentationPatch = charts.PresentationPatch
+type ReportAppColumnPresentationEdit = charts.ColumnPresentationEdit
+type ReportAppColumnPresentationSet = charts.ColumnPresentationSet
+type ReportAppPresentationField = charts.PresentationField
+type ReportAppPresentationCapabilities = charts.PresentationCapabilities
+type ReportAppColumnPresentationCapability = charts.ColumnPresentationCapability
+
+const (
+	ReportAppPresentationVersion        = charts.PresentationVersion
+	ReportAppPresentationDisplayLabel   = charts.PresentationDisplayLabel
+	ReportAppPresentationFractionDigits = charts.PresentationFractionDigits
+)
+
+// AmendManualChartPresentation changes only selected display overrides under CAS.
+// It uses the existing block_mapping route and never retries an unknown outcome.
+func (c *Client) AmendManualChartPresentation(ctx context.Context, in ReportAppBlockPresentationRequest) (out ReportAppBlockView, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"block_mapping", "", in, &out, 4<<20)
+	return
+}
+
+// CopyManualChartPresentation creates an authorized private unvalidated copy with
+// one output's display overrides changed, using the existing block_copy route.
+func (c *Client) CopyManualChartPresentation(ctx context.Context, in ReportAppBlockPresentationCopyRequest) (out ReportAppBlockView, err error) {
 	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"block_copy", "", in, &out, 4<<20)
 	return
 }

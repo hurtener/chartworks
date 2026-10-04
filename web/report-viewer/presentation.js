@@ -90,9 +90,15 @@ export function exact(cell, column, missing = 'Missing', timezone = 'UTC') {
 	return [value,text(f.currency_symbol)||text(f.currency),text(f.unit)].filter(Boolean).join(' ');
 }
 function formatDecimal(raw,digits,locale) {
-  if (!integer(digits,0,20) || !/^[+-]?\d+(?:\.\d+)?$/.test(raw)) return raw;
-  const sign=raw.startsWith('-')?'-':raw.startsWith('+')?'+':'', unsigned=sign?raw.slice(1):raw, parts=unsigned.split('.');
-  let fraction=parts[1]||'', whole=parts[0];
+  const parsed=/^([+-]?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(raw);
+  if (!integer(digits,0,20) || !parsed || raw.length>16384 || Math.abs(Number(parsed[4]||0))>4096) return raw;
+  const coefficient=parsed[2]+(parsed[3]||''), dot=parsed[2].length+Number(parsed[4]||0);
+  // Native rational formatting discards a leading plus and exact signed zero,
+  // but keeps the sign of a nonzero negative value rounded to displayed zero.
+  const sign=parsed[1]==='-'&&/[1-9]/.test(coefficient)?'-':'';
+  let whole=dot<=0?'0':dot>=coefficient.length?coefficient+'0'.repeat(dot-coefficient.length):coefficient.slice(0,dot);
+  let fraction=dot<=0?'0'.repeat(-dot)+coefficient:dot>=coefficient.length?'':coefficient.slice(dot);
+  whole=whole.replace(/^0+(?=\d)/,'');
   if (fraction.length>digits) { const round=fraction[digits]>='5'; let scaled=BigInt(whole+(fraction.slice(0,digits)||'')); if(round)scaled+=1n; let s=scaled.toString().padStart(digits+1,'0'); whole=digits?s.slice(0,-digits):s; fraction=digits?s.slice(-digits):''; }
   else fraction=fraction.padEnd(digits,'0');
   const spanish=text(locale).toLowerCase().startsWith('es'), group=spanish?'.':',', decimal=spanish?',':'.';
@@ -131,7 +137,7 @@ function scale(values) {
 }
 function categoryKey(cell) { return JSON.stringify([cell?.null ?? true,text(cell?.value ?? cell?.exact)]); }
 
-function appendRawPrecision(parent,cell,column,w){const raw=cellValue(cell,w.null),digits=column?.format?.fraction_digits;if(cell?.null||!['integer','decimal','number'].includes(column?.type)||!integer(digits,0,20)||column.format?.percent)return;const fraction=/^[+-]?\d+\.(\d+)$/.exec(raw)?.[1];if(!fraction||fraction.length<=digits)return;const disclosure=element('details',undefined,'cell-precision');disclosure.append(element('summary',w===words.es?'Precisión':'Precision'),element('p',`${w===words.es?'Valor guardado sin redondear':'Unrounded retained value'}: ${raw}`,'metadata raw-retained-value'));parent.append(disclosure);}
+function appendRawPrecision(parent,cell,column,w){const raw=cellValue(cell,w.null),digits=column?.format?.fraction_digits;if(cell?.null||!['integer','decimal','number'].includes(column?.type)||!integer(digits,0,20)||column.format?.percent)return;const numeric=/^[+-]?\d+(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(raw);if(!numeric||numeric[2]===undefined&&(numeric[1]?.length||0)<=digits)return;const disclosure=element('details',undefined,'cell-precision');disclosure.append(element('summary',w===words.es?'Precisión':'Precision'),element('p',`${w===words.es?'Valor guardado sin redondear':'Unrounded retained value'}: ${raw}`,'metadata raw-retained-value'));parent.append(disclosure);}
 
 function renderTable(parent, columns, rows, w, caption, totals = [], rowIndices = [], timezone = 'UTC') {
   if (columns.length > 256 || rows.length > 1000) throw fail('limit_exceeded');

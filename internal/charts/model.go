@@ -231,14 +231,15 @@ func DefaultOptions() Options {
 // Mapping is a portable saved definition. Columns pins every bound column's
 // type and semantic metadata; approved mappings are never rebound in place.
 type Mapping struct {
-	Version  int           `json:"version"`
-	Kind     Kind          `json:"kind"`
-	Columns  []Column      `json:"columns"`
-	Bindings Bindings      `json:"bindings"`
-	Order    []Order       `json:"order"`
-	Options  Options       `json:"options"`
-	KPI      *KPIOptions   `json:"kpi,omitempty"`
-	Table    *TableOptions `json:"table,omitempty"`
+	Version      int                 `json:"version"`
+	Kind         Kind                `json:"kind"`
+	Columns      []Column            `json:"columns"`
+	Bindings     Bindings            `json:"bindings"`
+	Order        []Order             `json:"order"`
+	Options      Options             `json:"options"`
+	KPI          *KPIOptions         `json:"kpi,omitempty"`
+	Table        *TableOptions       `json:"table,omitempty"`
+	Presentation *ColumnPresentation `json:"presentation,omitempty"`
 }
 
 // CatalogEntry describes real slot requirements and data semantics for one kind.

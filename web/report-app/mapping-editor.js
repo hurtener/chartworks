@@ -1,9 +1,8 @@
+import {node as mapNode, button as mapButton, selectField, textField as mapInput} from './dom.js';
+import {renderFormattingFields} from './formatting.js';
 import {TARGET_ALLOCATION_UNAVAILABLE} from './allocation.js';
 import {bindingCandidates, mappingColumns, mappingVariants, mappingVariant} from './mapping.js';
-const mapNode=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);if(cls)n.className=cls;return n;};
-function mapButton(label,click,disabled=false){const b=mapNode('button',label);b.type='button';b.disabled=disabled;b.addEventListener('click',click);return b;}
-function mapInput(label,value,change,{type='text',min,max,maxLength=256}={}){const wrap=mapNode('label',label),input=mapNode('input');input.type=type;input.value=value??'';input.defaultValue=input.value;input.maxLength=maxLength;if(min!==undefined)input.min=min;if(max!==undefined)input.max=max;input.setAttribute('aria-label',label);input.addEventListener('change',()=>change(input.value));wrap.append(input);return wrap;}
-function mapSelect(label,value,choices,change){const wrap=mapNode('label',label),select=mapNode('select');select.setAttribute('aria-label',label);for(const choice of choices){const option=mapNode('option',choice.label);option.value=choice.value;option.selected=choice.value===value;select.append(option);}select.addEventListener('change',()=>change(select.value));wrap.append(select);return wrap;}
+function mapSelect(label,value,choices,change){return selectField(label,choices,value,change);}
 function mapCheck(label,value,change){const wrap=mapNode('label',undefined,'mapping-check'),input=mapNode('input');input.type='checkbox';input.checked=!!value;input.setAttribute('aria-label',label);input.addEventListener('change',()=>change(input.checked));wrap.append(input,mapNode('span',label));return wrap;}
 const mapTitle=kind=>kind.replaceAll('_',' ').replace(/^./,s=>s.toUpperCase());
 const mapColumnLabel=c=>`${c.display_label||c.name||c.id} · ${c.type}${c.aggregation?' · '+c.aggregation:''}${c.format?.unit?' · '+c.format.unit:''}${c.format?.currency?' · '+c.format.currency:''}`;
@@ -13,15 +12,16 @@ function mapKPI(d){if(!d.kpi)d.kpi={value_row:'first',comparison_mode:'none',sho
 
 // Metadata controls only. No sample rows, canvas renderer or execution lives here.
 export function renderMappingEditor(parent,session,{busy=false,allocation=null,canAllocate=false,resume,change,save,cancel,inspect}){
- const editor=mapNode('section',undefined,'mapping-editor');editor.append(mapNode('h2','Edit chart'));
+ const formatting=session.purpose==='presentation',editor=mapNode('section',undefined,'mapping-editor');editor.append(mapNode('h2',formatting?'Field formatting':'Edit chart'));
  if(!session.view){editor.append(mapNode('p','Loading exact chart metadata…','metadata'));parent.append(editor);return;}
  const b=session.view.block,draft=session.draft,columns=mappingColumns(session.view,session.output),edit=fn=>{session.edit(fn);change();};
  editor.append(mapNode('p',`${b.state.id} · revision ${b.revision} · ${session.output}`,'metadata'),mapNode('p','Changes are staged here. Saving creates an unvalidated private chart revision. Source data runs only when you explicitly validate or preview.','metadata'));
  if(session.unknown)editor.append(mapNode('p','The save outcome is unknown. Inspect metadata and reconcile through your host before retrying.','notice error'));
  if(session.conflict)editor.append(mapNode('p','This chart changed elsewhere. Close these edits and reopen its current exact reference before trying again.','notice error'));
  const fields=mapNode('fieldset');fields.disabled=busy||session.pending||session.unknown||session.conflict||!!allocation?.unknown;
+ if(formatting)renderFormattingFields(fields,session,change);else{
  const display=mapNode('details',undefined,'mapping-display');display.open=session.displaySettingsOpen===true;session.displaySettingsElement=display;display.addEventListener('toggle',()=>{if(!session.closed&&session.displaySettingsElement===display)session.displaySettingsOpen=display.open;});display.append(mapNode('summary','Display settings'),mapInput('Chart title',draft.options.title,value=>edit(d=>{d.options.title=value;}),{maxLength:512}),mapCheck('Show legend',draft.options.legend.visible,value=>edit(d=>{d.options.legend.visible=value;})),mapSelect('Legend position',draft.options.legend.position,['top','bottom','left','right'].map(value=>({value,label:mapTitle(value)})),value=>edit(d=>{d.options.legend.position=value;})),mapInput('Maximum displayed label characters',draft.options.label_max_runes,value=>edit(d=>{d.options.label_max_runes=Number(value);}),{type:'number',min:1,max:1024}),mapNode('p','Shortened display labels keep their complete text and exact values in retained details.','metadata'));
- fields.append(display,mapNode('p','Field-label and number-format editing is unavailable in this authoring contract. Saved reviewed units and aggregation are preserved.','metadata'));
+ fields.append(display,mapNode('p','Use Field formatting separately for supported table headers and numeric precision. Saved reviewed units and aggregation are preserved.','metadata'));
  fields.append(mapSelect('Chart type',draft.kind,session.catalog.kinds.map(e=>({value:e.kind,label:mapTitle(e.kind)})),kind=>{session.variant=null;edit(d=>{d.kind=kind;d.bindings=kind==='table'?{columns:[]}:{};d.order=[];delete d.kpi;delete d.table;if(kind==='kpi')mapKPI(d);if(kind==='table')mapTable(d);});}));
  const variants=mappingVariants(session.catalog,draft.kind),selected=variants.some(v=>v.id===session.variant)?session.variant:mappingVariant(session.catalog,draft);
  if(variants.length>1)fields.append(mapSelect('Binding variant',selected,variants.map(v=>({value:v.id,label:mapTitle(v.id)})),id=>{session.variant=id;edit(d=>{const variant=variants.find(v=>v.id===id),allowed=[...variant.required_slots,...(variant.optional_slots||[])];for(const slot of Object.keys(d.bindings))if(!allowed.includes(slot))delete d.bindings[slot];d.order=d.order.filter(o=>Object.values(d.bindings).flat().includes(o.column));});}));
@@ -46,10 +46,12 @@ export function renderMappingEditor(parent,session,{busy=false,allocation=null,c
  fields.append(mapNode('h3','Sort order'));
  draft.order.forEach((order,index)=>{const row=mapNode('div',undefined,'mapping-sort');row.append(mapSelect(`Sort field ${index+1}`,order.column,sortColumns.map(c=>({value:c.id,label:mapColumnLabel(c)})),id=>edit(d=>{d.order[index].column=id;})),mapSelect(`Sort direction ${index+1}`,order.direction,[{value:'asc',label:'Ascending'},{value:'desc',label:'Descending'}],direction=>edit(d=>{d.order[index].direction=direction;})),mapButton(`Remove sort ${index+1}`,()=>edit(d=>{d.order.splice(index,1);})));fields.append(row);});
  const nextSort=sortColumns.find(c=>!draft.order.some(o=>o.column===c.id));fields.append(mapButton('Add sort',()=>edit(d=>{d.order.push({column:nextSort.id,direction:'asc'});}),!nextSort));
+ }
  if(session.copy)editor.append(mapNode('p',!canAllocate?TARGET_ALLOCATION_UNAVAILABLE:allocation?.unknown?'Resume chart creation asks your host for the same private copy.':'Saving will create a private copy through your host.','metadata'));
  editor.append(fields);
- if(!session.valid())editor.append(mapNode('p','Choose compatible fields and valid display settings. Use a plain-text chart title, a supported legend position and a label length from 1 to 1024. All required slots must be filled; each field can occupy one slot.','notice'));
- editor.append(mapButton('Save chart',save,busy||session.pending||session.unknown||session.conflict||!session.dirty||!session.valid()||session.copy&&!canAllocate||!!allocation?.unknown),mapButton(session.unknown?'Close chart editor':'Cancel chart edits',cancel,busy||session.pending));
+ if(formatting&&session.dirty&&!session.valid())editor.append(mapNode('p','Use a header of at most 256 UTF-8 bytes and whole fraction digits from 0 to 20, or reset to inherit. A save must change the reviewed presentation.','notice'));
+ if(!formatting&&!session.valid())editor.append(mapNode('p','Choose compatible fields and valid display settings. Use a plain-text chart title, a supported legend position and a label length from 1 to 1024. All required slots must be filled; each field can occupy one slot.','notice'));
+ editor.append(mapButton(formatting?'Save formatting':'Save chart',save,busy||session.pending||session.unknown||session.conflict||!session.dirty||!session.valid()||session.copy&&!canAllocate||!!allocation?.unknown),mapButton(session.unknown?'Close chart editor':formatting?'Cancel formatting':'Cancel chart edits',cancel,busy||session.pending));
  if(allocation?.unknown)editor.append(mapButton('Resume chart creation',resume,busy||allocation.pending||!canAllocate));
  if(session.unknown)editor.append(mapButton('Inspect chart state',inspect,busy||session.pending));parent.append(editor);
 }

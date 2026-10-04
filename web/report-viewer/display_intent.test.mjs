@@ -19,3 +19,11 @@ test('sealed report timezone controls instant calendar formatting', () => {
   assert.equal(exact({value:'2026-11-01T05:30:00Z'},shortTime,'Missing','America/New_York'),'Nov 01, 2026 01:30');
   assert.equal(exact({value:'2026-11-01T06:30:00Z'},shortTime,'Missing','America/New_York'),'Nov 01, 2026 01:30');
 });
+
+test('numeric display preserves exact precision and native rational spelling',()=>{
+ const cases=[['9007199254740993.125',2,'9,007,199,254,740,993.13'],['-9007199254740993.125',2,'-9,007,199,254,740,993.13'],['1.005',2,'1.01'],['-1.005',2,'-1.01'],['+00012.500',2,'12.50'],['-0.000',2,'0.00'],['-0.0001',2,'-0.00'],['1.2345e3',2,'1,234.50'],['12345e-4',3,'1.235'],['-5e-21',20,'-0.00000000000000000001'],['1e3',0,'1,000'],['0000',0,'0']];
+ for(const[raw,digits,want]of cases){const cell={value:raw},column={type:'decimal',format:{fraction_digits:digits}},before=JSON.stringify({cell,column});assert.equal(exact(cell,column),want,raw);assert.equal(JSON.stringify({cell,column}),before);}
+ assert.equal(exact({value:'1.2345e3'},{type:'decimal',format:{fraction_digits:2,locale:'es-AR',currency:'USD'}}),'1.234,50 USD');
+ assert.equal(exact({value:'1e4097'},{type:'decimal',format:{fraction_digits:2}}),'1e4097');
+ assert.equal(exact({null:true,value:'1.23'},{type:'decimal',format:{fraction_digits:2}}),'Missing');
+});

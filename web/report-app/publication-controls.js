@@ -1,7 +1,7 @@
+import {node, button} from './dom.js';
 import {publicationEligible, publishedWidgets, hasPrivatePins, stageLabel, validRejectionNote} from './publication.js';
 
-function node(tag,text,cls){const el=document.createElement(tag);if(text!==undefined)el.textContent=String(text);if(cls)el.className=cls;return el;}
-function button(label,fn,disabled=false){const el=node('button',label);el.type='button';el.disabled=disabled;el.addEventListener('click',fn);return el;}
+
 function checkbox(label,checked,disabled,fn){const el=node('label',undefined,'publication-confirmation'),input=node('input');input.type='checkbox';input.checked=checked;input.disabled=disabled;input.setAttribute('aria-label',label);input.addEventListener('change',()=>fn(input.checked));el.append(input,node('span',label));return el;}
 function confirm(parent,app,action,target,label,buttonLabel,disabled){const p=app.publication;parent.append(checkbox(label,p.confirmed(action,target),disabled,value=>{p.confirm(action,target,value);app.render();}),button(buttonLabel,()=>void app.perform(()=>app.publishAction(action,target)),disabled||!p.confirmed(action,target)));}
 

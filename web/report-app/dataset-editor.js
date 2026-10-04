@@ -1,11 +1,10 @@
+import {node as datasetNode, button as datasetButton, selectField as datasetSelect, textField} from './dom.js';
 import {TARGET_ALLOCATION_UNAVAILABLE} from './allocation.js';
 import {DATASET_CHART_KINDS,datasetFilterCapability} from './dataset.js';
 import {displayFilterRange} from './filters.js';
 import {renderFilterInput} from './filter-controls.js';
-function datasetNode(tag,text,cls){const element=document.createElement(tag);if(text!==undefined)element.textContent=String(text);if(cls)element.className=cls;return element;}
-function datasetButton(label,callback,disabled=false){const b=datasetNode('button',label);b.type='button';b.disabled=disabled;b.addEventListener('click',callback);return b;}
-function datasetInput(label,value,callback,{disabled=false,number=false}={}){const l=datasetNode('label',label),i=datasetNode('input');i.type=number?'number':'text';i.value=value;i.defaultValue=i.value;i.maxLength=number?4:256;i.disabled=disabled;i.setAttribute('aria-label',label);i.addEventListener('change',()=>callback(number?Number(i.value):i.value));l.append(i);return l;}
-function datasetSelect(label,items,value,callback,disabled=false){const l=datasetNode('label',label),s=datasetNode('select');s.setAttribute('aria-label',label);s.disabled=disabled;for(const item of items){const o=datasetNode('option',item.label);o.value=item.value;o.selected=item.value===value;o.disabled=!!item.disabled;s.append(o);}s.addEventListener('change',()=>callback(s.value));l.append(s);return l;}
+
+function datasetInput(label,value,callback,{disabled=false,number=false}={}){return textField(label,value,next=>callback(number?Number(next):next),{type:number?'number':'text',maxLength:number?4:256,disabled});}
 const filterKindLabel={select:'One value',multi_select:'Multiple values',date_range:'Date range'};
 function datasetFilterSummary(filter){
  if(!filter.default)return 'Choose a required default';

@@ -1,7 +1,8 @@
+import {INVALID_REQUEST, UNAVAILABLE} from './error-codes.js';
+import {node as filterNode, button as filterAction} from './dom.js';
 import {copyData,appError} from './model.js';
 import {inclusiveFilterRange,displayFilterRange,selectionFilterValue} from './filters.js';
-function filterNode(tag,text){const e=document.createElement(tag);if(text!==undefined)e.textContent=String(text);return e;}
-function filterAction(text,callback,disabled=false){const b=filterNode('button',text);b.type='button';b.disabled=disabled;b.addEventListener('click',callback);return b;}
+
 export function filterInputState(parameter,value){
  const state={type:parameter.type,listLength:parameter.list_length,items:[],start:'',end:'',query:'',literal:''};
  if(parameter.type==='dimension_set')state.items=[...(value?.items||[])];
@@ -13,8 +14,8 @@ export function filterInputState(parameter,value){
 export function filterInputValue(state){
  if(state.type==='date_range')return inclusiveFilterRange(state.start,state.end);
  if(['dimension_value','dimension_set'].includes(state.type))return selectionFilterValue(state.items,state.type==='dimension_set');
- if(state.type==='relative_period'||state.type.endsWith('_list')){let v;try{v=JSON.parse(state.literal);}catch{throw appError('invalid_request');}if(state.type==='relative_period'){if(!v||typeof v!=='object'||Array.isArray(v))throw appError('invalid_request');return {period:copyData(v)};}if(!Array.isArray(v)||v.length!==state.listLength||v.some(x=>typeof x!=='string'))throw appError('invalid_request');return {items:[...v]};}
- if(typeof state.literal!=='string')throw appError('invalid_request');return {literal:state.literal};
+ if(state.type==='relative_period'||state.type.endsWith('_list')){let v;try{v=JSON.parse(state.literal);}catch{throw appError(INVALID_REQUEST);}if(state.type==='relative_period'){if(!v||typeof v!=='object'||Array.isArray(v))throw appError(INVALID_REQUEST);return {period:copyData(v)};}if(!Array.isArray(v)||v.length!==state.listLength||v.some(x=>typeof x!=='string'))throw appError(INVALID_REQUEST);return {items:[...v]};}
+ if(typeof state.literal!=='string')throw appError(INVALID_REQUEST);return {literal:state.literal};
 }
 // The owner retains this small stage across redraws. Only Done hands a cloned
 // canonical value to its owner; this module cannot mutate a report or start a run.
@@ -40,7 +41,7 @@ export function renderFilterInput(parent,state,{label='Filter value',lookup=null
    for(const option of lookup.values){const row=filterNode('label'),choice=filterNode('input');choice.type=multiple?'checkbox':'radio';choice.name=group;choice.value=option.value;choice.checked=state.items.includes(option.value);choice.disabled=disabled||multiple&&!choice.checked&&state.items.length>=16;choice.addEventListener('change',()=>{state.items=multiple?(choice.checked?[...state.items,option.value]:state.items.filter(x=>x!==option.value)):[option.value];render(option.value);});row.append(choice,filterNode('span',option.value===''?'Empty text':option.label));choices.append(row);}box.append(choices);
    if(!lookup.result.complete)box.append(filterAction('Next options',()=>onSearch?.(lookup.request.search,lookup.result.next),disabled||!lookup.canSearch()));
   }else if(lookup?.request&&!lookup.pending){
-   box.append(filterNode('p',lookup.result?.status==='unsupported'?'This approved binding does not support option search.':lookup.result?.status==='failed'&&lookup.result?.new_operation_allowed?`Option lookup failed (${lookup.result.code||'unavailable'}). No values were applied. Check the field or narrow the search before another explicit read.`:lookup.result?.new_operation_allowed?'This lookup finished, but its values are not retained. Search again explicitly for a new page.':'The lookup outcome is unconfirmed. Inspect or reconcile it before starting another search.'));
+   box.append(filterNode('p',lookup.result?.status==='unsupported'?'This approved binding does not support option search.':lookup.result?.status==='failed'&&lookup.result?.new_operation_allowed?`Option lookup failed (${lookup.result.code||UNAVAILABLE}). No values were applied. Check the field or narrow the search before another explicit read.`:lookup.result?.new_operation_allowed?'This lookup finished, but its values are not retained. Search again explicitly for a new page.':'The lookup outcome is unconfirmed. Inspect or reconcile it before starting another search.'));
    for(const [action,title]of [['','Inspect lookup'],['cancel','Cancel lookup'],['reconcile','Reconcile lookup']])if(onInspect)box.append(filterAction(title,()=>onInspect(action),disabled||lookup.pending));
   }
  }else{const input=filterNode('input');input.type=state.type==='date'?'date':'text';input.value=state.literal;input.maxLength=4096;input.setAttribute('aria-label',label);input.addEventListener('input',()=>{state.literal=input.value;changed();});box.append(input);}

@@ -22,6 +22,7 @@ import (
 
 func TestCompiledReportApp(t *testing.T) {
 	html := HTML()
+	t.Logf("MCP resource: %d bytes; remaining: %d", len(html), maxResourceBytes-len(html))
 	if URI != "ui://chartworks/report-app/v1" || html != HTML() || !strings.HasPrefix(html, "<!doctype html>") || len(html) > maxResourceBytes {
 		t.Fatal("unstable or unbounded report app")
 	}
@@ -61,7 +62,7 @@ func TestReportAppJavaScript(t *testing.T) {
 	if err != nil {
 		t.Fatal("Node is required for app source verification:", err)
 	}
-	for _, file := range []string{"model.test.mjs", "allocation.test.mjs", "pages.test.mjs", "mapping.test.mjs", "dataset.test.mjs", "dataset-filter.test.mjs", "preparation.test.mjs", "preparation-bundle.test.mjs", "grid.test.mjs", "filters.test.mjs", "publication.test.mjs", "publication-controls.test.mjs", "publication-browser-fixture.test.mjs", "browser-geometry.test.mjs", "browser-filter-inspector.test.mjs", "catalog.test.mjs", "catalog-browser-fixture.test.mjs", "filters-browser-fixture.test.mjs", "filters-browser-pointer.test.mjs", "filters-bundle.test.mjs", "bridge.test.mjs", "retained.test.mjs", "app.test.mjs", "browser_cleanup.test.mjs", "bundle.test.mjs"} {
+	for _, file := range []string{"model.test.mjs", "dom.test.mjs", "allocation.test.mjs", "pages.test.mjs", "mapping.test.mjs", "formatting.test.mjs", "formatting-bundle.test.mjs", "dataset.test.mjs", "dataset-filter.test.mjs", "preparation.test.mjs", "preparation-bundle.test.mjs", "grid.test.mjs", "filters.test.mjs", "publication.test.mjs", "publication-controls.test.mjs", "publication-browser-fixture.test.mjs", "browser-geometry.test.mjs", "browser-filter-inspector.test.mjs", "catalog.test.mjs", "catalog-browser-fixture.test.mjs", "filters-browser-fixture.test.mjs", "filters-browser-pointer.test.mjs", "filters-bundle.test.mjs", "bridge.test.mjs", "retained.test.mjs", "app.test.mjs", "browser_cleanup.test.mjs", "bundle.test.mjs"} {
 		command := exec.Command(node, "--test", file)
 		if out, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("%s: %v\n%s", file, err, out)
@@ -98,6 +99,8 @@ func TestEmbeddedResourceRegistration(t *testing.T) {
 	}
 	if full, err := EmbeddedHTML(parents); err != nil || len(full) > maxResourceBytes {
 		t.Fatalf("maximum registered parent count: %v", err)
+	} else {
+		t.Logf("Embedded resource with 16 registered parents: %d bytes; remaining: %d", len(full), maxResourceBytes-len(full))
 	}
 	if _, err := EmbeddedHTML([]string{"https://" + strings.Repeat("x", maxResourceBytes) + ".example"}); err == nil {
 		t.Fatal("accepted an oversized embedded resource")

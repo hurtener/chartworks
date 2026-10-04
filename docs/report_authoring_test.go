@@ -18,7 +18,7 @@ func TestReportAuthoringEmbedsExactPublicContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	refs := catalog.References()
-	if len(refs) != 10 || catalog.Action() != "reporting.read" {
+	if len(refs) != 11 || catalog.Action() != "reporting.read" {
 		t.Fatal("catalog changed", refs)
 	}
 	e, err := identity.FromVerified("tenant", "actor", "session", []string{"reporting.read"}, time.Now().Add(time.Hour), time.Now)

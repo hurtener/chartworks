@@ -1,3 +1,4 @@
+import {INVALID_REQUEST} from './error-codes.js';
 import {appError} from './model.js';
 import {editReportPages,pageContent} from './pages.js';
 
@@ -13,8 +14,8 @@ function choices(kind,definition,page){
   const label=value=>values.get(value)||value;
   return [{value:'',label:`Inherit report default · ${label(definition[kind])} (${definition[kind]})`},...[...values].map(([value,title])=>({value,label:`${title} (${value})`,disabled:!valid(value)}))];
 }
-export function pageSettingChoices(definition,pageID,kind){if(!['locale','timezone'].includes(kind)||definition.schema_version!==3)throw appError('invalid_request');return choices(kind,definition,pageContent(definition,pageID));}
+export function pageSettingChoices(definition,pageID,kind){if(!['locale','timezone'].includes(kind)||definition.schema_version!==3)throw appError(INVALID_REQUEST);return choices(kind,definition,pageContent(definition,pageID));}
 export function setPageSetting(definition,pageID,kind,value){
-  if(typeof value!=='string'||!pageSettingChoices(definition,pageID,kind).some(choice=>choice.value===value)||value&&!(kind==='locale'?validPageLocale:validPageTimezone)(value)&&value!==pageContent(definition,pageID)[kind])throw appError('invalid_request');
+  if(typeof value!=='string'||!pageSettingChoices(definition,pageID,kind).some(choice=>choice.value===value)||value&&!(kind==='locale'?validPageLocale:validPageTimezone)(value)&&value!==pageContent(definition,pageID)[kind])throw appError(INVALID_REQUEST);
   return editReportPages(definition,pages=>{const page=pages.find(p=>p.id===pageID);if(value)page[kind]=value;else delete page[kind];});
 }

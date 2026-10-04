@@ -1,3 +1,4 @@
+import {INVALID_REQUEST, STALE_VALIDATION, LIMIT_EXCEEDED} from './error-codes.js';
 import {boundedJSON, validateRetainedView} from '../report-viewer/presentation.js';
 import {reportPages} from './pages.js';
 import {appError, copyData, validID} from './model.js';
@@ -23,14 +24,14 @@ export function executionFingerprint(definition) {
 function selections(view) {
   const result=[],pages=new Set(),widgets=new Set();
   for(const page of view.pages||[]){
-    if(!validID(page.id)||pages.has(page.id)||page.report!==view.summary.target.id||page.revision!==view.summary.target.revision||!Array.isArray(page.widgets)||page.widgets.length>100)throw appError('invalid_request');pages.add(page.id);
+    if(!validID(page.id)||pages.has(page.id)||page.report!==view.summary.target.id||page.revision!==view.summary.target.revision||!Array.isArray(page.widgets)||page.widgets.length>100)throw appError(INVALID_REQUEST);pages.add(page.id);
     for(const widget of page.widgets){
       const g=widget.grid;
-      if(!validID(widget.id)||widgets.has(widget.id)||!g||!['row','column','width','height'].every(k=>Number.isSafeInteger(g[k]))||g.row<0||g.row+g.height>10000||g.column<0||g.width<1||g.column+g.width>12||g.height<1||g.height>100)throw appError('invalid_request');widgets.add(widget.id);if(widgets.size>100)throw appError('limit_exceeded');
+      if(!validID(widget.id)||widgets.has(widget.id)||!g||!['row','column','width','height'].every(k=>Number.isSafeInteger(g[k]))||g.row<0||g.row+g.height>10000||g.column<0||g.width<1||g.column+g.width>12||g.height<1||g.height>100)throw appError(INVALID_REQUEST);widgets.add(widget.id);if(widgets.size>100)throw appError(LIMIT_EXCEEDED);
       const outputs=retainedOutputs(widget);
-      if(!Array.isArray(outputs)||outputs.length>64||new Set(outputs).size!==outputs.length||outputs.some(o=>widget.kind==='text'?o!=='':!validID(o)))throw appError('invalid_request');
+      if(!Array.isArray(outputs)||outputs.length>64||new Set(outputs).size!==outputs.length||outputs.some(o=>widget.kind==='text'?o!=='':!validID(o)))throw appError(INVALID_REQUEST);
       for(const output of outputs)result.push({kind:'report',run:view.summary.run,page:page.id,widget:widget.id,output,offset:0,limit:100});
-      if(result.length>CANVAS_MAX_OUTPUTS)throw appError('limit_exceeded');
+      if(result.length>CANVAS_MAX_OUTPUTS)throw appError(LIMIT_EXCEEDED);
     }
   }
   return result;
@@ -67,18 +68,18 @@ export class RetainedReport {
   get(page,widget,output=''){return this.entries.get(retainedKey(page,widget,output))?.view;}
   check(v,request=null){
     const expiry=validateRetainedView(v);
-    if(v.summary.kind!=='report'||v.summary.state==='expired'||expiry<=Date.now())throw appError(v.summary.state==='expired'||expiry<=Date.now()?'expired':'invalid_request');
-    if(this.value&&(!sameTarget(v.summary.target,this.value.summary.target)||v.summary.run!==this.value.summary.run||v.summary.private!==this.value.summary.private||v.summary.expires_at!==this.value.summary.expires_at||v.redacted!==this.value.redacted||identity(v)!==identity(this.value)))throw appError('stale_validation');
-    if(request&&['kind','run','page','widget','output','offset','limit'].some(key=>v.selection[key]!==request[key]))throw appError('stale_validation');
-    if(request&&v.page_bounds.offset!==request.offset)throw appError('stale_validation');
-    if(request&&(v.text&&request.output!==''||request.output===''&&v.output?.state==='succeeded'))throw appError('stale_validation');
-    if(request&&['block','query'].includes(v.output?.kind)&&!widgetFailure(v))throw appError('stale_validation');
-    if(request?.output&&v.output?.state==='succeeded'&&(v.output.id!==request.output||!v.outputs?.some(o=>o.id===request.output&&o.enabled!==false&&o.selected!==false)))throw appError('stale_validation');
+    if(v.summary.kind!=='report'||v.summary.state==='expired'||expiry<=Date.now())throw appError(v.summary.state==='expired'||expiry<=Date.now()?'expired':INVALID_REQUEST);
+    if(this.value&&(!sameTarget(v.summary.target,this.value.summary.target)||v.summary.run!==this.value.summary.run||v.summary.private!==this.value.summary.private||v.summary.expires_at!==this.value.summary.expires_at||v.redacted!==this.value.redacted||identity(v)!==identity(this.value)))throw appError(STALE_VALIDATION);
+    if(request&&['kind','run','page','widget','output','offset','limit'].some(key=>v.selection[key]!==request[key]))throw appError(STALE_VALIDATION);
+    if(request&&v.page_bounds.offset!==request.offset)throw appError(STALE_VALIDATION);
+    if(request&&(v.text&&request.output!==''||request.output===''&&v.output?.state==='succeeded'))throw appError(STALE_VALIDATION);
+    if(request&&['block','query'].includes(v.output?.kind)&&!widgetFailure(v))throw appError(STALE_VALIDATION);
+    if(request?.output&&v.output?.state==='succeeded'&&(v.output.id!==request.output||!v.outputs?.some(o=>o.id===request.output&&o.enabled!==false&&o.selected!==false)))throw appError(STALE_VALIDATION);
     return expiry;
   }
   keep(view){
     const key=retainedKey(view.selection.page,view.selection.widget,view.selection.output),bytes=new TextEncoder().encode(JSON.stringify(view)).length,next=this.bytes-(this.entries.get(key)?.bytes||0)+bytes;
-    if(next>CANVAS_MAX_BYTES)throw appError('limit_exceeded');
+    if(next>CANVAS_MAX_BYTES)throw appError(LIMIT_EXCEEDED);
     this.entries.set(key,{view,bytes});this.bytes=next;
   }
   async load(value){
@@ -92,7 +93,7 @@ export class RetainedReport {
       const initialFailure=!selected&&value.selection.output===''&&widgetFailure(value);
       const initialEmpty=!selected&&emptyPageRoot(value);
       if(initialFailure)this.check(value,{kind:'report',run:value.summary.run,page:value.selection.page,widget:value.selection.widget,output:'',offset:0,limit:100});
-      if((value.pages?.length||value.text||value.output)&&!selected&&!initialFailure&&!initialEmpty)throw appError('stale_validation');
+      if((value.pages?.length||value.text||value.output)&&!selected&&!initialFailure&&!initialEmpty)throw appError(STALE_VALIDATION);
       if(selected){this.check(value,selected);this.keep(this.value);requests.splice(requests.indexOf(selected),1);}
       let cursor=0;
       const read=async()=>{while(cursor<requests.length&&!this.closed&&generation===this.generation){const request=requests[cursor++],view=await this.invoke('reporting_view',request);if(this.closed||generation!==this.generation)return;this.check(view,request);this.keep(cloneRetained(view));}};
@@ -104,9 +105,9 @@ export class RetainedReport {
     const key=retainedKey(page,widget,output),entry=this.entries.get(key);
     if(this.closed||!this.value||!entry||this.pending.has(key))return false;
     const bounds=entry.view.page_bounds;
-    if(!entry.view.output?.table||!Number.isSafeInteger(offset)||offset<0||offset>=bounds.total)throw appError('invalid_request');
+    if(!entry.view.output?.table||!Number.isSafeInteger(offset)||offset<0||offset>=bounds.total)throw appError(INVALID_REQUEST);
     const generation=this.generation,request={...entry.view.selection,offset,limit:bounds.limit};this.pending.add(key);
-    try{const view=await this.invoke('reporting_view',request);if(this.closed||generation!==this.generation)return false;this.check(view,request);if(view.output?.retained_digest!==entry.view.output?.retained_digest)throw appError('stale_validation');this.keep(cloneRetained(view));return true;}
+    try{const view=await this.invoke('reporting_view',request);if(this.closed||generation!==this.generation)return false;this.check(view,request);if(view.output?.retained_digest!==entry.view.output?.retained_digest)throw appError(STALE_VALIDATION);this.keep(cloneRetained(view));return true;}
     catch(e){if(this.closed||generation!==this.generation)return false;this.clear();throw e;}
     finally{this.pending.delete(key);}
   }

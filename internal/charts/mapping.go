@@ -88,6 +88,7 @@ func cloneMapping(m Mapping) Mapping {
 		copy.Columns = append([]TableColumnIntent(nil), m.Table.Columns...)
 		m.Table = &copy
 	}
+	m.Presentation = clonePresentation(m.Presentation)
 	return m
 }
 
@@ -200,6 +201,9 @@ func validateMapping(ctx context.Context, d Data, m Mapping, l Limits) error {
 		if i < 0 || d.Columns[i] != m.Columns[j] {
 			return ErrMappingChanged
 		}
+	}
+	if err := validatePresentation(m, l); err != nil {
+		return err
 	}
 	ordered := map[string]bool{}
 	for _, o := range m.Order {

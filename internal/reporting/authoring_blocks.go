@@ -7,6 +7,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/charts"
+	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
@@ -37,12 +38,13 @@ type AuthoringBlockView struct {
 // AuthoringBlockOutput deliberately has no narrative instructions or policies.
 // Noneditable outputs retain stable identity/intent without exposing a prompt.
 type AuthoringBlockOutput struct {
-	ID                 string                `json:"id"`
-	Kind               string                `json:"kind"`
-	Intent             *OutputIntent         `json:"intent,omitempty"`
-	Mapping            *charts.Mapping       `json:"mapping,omitempty"`
-	AmountCompleteness []AmountOutputBinding `json:"amount_completeness,omitempty"`
-	Editable           bool                  `json:"editable"`
+	ID                 string                           `json:"id"`
+	Kind               string                           `json:"kind"`
+	Intent             *OutputIntent                    `json:"intent,omitempty"`
+	Mapping            *charts.Mapping                  `json:"mapping,omitempty"`
+	AmountCompleteness []AmountOutputBinding            `json:"amount_completeness,omitempty"`
+	Editable           bool                             `json:"editable"`
+	Presentation       *charts.PresentationCapabilities `json:"presentation,omitempty"`
 }
 
 // AuthoringBlockValidation exposes only revision-bound evidence coordinates;
@@ -135,7 +137,7 @@ func (s *Authoring) blockService() (*Service, error) {
 	return s.documents.blocks, nil
 }
 
-func authoringBlockView(v View) AuthoringBlockView {
+func authoringBlockView(v View, limits config.Reporting) AuthoringBlockView {
 	v = clone(v)
 	metadata := AuthoringBlockMetadata{AmountCompleteness: v.AmountCompleteness, SchemaVersion: v.SchemaVersion, QueryLimits: v.QueryLimits, ResultPolicy: v.ResultPolicy, State: v.State, Revision: v.Revision, RevisionID: v.RevisionID, Digest: v.Digest, ExecutionDigest: v.ExecutionDigest, Metadata: v.Metadata, Source: v.Source, Context: v.Context, Topics: v.Topics, Rules: v.Rules, Parameters: v.Parameters, ExpectedSchema: v.ExpectedSchema, Outputs: []AuthoringBlockOutput{}, Actor: v.Actor, CreatedAt: v.CreatedAt, Private: v.Private, Trust: v.Trust}
 	if evidence := v.Evidence; evidence != nil {
@@ -148,6 +150,9 @@ func authoringBlockView(v View) AuthoringBlockView {
 		item := AuthoringBlockOutput{ID: output.ID, Kind: output.Kind, Intent: output.Intent, AmountCompleteness: output.AmountCompleteness, Editable: editable}
 		if editable {
 			item.Mapping = output.Mapping
+			if capabilities, err := charts.PresentationCapabilitiesFor(context.Background(), *output.Mapping, chartLimits(limits)); err == nil {
+				item.Presentation = &capabilities
+			}
 		}
 		out.Block.Outputs = append(out.Block.Outputs, item)
 		if output.Mapping != nil && output.Narrative == nil {
@@ -200,7 +205,7 @@ func (s *Authoring) ReadBlock(ctx context.Context, e identity.Envelope, in Autho
 	if err != nil {
 		return AuthoringBlockView{}, err
 	}
-	return authoringBlockView(v), nil
+	return authoringBlockView(v, blocks.limits), nil
 }
 
 func authoringMappingInput(block string, version, revision int64, digest, output string) error {
@@ -289,6 +294,28 @@ func amendAuthoringMapping(ctx context.Context, base Definition, output string, 
 	if mapping.Kind == charts.KPI {
 		o.Kind = "kpi"
 	}
+	if o.Mapping.Presentation != nil {
+		mapping.Presentation = clone(o.Mapping.Presentation)
+		// Column reordering preserves the exact field overrides while storing
+		// them in the newly selected canonical column order.
+		previous := mapping.Presentation.Columns
+		mapping.Presentation.Columns = make([]charts.ColumnDisplayOverride, 0, len(previous))
+		for _, column := range mapping.Columns {
+			for _, override := range previous {
+				if override.Column == column.ID {
+					mapping.Presentation.Columns = append(mapping.Presentation.Columns, override)
+				}
+			}
+		}
+		if len(mapping.Presentation.Columns) != len(previous) {
+			return Definition{}, ErrInvalid
+		}
+		// A binding change must reject unsupported/dangling display overrides,
+		// never silently erase or retarget them to a newly selected field.
+		if _, err := charts.ProjectPresentationColumns(ctx, mapping, chartLimits(blocks.limits)); err != nil {
+			return Definition{}, ErrInvalid
+		}
+	}
 	o.Mapping = &mapping
 	if in.Intent != nil {
 		if d.SchemaVersion != CurrentSchemaVersion {
@@ -318,6 +345,14 @@ func amendAuthoringMapping(ctx context.Context, base Definition, output string, 
 // an immutable revision and rechecks head CAS; schema-only binding neither runs
 // a source nor transfers old validation evidence to the amendment.
 func (s *Authoring) PatchBlockMapping(ctx context.Context, e identity.Envelope, in AuthoringBlockMappingRequest) (AuthoringBlockView, error) {
+	return s.patchBlockDefinition(ctx, e, in, func(ctx context.Context, d Definition, blocks *Service) (Definition, error) {
+		return amendAuthoringMapping(ctx, d, in.Output, in.Mapping, blocks)
+	})
+}
+
+// patchBlockDefinition is the common admission and immutable commit boundary for
+// selected-output edits. A presentation-only edit cannot choose another policy.
+func (s *Authoring) patchBlockDefinition(ctx context.Context, e identity.Envelope, in AuthoringBlockMappingRequest, amend func(context.Context, Definition, *Service) (Definition, error)) (AuthoringBlockView, error) {
 	if s == nil || ctx == nil {
 		return AuthoringBlockView{}, ErrInvalid
 	}
@@ -341,7 +376,7 @@ func (s *Authoring) PatchBlockMapping(ctx context.Context, e identity.Envelope, 
 	if base.PublishedAt != nil || base.State.DraftRevision != in.Revision || base.State.DraftState == "rejected" {
 		return AuthoringBlockView{}, store.ErrConflict
 	}
-	d, err := amendAuthoringMapping(ctx, base.Revision.Definition, in.Output, in.Mapping, blocks)
+	d, err := amend(ctx, base.Revision.Definition, blocks)
 	if err != nil {
 		return AuthoringBlockView{}, err
 	}
@@ -349,13 +384,21 @@ func (s *Authoring) PatchBlockMapping(ctx context.Context, e identity.Envelope, 
 	if err != nil {
 		return AuthoringBlockView{}, err
 	}
-	return authoringBlockView(v), nil
+	return authoringBlockView(v, blocks.limits), nil
 }
 
 // CopyBlockMapping uses native Preview access for internal full-definition
 // custody, independently from ordinary read. Thus even a published source needs
 // explicit preview reach for this operation. No source-write grant is inferred.
+// Source version/archive eligibility is an admission-time snapshot check;
+// target creation, not the source head, has commit-time create-CAS.
 func (s *Authoring) CopyBlockMapping(ctx context.Context, e identity.Envelope, in AuthoringBlockCopyRequest) (AuthoringBlockView, error) {
+	return s.copyBlockDefinition(ctx, e, in, func(ctx context.Context, d Definition, blocks *Service) (Definition, error) {
+		return amendAuthoringMapping(ctx, d, in.Output, in.Mapping, blocks)
+	})
+}
+
+func (s *Authoring) copyBlockDefinition(ctx context.Context, e identity.Envelope, in AuthoringBlockCopyRequest, amend func(context.Context, Definition, *Service) (Definition, error)) (AuthoringBlockView, error) {
 	if s == nil || ctx == nil || !identity.Identifier(in.NewBlock) || in.NewBlock == in.Block {
 		return AuthoringBlockView{}, ErrInvalid
 	}
@@ -388,7 +431,7 @@ func (s *Authoring) CopyBlockMapping(ctx context.Context, e identity.Envelope, i
 	if err := RequireReferences(e, Write, base.References); err != nil {
 		return AuthoringBlockView{}, err
 	}
-	d, err := amendAuthoringMapping(ctx, base.Revision.Definition, in.Output, in.Mapping, blocks)
+	d, err := amend(ctx, base.Revision.Definition, blocks)
 	if err != nil {
 		return AuthoringBlockView{}, err
 	}
@@ -411,7 +454,7 @@ func (s *Authoring) CopyBlockMapping(ctx context.Context, e identity.Envelope, i
 	if err != nil {
 		return AuthoringBlockView{}, err
 	}
-	return authoringBlockView(project(Snapshot{State: state, Revision: r}, time.Now())), nil
+	return authoringBlockView(project(Snapshot{State: state, Revision: r}, time.Now()), blocks.limits), nil
 }
 
 // AuthoringBlockValidateRequest explicitly permits bounded actual source work

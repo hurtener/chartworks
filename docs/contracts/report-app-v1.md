@@ -149,14 +149,14 @@ schema version, retained repository contract references and typed full-text reso
 references. `chartworks://report_app/docs/workflows/v1` is the consumable
 [manual authoring guide](report-authoring-guide-v1.md). The explicit catalog also
 contains the full maintained application, pages, preparation, option search,
-publication, authority, filter, reporting and delivery contracts. `resources/list`
+publication, native presentation, authority, filter, reporting and delivery contracts. `resources/list`
 returns only descriptions/version/digest/source references; `resources/read`
 returns the exact embedded Markdown. POST `documentation` accepts only an exact
 `uri` and uses the same native-action-protected immutable reader as MCP; the typed
 SDK method is `ReadReportAppDocumentation`. No new MCP tool is added.
 
 The catalog admits at most sixteen documents, 64 KiB each and 256 KiB in aggregate,
-under the unchanged transport response limits. Current content is ten explicitly
+under the unchanged transport response limits. Current content is eleven explicitly
 embedded public documents, never arbitrary repository paths. Unknown URIs/versions,
 encoded aliases, queries and traversal fail closed. Every read requires a current
 verified envelope and `reporting.read`; MCP additionally requires `mcp.use`.
@@ -202,6 +202,13 @@ Mapping changes only one current private output; copy needs a distinct authorize
 new target and independent source read/preview eligibility. Both preserve all
 server-owned hidden definition fields and other outputs. charts.bind/tenant-read
 and native block/parent/dependency authority remain separate from report-write.
+
+The same mapping/copy transports also admit an exclusive, non-null presentation
+patch under [native presentation v1](chart-presentation-v1.md). Only advertised
+visible table-header labels and supported non-percent decimal places can change;
+canonical columns and calculated exact values do not. Source snapshot checks for
+copy happen at admission, while creation is fenced by the target's atomic CAS.
+No new tool or implicit validation/execution is added.
 
 Schema binding returns data_validation=not_performed. block_validate explicitly
 uses native bounded source validation, returns narrowed evidence/schema and CAS
@@ -271,8 +278,10 @@ names the exact checks and their limits.
   single/multiselect, staged date-range controls and applicability editing. Dataset
   filter defaults and saved report filter defaults are distinct from temporary
   `PageInput.Filters`; private metadata discovery uses the authoring projection.
-- Editable field labels and number/date/currency display settings, legend controls,
-  data-point limits and additional qualified creation shapes. Saved semantic units
+- Broader caption, date/currency display settings, percent precision, data-point
+  limits and additional qualified creation shapes. The bounded presentation
+  extension covers table headers and advertised non-percent decimal places; its
+  UI and renderer qualification must be tracked at the exact source. Saved semantic units
   and aggregation cannot be replaced by unvalidated display input. Combo has no
   native contract and is not offered as another kind.
 - Browser qualification of explicit chart publication, selected private-to-published

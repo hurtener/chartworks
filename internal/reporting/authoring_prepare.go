@@ -536,7 +536,7 @@ func (s *Authoring) CreatePreparedChart(ctx context.Context, e identity.Envelope
 		if err == nil && r.Consumed != nil && (v.Revision != 1 || v.Digest != r.Consumed.RevisionDigest || v.ExecutionDigest != r.Consumed.ExecutionDigest) {
 			return AuthoringBlockView{}, ErrStale
 		}
-		return authoringBlockView(v), err
+		return authoringBlockView(v, blocks.limits), err
 	}
 	if r.Status != "prepared" || !time.Now().Before(r.ExpiresAt) {
 		return AuthoringBlockView{}, ErrStale
@@ -554,10 +554,10 @@ func (s *Authoring) CreatePreparedChart(ctx context.Context, e identity.Envelope
 		if errors.Is(err, store.ErrConflict) {
 			if latest, readErr := repo.ReadAuthoringPreparation(ctx, e, r.ID); readErr == nil && latest.Status == "consumed" && latest.Digest == r.Digest {
 				v, readErr := blocks.Read(ctx, e, r.Target, Reference{Revision: 1})
-				return authoringBlockView(v), readErr
+				return authoringBlockView(v, blocks.limits), readErr
 			}
 		}
 		return AuthoringBlockView{}, err
 	}
-	return authoringBlockView(project(Snapshot{State: state, Revision: *r.Revision}, time.Now())), nil
+	return authoringBlockView(project(Snapshot{State: state, Revision: *r.Revision}, time.Now()), blocks.limits), nil
 }
