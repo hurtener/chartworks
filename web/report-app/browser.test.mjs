@@ -113,7 +113,18 @@ async function checkResizeConvergence(label){
  await check(`resizeMessages.length===${before.count}&&document.getElementById('app').clientHeight===${before.height}`,label+' reaches stable intrinsic height despite host padding without a resize feedback loop');
  await check(`(()=>{const frame=document.getElementById('app'),r=${body},b=r.getBoundingClientRect(),style=getComputedStyle(r),children=Array.from(r.children).filter(e=>e.getClientRects().length),bottom=Math.max(...children.map(e=>e.getBoundingClientRect().bottom));return Math.abs(b.bottom-bottom-parseFloat(style.paddingBottom))<=3&&frame.clientHeight-b.bottom>=0&&frame.clientHeight-b.bottom<=18&&frame.clientHeight<2416;})()`,label+' iframe follows intrinsic visible content with at most host padding, not a capped blank tail');
 }
-async function captureProof(path){await resetProofScroll();const metrics=await rpc('Page.getLayoutMetrics'),size=metrics.cssContentSize||metrics.contentSize;const proof=await rpc('Page.captureScreenshot',{format:'png',captureBeyondViewport:true,fromSurface:true,clip:{x:0,y:0,width:Math.min(1600,Math.ceil(size.width)),height:Math.min(6000,Math.ceil(size.height)),scale:1}});await writeFile(path,Buffer.from(proof.data,'base64'));}
+async function captureProof(path,{settle=true}={}){
+ await resetProofScroll();
+ if(settle){
+  // ready() only fences app operations; the parent resize notification is async.
+  // Wait for the current root, not the previous screen's iframe or CDP metrics.
+  await until(()=>evaluate(`(()=>{const frame=document.getElementById('app'),root=${body},r=root.getBoundingClientRect();return window.resizeCount>0&&performance.now()-window.lastResizeAt>=200&&r.top>=0&&r.bottom<=frame.clientHeight&&frame.clientHeight-r.bottom<=18&&r.left>=0&&r.right<=frame.clientWidth+1&&frame.clientHeight<2416;})()`),'screenshot frame did not fit current intrinsic content: '+path);
+  await checkResizeConvergence('Screenshot '+path.split('/').at(-1));
+ }
+ const metrics=await rpc('Page.getLayoutMetrics'),size=metrics.cssContentSize||metrics.contentSize;
+ if(settle)assert(size.width<=1600&&size.height<=6000,'a successful proof screenshot must not silently crop its page');
+ const proof=await rpc('Page.captureScreenshot',{format:'png',captureBeyondViewport:true,fromSurface:true,clip:{x:0,y:0,width:Math.min(1600,Math.ceil(size.width)),height:Math.min(6000,Math.ceil(size.height)),scale:1}});await writeFile(path,Buffer.from(proof.data,'base64'));
+}
 let checks=0,runError;const assertions=[];function checkedEqual(actual,expected,message){assert.deepEqual(actual,expected,message);checks++;assertions.push(message);}async function check(expression,message){assert.equal(await evaluate(expression),true,message);checks++;assertions.push(message);}
 try{
  let port;await until(async()=>{try{port=Number((await readFile(join(directory,'DevToolsActivePort'),'utf8')).split('\n')[0]);return port>0;}catch{return false;}},'Chromium not ready');
@@ -387,7 +398,7 @@ try{
  await check(`${output('chart')}.querySelector('.kpi-value').getAttribute('title')==='9007199254740998.625'&&calls.length===${beforeDatasetSwitch}`,'returning to the exact native dataset page reuses retained precision without new source or metadata calls');
  await check(`calls.slice(${datasetStart}).filter(c=>c.name==='reporting_authoring_prepare_chart_v1').length===1&&calls.slice(${datasetStart}).filter(c=>c.name==='reporting_authoring_block_validate_v1').length===1&&calls.slice(${datasetStart}).filter(c=>c.name==='reporting_authoring_preview_v1').length===1&&calls.slice(${datasetStart}).filter(c=>c.name==='reporting_authoring_execute_v1').length===1&&datasetCreateEffects===1&&document.getElementById('app').contentWindow.storageTouches===0`,'complete native dataset journey has one Prepare, one creation effect, one explicit Validate and one explicit private execution with zero browser storage');
  assert.deepEqual(errors,[],'no browser exceptions');assert(requests.every(path=>['/','/resource','/favicon.ico'].includes(path)),'no remote or injected asset requests');
-}catch(error){runError=error;if(socket&&screenshotPath){try{await captureProof(screenshotPath.replace(/\.png$/,'.failure.png'));}catch{}}let failureState;try{failureState=socket?await evaluate(`({text:${body}?.textContent.slice(0,16000),calls:calls.slice(-12)})`):undefined;}catch{}console.error(JSON.stringify({mode,checks,assertions,browserErrors:errors,browserStderr,failureState},null,2));throw error;}finally{
+}catch(error){runError=error;if(socket&&screenshotPath){try{await captureProof(screenshotPath.replace(/\.png$/,'.failure.png'),{settle:false});}catch{}}let failureState;try{failureState=socket?await evaluate(`({text:${body}?.textContent.slice(0,16000),calls:calls.slice(-12)})`):undefined;}catch{}console.error(JSON.stringify({mode,checks,assertions,browserErrors:errors,browserStderr,failureState},null,2));throw error;}finally{
  try{
   await cleanupBrowserFixture({browser,closed:browserClosed,directory,
    requestClose:()=>socket?.readyState===WebSocket.OPEN?rpc('Browser.close'):undefined,
