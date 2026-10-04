@@ -156,6 +156,12 @@ jobs:
           node --test web/report-app/publication-browser-fixture.test.mjs
           node web/report-app/publication.browser.mjs "$RUNNER_TEMP/report-app-proof/mcp.html" "$RUNNER_TEMP/report-app-proof/mcp.publication.png" mcp | tee "$RUNNER_TEMP/report-app-proof/mcp.publication.log"
           node web/report-app/publication.browser.mjs "$RUNNER_TEMP/report-app-proof/embedded.html" "$RUNNER_TEMP/report-app-proof/embedded.publication.png" embedded | tee "$RUNNER_TEMP/report-app-proof/embedded.publication.log"
+      - name: Actual Chromium governed dates and multiselect in both adapters
+        run: |
+          set -o pipefail
+          node --test web/report-app/filters-browser-fixture.test.mjs web/report-app/filters-bundle.test.mjs
+          node web/report-app/filters.browser.mjs "$RUNNER_TEMP/report-app-proof/mcp.html" "$RUNNER_TEMP/report-app-proof/mcp.filters.png" mcp | tee "$RUNNER_TEMP/report-app-proof/mcp.filters.log"
+          node web/report-app/filters.browser.mjs "$RUNNER_TEMP/report-app-proof/embedded.html" "$RUNNER_TEMP/report-app-proof/embedded.filters.png" embedded | tee "$RUNNER_TEMP/report-app-proof/embedded.filters.log"
       - name: Retain synthetic host proof and screenshots
         if: always()
         uses: actions/upload-artifact@v4

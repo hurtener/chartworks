@@ -164,7 +164,7 @@ func TestReportAppAuthoringOptions(t *testing.T) {
 	// The UI uses an explicit full bounded page, distinct from the small native
 	// pagination cases above. Capture this exact request/response for conformance.
 	wireRequest := phase27Copy(t, firstRequest)
-	wireRequest.Operation = optionKey(25)
+	wireRequest.Operation = optionKey(26)
 	wireRequest.Limit = 199
 	wireRequest.Search = "East"
 	wireResponse, err := s.DatasetOptions(ctx, author, wireRequest)
@@ -184,29 +184,71 @@ func TestReportAppAuthoringOptions(t *testing.T) {
 	widget.Block.Policy = "private_preview"
 	widget.Block.Revision = created.Block.Revision
 	widget.Block.Digest = created.Block.Digest
-	var filter reporting.Parameter
+	pageDefinition := reporting.ReportPage{ID: "analysis", Title: "Analysis", Widgets: []reporting.Widget{widget}}
 	for _, p := range created.Block.Parameters {
-		if p.Type == "dimension_set" {
-			filter = phase27Copy(t, p)
-			filter.Name = "region"
-			widget.Bindings = []reporting.FilterBinding{{Filter: "region", Parameter: p.Name}}
-		}
+		filter := phase27Copy(t, p)
+		filter.Name = p.Dimension.Dimension
+		pageDefinition.Filters = append(pageDefinition.Filters, reporting.ReportFilter{Parameter: filter, Label: map[string]string{"day": "Day", "region": "Region"}[filter.Name]})
+		pageDefinition.Widgets[0].Bindings = append(pageDefinition.Widgets[0].Bindings, reporting.FilterBinding{Filter: filter.Name, Parameter: p.Name})
+	}
+	if len(pageDefinition.Filters) != 2 || pageDefinition.Filters[0].Parameter.Type != "date_range" || pageDefinition.Filters[1].Parameter.Type != "dimension_set" {
+		t.Fatal("both native typed parameters must reach report filters", pageDefinition.Filters)
 	}
 	document := phase29Text("Option report")
 	document.SchemaVersion = reporting.PagedDocumentVersion
 	document.Widgets = nil
-	document.ReportPages = []reporting.ReportPage{{ID: "analysis", Title: "Analysis", Widgets: []reporting.Widget{widget}, Filters: []reporting.ReportFilter{{Parameter: filter, Label: "Region"}}}}
+	document.ReportPages = []reporting.ReportPage{pageDefinition, {ID: "notes", Title: "Notes", Widgets: []reporting.Widget{{ID: "filter-notes", Kind: "text", Grid: reporting.GridCell{Width: 12, Height: 2}, Text: &reporting.TextWidget{Format: "plain", Text: "Synthetic notes stay unchanged while Analysis filters are edited."}}}}}
+	metadataReads := f.attemptCount(t)
 	state, err := s.Create(ctx, author, reporting.AuthoringCreateRequest{ID: "filtered-report", Definition: document})
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, err := s.Read(ctx, author, reporting.AuthoringReadRequest{Report: state.ID})
+	initialReport, err := s.Read(ctx, author, reporting.AuthoringReadRequest{Report: state.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	reportRequest := reporting.AuthoringOptionRequest{Target: reporting.AuthoringOptionTarget{Report: &reporting.AuthoringReportOptionTarget{Report: state.ID, Revision: state.DraftRevision, Digest: saved.Digest, Page: "analysis", Filter: "region", Policy: "private_preview"}}, Operation: optionKey(10), Search: "East", Limit: 20, Locale: "en-US"}
+	initialDrafts, err := s.Drafts(ctx, author, reporting.DraftListRequest{Limit: 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities, err := s.Capabilities(ctx, author, reporting.AuthoringCapabilitiesRequest{Report: state.ID})
+	if err != nil || !capabilities.CanSave || !capabilities.CanPreview || f.attemptCount(t) != metadataReads {
+		t.Fatal("authoring metadata executed source work", capabilities, err)
+	}
+	initialOptionRequest := reporting.AuthoringOptionRequest{Target: reporting.AuthoringOptionTarget{Report: &reporting.AuthoringReportOptionTarget{Report: state.ID, Revision: initialReport.Revision, Digest: initialReport.Digest, Page: "analysis", Filter: "region", Policy: "private_preview"}}, Operation: optionKey(30), Search: "East", Limit: 199, Locale: "en-US"}
+	initialOptions, err := s.ReportOptions(ctx, author, initialOptionRequest)
+	if err != nil || !initialOptions.ValuesAvailable || len(initialOptions.Options) != 1 || initialOptions.Options[0].Label != "East" || f.attemptCount(t) != metadataReads+1 {
+		t.Fatal("initial explicit Search requires exactly one governed read", initialOptions, err)
+	}
+	// Persist different page defaults through the real authoring CAS seam. Local
+	// editor changes and Save are metadata-only; block defaults stay independent.
+	saveRequest := reporting.AuthoringSaveRequest{Report: state.ID, ExpectedVersion: state.Version, Revision: state.DraftRevision, Definition: phase27Copy(t, initialReport.Definition)}
+	for i := range saveRequest.Definition.ReportPages[0].Filters {
+		filter := &saveRequest.Definition.ReportPages[0].Filters[i].Parameter
+		switch filter.Name {
+		case "day":
+			filter.Default = &reporting.Value{DateRange: &reporting.DateRange{Start: "2026-01-02", EndExclusive: "2026-02-01"}}
+		case "region":
+			filter.Default = &reporting.Value{Items: []string{"North", "East"}}
+		}
+	}
+	state, err = s.Save(ctx, author, saveRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	savedState := phase27Copy(t, state)
+	saved, err := s.Read(ctx, author, reporting.AuthoringReadRequest{Report: state.ID})
+	if err != nil || saved.Revision != initialReport.Revision+1 || !reflect.DeepEqual(saved.Definition, saveRequest.Definition) {
+		t.Fatal("saved typed defaults", saved, err)
+	}
+	savedDrafts, err := s.Drafts(ctx, author, reporting.DraftListRequest{Limit: 40})
+	if err != nil || f.attemptCount(t) != metadataReads+1 {
+		t.Fatal("Save or reopen ran a source query", err)
+	}
+	reportRequest := reporting.AuthoringOptionRequest{Target: reporting.AuthoringOptionTarget{Report: &reporting.AuthoringReportOptionTarget{Report: state.ID, Revision: state.DraftRevision, Digest: saved.Digest, Page: "analysis", Filter: "region", Policy: "private_preview"}}, Operation: optionKey(10), Search: "East", Limit: 199, Locale: "en-US"}
+	privateRequest := phase27Copy(t, reportRequest)
 	private, err := s.ReportOptions(ctx, author, reportRequest)
-	if err != nil || !private.ValuesAvailable || len(private.Options) != 1 || private.Options[0].Label != "East" {
+	if err != nil || !private.ValuesAvailable || len(private.Options) != 1 || private.Options[0].Label != "East" || f.attemptCount(t) != metadataReads+2 {
 		t.Fatal("private exact options", private, err)
 	}
 	privateReads := f.attemptCount(t)
@@ -223,6 +265,62 @@ func TestReportAppAuthoringOptions(t *testing.T) {
 	}
 	if f.f.model.requests.Load() != models {
 		t.Fatal("option lookup invoked model")
+	}
+	// Execute the browser's default/temporary/clear inputs against the actual
+	// bound source. Retained DTOs are captured directly, without relabeling pins.
+	validationRequest := reporting.AuthoringBlockValidateRequest{Block: prepare.NewBlock, ExpectedVersion: created.Block.State.Version, Revision: created.Block.Revision, Digest: created.Block.Digest, Arguments: []reporting.Argument{}, Resolution: reporting.Resolution{At: time.Now().UTC().Truncate(time.Second).Add(123 * time.Millisecond), Timezone: "UTC"}}
+	validation, err := s.ValidateBlock(ctx, author, validationRequest)
+	if err != nil || f.attemptCount(t) != privateReads+1 {
+		t.Fatal("explicit validation read", validation, err)
+	}
+	validatedBlock, err := s.ReadBlock(ctx, author, reporting.AuthoringBlockReadRequest{Block: prepare.NewBlock, Revision: created.Block.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivery, err := reporting.NewDelivery(f.blocks, f.runs, f.documents, f.compositions, f.f.f.db, f.limits.Viewer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	temporaryPages := []reporting.PageInput{{Page: "analysis", Filters: []reporting.Argument{{Name: "day", Value: reporting.Value{DateRange: &reporting.DateRange{Start: "2026-01-01", EndExclusive: "2026-01-02"}}}, {Name: "region", Value: reporting.Value{Items: []string{"North"}}}}, Overrides: []reporting.WidgetOverride{}}}
+	privateRuns := map[string]any{}
+	for _, selection := range []struct {
+		name  string
+		pages []reporting.PageInput
+		exact string
+	}{{"defaults", []reporting.PageInput{}, "3.250"}, {"temporary", temporaryPages, "1.250"}, {"cleared", []reporting.PageInput{}, "3.250"}} {
+		reads := f.attemptCount(t)
+		previewRequest := reporting.AuthoringPreviewRequest{Report: saved.State.ID, Revision: saved.Revision, Key: "filter-browser-private-" + selection.name, Resolution: reporting.Resolution{At: time.Now().UTC().Truncate(time.Second).Add(123 * time.Millisecond), Timezone: "UTC"}, Pages: selection.pages}
+		preview, err := s.Preview(ctx, author, previewRequest)
+		if err != nil || !preview.Private || f.attemptCount(t) != reads {
+			t.Fatal("private admission performed hidden work", preview, err)
+		}
+		executeRequest := reporting.AuthoringExecuteRequest{Run: preview.ID}
+		complete, err := s.Execute(ctx, author, executeRequest)
+		if err != nil || !complete.Complete || !complete.Private || f.attemptCount(t) != reads+1 {
+			t.Fatal("one private explicit execution", complete, err)
+		}
+		reader := phase27Actor(t, f.f, author.User(), []string{"reporting.read", "reporting.preview", "cw.run.read:" + preview.ID, "cw.report.preview:" + saved.State.ID, "cw.execution_context.use:" + created.Block.Context})
+		rootRequest := reporting.DeliveryViewRequest{Kind: "report", Run: preview.ID, Offset: 0, Limit: 100}
+		root, err := delivery.View(ctx, reader, rootRequest)
+		if err != nil || !root.Summary.Private {
+			t.Fatal("private retained root", root, err)
+		}
+		outputRequest := reporting.DeliveryViewRequest{Kind: "report", Run: preview.ID, Page: "analysis", Widget: "options-widget", Output: "chart", Offset: 0, Limit: 100}
+		output, err := delivery.View(ctx, reader, outputRequest)
+		if err != nil || output.Output == nil || output.Output.Chart == nil || len(output.Output.Chart.Points) != 1 || output.Output.Chart.Points[0].Value.Exact != selection.exact || f.attemptCount(t) != reads+1 {
+			t.Fatal("private retained exact filtered amount", selection.name, output, err)
+		}
+		notesRequest := reporting.DeliveryViewRequest{Kind: "report", Run: preview.ID, Page: "notes", Widget: "filter-notes", Offset: 0, Limit: 100}
+		notes, err := delivery.View(ctx, reader, notesRequest)
+		if err != nil || notes.Text == nil || notes.Text.Text != document.ReportPages[1].Widgets[0].Text.Text || f.attemptCount(t) != reads+1 {
+			t.Fatal("native sibling notes retained view", notes, err)
+		}
+		privateRuns[selection.name] = map[string]any{"notes_request": notesRequest, "view_notes": notes, "preview_request": previewRequest, "preview_response": preview, "execute_request": executeRequest, "execute_response": complete, "root_request": rootRequest, "view_root": root, "output_request": outputRequest, "view_output": output, "source_reads": f.attemptCount(t) - reads}
+	}
+	privateAfterRuns, err := s.Read(ctx, author, reporting.AuthoringReadRequest{Report: saved.State.ID})
+	blockAfterRuns, blockErr := s.ReadBlock(ctx, author, reporting.AuthoringBlockReadRequest{Block: prepare.NewBlock, Revision: created.Block.Revision})
+	if err != nil || blockErr != nil || !reflect.DeepEqual(privateAfterRuns.Definition, saved.Definition) || privateAfterRuns.Digest != saved.Digest || !reflect.DeepEqual(blockAfterRuns.Block.Parameters, created.Block.Parameters) || f.f.model.requests.Load() != models {
+		t.Fatal("temporary/clear changed persisted defaults or used a model", err, blockErr)
 	}
 	// Publication is explicit; saved defaults remain byte-identical on rebind.
 	publisher := phase27Actor(t, f.f, author.User(), append(slices.Clone(scopes), "reporting.publish", "cw.block.publish:"+prepare.NewBlock, "cw.report.publish:"+state.ID))
@@ -295,10 +393,6 @@ func TestReportAppAuthoringOptions(t *testing.T) {
 		return x == "reporting.preview" || x == "reporting.write" || x == "reporting.validate" || x == "charts.bind" || strings.Contains(x, ".preview:")
 	})
 	consumer := phase27Actor(t, f.f, "option-consumer", consumerScopes)
-	delivery, err := reporting.NewDelivery(f.blocks, f.runs, f.documents, f.compositions, f.f.f.db, f.limits.Viewer)
-	if err != nil {
-		t.Fatal(err)
-	}
 	description, err := delivery.Describe(ctx, consumer, reporting.DeliveryDescribeRequest{Target: reporting.DeliveryTarget{Kind: "report", ID: state.ID, Revision: state.PublishedRevision}, Locale: "en-US"})
 	if err != nil || description.DefinitionDigest != published.Digest {
 		t.Fatal("published description omitted native digest", description, err)
@@ -307,12 +401,63 @@ func TestReportAppAuthoringOptions(t *testing.T) {
 	reportRequest.Target.Report.Policy = "published"
 	reportRequest.Target.Report.Revision = state.PublishedRevision
 	reportRequest.Target.Report.Digest = description.DefinitionDigest
+	publicRequest := phase27Copy(t, reportRequest)
 	public, err := s.ReportOptions(ctx, consumer, reportRequest)
 	if err != nil || !public.ValuesAvailable || len(public.Options) != 1 || public.Options[0].Label != "East" {
 		t.Fatal("Consumer options continuity", public, err)
 	}
 	if !reflect.DeepEqual(saved.Definition.ReportPages[0].Filters, published.Definition.ReportPages[0].Filters) {
 		t.Fatal("publication changed canonical filters/defaults")
+	}
+	publishedReport := phase27Copy(t, published)
+	publicCatalog, err := delivery.Search(ctx, consumer, reporting.DeliverySearchRequest{Kind: "report", Locale: "en-US", Limit: 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumerCapabilities, err := s.Capabilities(ctx, consumer, reporting.AuthoringCapabilitiesRequest{Report: state.ID})
+	if err != nil || consumerCapabilities.Builder || !consumerCapabilities.CanExecute {
+		t.Fatal("consumer capability projection", consumerCapabilities, err)
+	}
+	publicRuns := map[string]any{}
+	for _, selection := range []struct {
+		name  string
+		pages []reporting.PageInput
+		exact string
+	}{{"defaults", []reporting.PageInput{}, "3.250"}, {"temporary", temporaryPages, "1.250"}, {"cleared", []reporting.PageInput{}, "3.250"}} {
+		reads := f.attemptCount(t)
+		runRequest := reporting.DeliveryRunRequest{Target: description.Resource.Target, Key: "filter-browser-public-" + selection.name, Arguments: []reporting.Argument{}, Pages: selection.pages, Outputs: []string{}, Locale: "en-US", Timezone: "UTC"}
+		run, err := delivery.Run(ctx, consumer, runRequest)
+		if err != nil || run.State != "completed" || f.attemptCount(t) != reads+1 {
+			t.Fatal("one public explicit execution, deduplicating identical widgets", run, err)
+		}
+		reader := phase27Actor(t, f.f, consumer.User(), []string{"reporting.read", "cw.run.read:" + run.Run, "cw.report.read:" + state.ID, "cw.execution_context.use:" + created.Block.Context})
+		rootRequest := reporting.DeliveryViewRequest{Kind: "report", Run: run.Run, Offset: 0, Limit: 100}
+		root, err := delivery.View(ctx, reader, rootRequest)
+		if err != nil || root.Summary.Private {
+			t.Fatal("public retained root", root, err)
+		}
+		outputs := map[string]any{}
+		for _, widget := range publishedReport.Definition.ReportPages[0].Widgets {
+			outputRequest := reporting.DeliveryViewRequest{Kind: "report", Run: run.Run, Page: "analysis", Widget: widget.ID, Output: "chart", Offset: 0, Limit: 100}
+			output, err := delivery.View(ctx, reader, outputRequest)
+			if err != nil || output.Output == nil || output.Output.Chart == nil || len(output.Output.Chart.Points) != 1 || output.Output.Chart.Points[0].Value.Exact != selection.exact {
+				t.Fatal("public retained exact filtered amount", selection.name, output, err)
+			}
+			outputs[widget.ID] = map[string]any{"request": outputRequest, "response": output}
+		}
+		if f.attemptCount(t) != reads+1 {
+			t.Fatal("public retained views performed source work")
+		}
+		notesRequest := reporting.DeliveryViewRequest{Kind: "report", Run: run.Run, Page: "notes", Widget: "filter-notes", Offset: 0, Limit: 100}
+		notes, err := delivery.View(ctx, reader, notesRequest)
+		if err != nil || notes.Text == nil || notes.Text.Text != document.ReportPages[1].Widgets[0].Text.Text || f.attemptCount(t) != reads+1 {
+			t.Fatal("public sibling notes retained view", notes, err)
+		}
+		publicRuns[selection.name] = map[string]any{"notes_request": notesRequest, "view_notes": notes, "run_request": runRequest, "run_response": run, "root_request": rootRequest, "view_root": root, "outputs": outputs, "source_reads": f.attemptCount(t) - reads}
+	}
+	publicAfterRuns, err := f.documents.Read(ctx, consumer, "report", publishedReport.State.ID, reporting.DocumentReference{Revision: publishedReport.Revision})
+	if err != nil || !reflect.DeepEqual(publicAfterRuns.Definition, publishedReport.Definition) || publicAfterRuns.Digest != publishedReport.Digest || f.f.model.requests.Load() != models {
+		t.Fatal("public temporary/clear changed immutable defaults or used a model", err)
 	}
 	// A newer publication does not substitute an old exact eligible block pin.
 	rawBlock, err := f.f.f.db.ReadBlock(ctx, publisher, prepare.NewBlock, reporting.Reference{Revision: created.Block.Revision}, reporting.Write)
@@ -386,7 +531,14 @@ func TestReportAppAuthoringOptions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := json.MarshalIndent(map[string]any{"dataset": metadata, "prepare_request": prepare, "option_request": wireRequest, "option_response": wireResponse, "created": created}, "", "  ")
+		wire, err := json.MarshalIndent(map[string]any{
+			"dataset": metadata, "prepare_request": prepare, "preparation": prepared, "option_request": wireRequest, "option_response": wireResponse, "created": created,
+			"initial_report": initialReport, "initial_drafts": initialDrafts, "capabilities": capabilities, "initial_option_request": initialOptionRequest, "initial_option_response": initialOptions,
+			"save_request": saveRequest, "saved_state": savedState, "private_report": saved, "saved_drafts": savedDrafts, "private_option_request": privateRequest, "private_option_response": private,
+			"validation_request": validationRequest, "validation": validation, "validated_block": validatedBlock, "private_runs": privateRuns, "private_after_runs": privateAfterRuns,
+			"published_report": publishedReport, "published_catalog": publicCatalog, "consumer_capabilities": consumerCapabilities, "published_description": description, "published_option_request": publicRequest, "published_option_response": public, "published_runs": publicRuns, "published_after_runs": publicAfterRuns,
+			"read_counts": map[string]int{"create_open_metadata": 0, "save_reopen_metadata": 0, "explicit_option_search": 1, "preview_admission": 0, "explicit_validation": 1, "retained_view": 0, "model_calls": 0},
+		}, "", "  ")
 		if err != nil {
 			t.Fatal(err)
 		}

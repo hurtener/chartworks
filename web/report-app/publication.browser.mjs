@@ -71,7 +71,14 @@ function equal(actual, expected, message) {assert.deepEqual(actual, expected, me
 async function ready() {await until(() => evaluate(`!!${root}&&!Array.from(${root}.querySelectorAll('[role=status]')).some(e=>e.textContent==='Working…')`), 'Publication operation did not settle');}
 async function textHas(text) {await until(() => evaluate(`${root}?.textContent.includes(${JSON.stringify(text)})`), 'Missing text: ' + text);await ready();}
 async function clickElement(expression) {
-  const point = await evaluate(`(()=>{const e=${expression};if(!e||e.disabled||!e.getClientRects().length)throw new Error('Missing enabled visible control');e.scrollIntoView({block:'center',inline:'nearest'});const r=e.getBoundingClientRect(),f=document.getElementById('app').getBoundingClientRect();return {x:f.left+r.left+r.width/2,y:f.top+r.top+r.height/2};})()`);
+  // start() can show the initial empty catalog before its awaited capability
+  // and catalog reads finish. Wait for this exact actionable control; absence
+  // of a Working status alone does not establish startup readiness.
+  let point;
+  await until(async () => {
+    point = await evaluate(`(()=>{const e=${expression};if(!e||e.disabled||!e.getClientRects().length)return null;e.scrollIntoView({block:'center',inline:'nearest'});const r=e.getBoundingClientRect(),f=document.getElementById('app').getBoundingClientRect();return {x:f.left+r.left+r.width/2,y:f.top+r.top+r.height/2};})()`);
+    return point !== null;
+  }, 'Expected control did not become enabled and visible: ' + expression);
   assert(point.x > 0 && point.x < 1440 && point.y > 0 && point.y < 1000, 'Control must be reachable in the actual viewport');
   await rpc('Input.dispatchMouseEvent', {type: 'mousePressed', ...point, button: 'left', buttons: 1, clickCount: 1});
   await rpc('Input.dispatchMouseEvent', {type: 'mouseReleased', ...point, button: 'left', buttons: 0, clickCount: 1});
