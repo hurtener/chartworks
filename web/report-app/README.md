@@ -19,7 +19,7 @@ parent origins. Neither entrypoint falls back to the other. Both mount the same
   add independent inline pages, private chart mapping and finite dataset-first
   creation.
 - No arbitrary query, dynamic generation, narrative
-  generation, publication, multi-selection layout operations or export in this checkpoint.
+  generation, multi-selection layout operations or export in this checkpoint.
   Existing unsupported documents are inspection-only. Source execution occurs
   only after an explicit data-validation or run/preview action.
 
@@ -38,7 +38,9 @@ executes the preview again. An expired/denied artifact does not regenerate itsel
 
 ## Bounded visual editing and independent pages
 
-The Builder starts with an empty new draft. Version 2 needs a heading or approved
+The Builder starts new reports as version 3 with one empty `Summary` page.
+A title-only new report can save without a fabricated component. Reopened
+version 2 documents retain their exact shape and need a heading or approved
 output before save. **Enable pages** is an explicit local upgrade to version 3;
 no read automatically rewrites a legacy document. Empty version 3 pages can save.
 The Components and Selected rail stays beside the canvas; the report list can
@@ -157,6 +159,44 @@ Initialization is capped at 65 seconds; the transport caps pending requests at
 Unrecognized methods and wrong source/origin/frame/generation messages cannot
 settle requests or widen the fixed tool allowlist.
 
+## Deterministic build-time packaging
+
+Readable authored `.js` modules remain the source of truth. The report resource
+embeds `generated/report-app.js`, a single minified IIFE built from `app.js` by
+exactly pinned esbuild 0.21.5. This is a build-only dependency: production Go and
+the iframe do not install npm, compile scripts, fetch chunks, or evaluate strings.
+No source maps are generated or served. Both app and read viewer continue to
+consume the same `../report-viewer/presentation.js`; the report bundle excludes
+the read viewer's host/controller. The embedded resource prepends its registered
+public parent list before the same bundle, preserving its `typeof` entry switch.
+
+To install the integrity-locked official registry dependency and regenerate:
+
+```sh
+cd web/report-app
+npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/
+npm run build
+npm run check
+npm run test:bundle
+```
+
+Commit both generated files alongside every authored change. `build.mjs` writes
+no timestamps or absolute paths. `generated/manifest.json` records the exact tool
+version, source/import graph, source/style/build-configuration SHA-256 hashes,
+and emitted script digest. Go tests verify all hashes and independently traverse
+reachable local static imports, so source, CSS, build configuration, and output
+drift fail without needing npm in a Go build. The exact-head browser CI lane
+installs from the lockfile and runs `npm run check`, which regenerates in memory
+and fails any byte difference without repairing the checkout. It then exercises
+the actual embedded resource in VM and Chromium fixtures; it makes no live
+provider/model call.
+
+The existing 262,144-byte HTML ceiling and restrictive hash-based CSP remain.
+CSP hashes cover the exact inline bytes, including the embedded parent prefix;
+oversized embedded registration lists fail closed. Regenerate again after later
+source integrations. An earlier bundle's passing tests never establish that it
+matches subsequent authored changes.
+
 ## Verification
 
 Pure controller/bridge tests (including a deliberately small fake DOM) are not
@@ -167,7 +207,10 @@ node --test web/report-app/model.test.mjs web/report-app/bridge.test.mjs web/rep
 ```
 
 The Go resource test checks compilation, exact CSP hashes, public-only bytes,
-canonical parent origins and the shared renderer. To generate actual resources:
+canonical parent origins, bundle/source identity and the shared renderer. The
+VM bundle suite executes the generated IIFE through both bootstrap adapters,
+checks capability narrowing/teardown and renders exact retained values. A VM with
+a small fake DOM is not browser evidence. To generate actual resources:
 
 ```sh
 CHARTWORKS_REPORT_APP_HTML_OUT=/tmp/report-app-mcp.html \
@@ -240,17 +283,23 @@ browser interaction and pixels qualify this lane separately. The current
 ## Remaining product and integration limits
 
 Dataset creation is PostgreSQL-only, with one reviewed measure, at most two direct
-dimensions and eight initial kinds. It cannot author filters, joins, calendar
-buckets, arbitrary expressions or unsupported reviewed policies. Mapping over an
+dimensions and eight initial kinds. It supports up to four reviewed text-select,
+text-multiselect or date-only range filters. Joins, calendar buckets, arbitrary
+expressions and unsupported reviewed policies remain unavailable. Mapping over an
 existing result offers all fourteen real native kinds; Combo remains unsupported.
 
-The manual filter UI currently copies existing block parameters and edits text
-defaults, while Consumer keeps temporary runtime values separately. Governed
-option search, single/multiselect, staged date-range controls and explicit shared
-filter applicability still need implementation. Private chart parameter discovery
-must use the SQL-free authoring read instead of published-only delivery. Field
-labels, numeric/date/currency formatting, legend settings and data-point limits
-are also not fully editable here; stored semantics remain protected.
+The manual filter UI stages saved defaults separately from temporary preview/run
+selections. Text options require explicit governed Search; multiselect retains
+1–16 exact values, including empty text, and excludes SQL NULL. Date ranges commit
+only on Done and convert inclusive civil end dates to half-open wire bounds.
+Private chart parameters use SQL-free authoring metadata. Shared filter bindings
+can be selected for compatible widget parameters and removed explicitly.
+Report-filter defaults update `Filters[].Parameter.Default`; the separate
+block-parameter `Defaults` fallback layer is preserved. Lookup status/control
+never reconstruct lost values or restart a source query. These controls have
+local native/Node/bundled-code qualification; current hosted browser screenshots
+are still pending. Field labels, numeric/date/currency formatting, legend settings
+and data-point limits are not yet fully editable.
 
 There is no in-app block/report publication or private-to-published reference
 rebind workflow. These require the existing independently authorized native
@@ -284,3 +333,103 @@ An allocation reply never proves that a native chart/report mutation committed.
 Navigation fences late adoption; host teardown closes all records and clears IDs.
 Unsupported hosts keep existing-item selection and reading available without a
 raw-ID fallback.
+
+
+## Initialized host tool availability
+
+The trusted host can narrow the app's provider operation inventory with the exact
+registered names. Embedded initialization uses
+`capabilities.supported_tools = {version:'chartworks-host-tools-v1',names:[...]}`;
+MCP initialization preserves the same object in
+`hostContext['chartworks/supported-tools']`. This is presentation metadata, never
+a grant or permission to use an unregistered app tool. Native checks remain
+independent and authoritative on each request. Allocation is still negotiated
+separately; `app/allocate-target` is not a provider tool name.
+
+The object is closed to `version` and `names`, at most 16 KiB, with at most 96
+unique names of 1..128 ASCII letters, digits, underscores, dots, colons or hyphens.
+Malformed values, duplicates, unknown versions and excessive bounds fail closed
+for all provider calls. Syntactically valid unknown names enable nothing outside
+the app's fixed allowlist. An explicit empty list supports no provider tool.
+Omitting the hint preserves existing full-capable host compatibility, still
+subject to the adapter's ordinary tool capability and native authorization.
+The detached inventory is immutable for the initialized frame/session. Later
+context notifications cannot narrow or widen it; an inventory change needs a
+fresh frame/session. Ordinary theme/locale context changes remain supported.
+
+Controls intersect native capability hints with their required registered tools.
+New-report intent additionally requires host allocation and native capability,
+create, read and save tools; after allocation the exact target's `can_create`
+is checked again. No raw-ID entry or synthesized native authority is added.
+The retained-only five-tool host (capabilities, search, describe, runs, view)
+keeps catalog/history/retained inspection and hides creation, execution and
+advanced authoring. The text-only host adds drafts/read/create/save and supports
+blank v3 save, headings, report titles, layout, pages, full CAS save and reopen.
+It does not require the separate widget-patch tool. That narrow save control is
+hidden unless its actual tool is registered.
+
+Block metadata registration is required before composing approved outputs or
+filters; chart mapping and dataset preparation require their complete native
+operation groups. A text-only host never offers chart/source/filter/publication
+actions or attempts block-shaped catalog calls. Existing block-bearing documents
+or nonempty filters/defaults/bindings/literals are inspection-only in that host.
+Absent or empty filter/default arrays on existing text documents are preserved,
+with no automatic schema conversion. Retained charts remain readable through
+`reporting_view`; availability of retained data never enables source execution.
+
+The adapter/profile tests are deterministic source tests, including both actual
+adapter classes and a small fake DOM. They do not qualify a deployed host or
+browser pixels; the separate hosted-browser gate remains necessary.
+
+
+## Explicit manual publication and recoverable review
+
+When their exact optional host tools are available, `publication.js` and
+`publication-controls.js` add metadata-only lifecycle inspection, chart
+publication, selected-widget rebinding, report review and reviewed-report
+publication. Every mutation requires an independent user confirmation bound to
+its inspected immutable coordinates and native CAS. Report transitions also
+require current native lifecycle hints; those hints never replace server checks.
+
+Chart disclosure includes **every output of the entire revision**, including
+outputs absent from the report. The audience is existing centrally authorized
+readers; no names, counts, sharing changes, grants or certification are inferred.
+A published chart stays published if a subsequent report rebind conflicts.
+Rebinding selects exact existing widget pins and delegates the narrow edit to the
+server, preserving untargeted content. The report remains private until its
+separate review and publication transitions succeed. Reopening a review is
+explicit, and saving from it creates a new draft while preserving pending review.
+Native Return review uses the independent rejection operation, requires current
+`can_reject` authority, a bounded note and explicit confirmation. It preserves
+newer draft/publication pointers and requires a new amended revision before
+resubmission; no withdrawal is fabricated.
+
+Unknown outcomes retain their original request across navigation. Recovery reads
+the original exact revision, including after publication clears private pointers.
+An unchanged head does not establish that an earlier request stopped. After exact
+inspection confirms unchanged CAS, digest and current eligibility, a separate
+confirmation may retry only the identical metadata-only request; native CAS
+prevents a second commit. A retry conflict remains unresolved until another exact
+inspection. No source-query, validation or run retry is implied by this path.
+
+Publication never relabels a retained private preview or runs public data. Browse
+loads the actual published catalog; its explicit Run action is independent.
+Focused Node lifecycle/controller/bridge tests cover confirmations, all-output
+scope, selected-widget rebinding, CAS conflict, unknown success/retry, stage
+recovery, missing tools, double clicks and late navigation/teardown responses.
+These tests are synthetic source tests, not browser or live-source evidence.
+
+Lifecycle metadata is bounded at 3 MiB without changing bridge or request limits.
+Recovery custody is bounded at 16 MiB across at most 64 records. Only terminal
+known records may be pruned; unresolved requests retain their original arguments
+and native report bases. Exhaustion rejects new mutations before dispatch.
+Frozen chart disclosures retain every output ID, kind and title; native digest
+and evidence pin complete content. Retry snapshots retain exact eligibility
+coordinates rather than copying full chart mappings or report bodies again.
+
+A successful Return review opens the preserved current draft, including a newer
+independent draft when one exists. Exact unknown-outcome inspections can display
+an older private revision only as read-only history, with an explicit action to
+open the current draft. The native `rejected` receipt distinguishes a returned
+revision from a publication even after reopening; missing receipts never turn
+changed pointers into a claimed rejection.

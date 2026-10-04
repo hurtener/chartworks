@@ -278,6 +278,7 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Deliver
 		out.Resource = localizedResource(t.Kind, t.ID, v.Revision, v.Definition.Metadata, in.Locale)
 		out.Timezone = v.Definition.Timezone
 		if t.Kind == "report" {
+			out.DefinitionDigest = v.Digest
 			for _, canvas := range ReportCanvases(v.Definition) {
 				leaf := v
 				leaf.Definition = canvas.Definition

@@ -245,6 +245,8 @@ type QueryOrigin struct {
 
 // DocumentSnapshot is an internal authorized repository result.
 type DocumentSnapshot struct {
+	// Rejected is authoritative immutable lifecycle history for this exact revision.
+	Rejected           bool
 	UnavailableQueries []string
 	State              DocumentState
 	Revision           DocumentRevision

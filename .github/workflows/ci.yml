@@ -127,6 +127,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.14.0'
+      - name: Verify pinned report app generated assets
+        working-directory: web/report-app
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/
+          npm run check
+          npm run test:bundle
       - name: Record exact app source and browser
         run: |
           mkdir -p "$RUNNER_TEMP/report-app-proof"

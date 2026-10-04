@@ -87,18 +87,19 @@ type ViewerFilter struct {
 
 // DeliveryDescription exposes presentation and typed business inputs only.
 type DeliveryDescription struct {
-	Selection     *OutputSelection         `json:"selection,omitempty"`
-	SelectionCode string                   `json:"selection_code,omitempty"`
-	QueryLimits   *QueryLimits             `json:"query_limits,omitempty"`
-	ResultPolicy  []EffectiveFieldPolicy   `json:"result_policy,omitempty"`
-	Version       string                   `json:"version"`
-	Resource      DeliveryResource         `json:"resource"`
-	Outputs       []ViewerOutputChoice     `json:"outputs"`
-	Filters       []ViewerFilter           `json:"filters"`
-	Pages         []CompositionPageSummary `json:"pages"`
-	Trust         *Trust                   `json:"trust,omitempty"`
-	Dynamic       bool                     `json:"dynamic"`
-	Timezone      string                   `json:"timezone"`
+	DefinitionDigest string                   `json:"definition_digest,omitempty"`
+	Selection        *OutputSelection         `json:"selection,omitempty"`
+	SelectionCode    string                   `json:"selection_code,omitempty"`
+	QueryLimits      *QueryLimits             `json:"query_limits,omitempty"`
+	ResultPolicy     []EffectiveFieldPolicy   `json:"result_policy,omitempty"`
+	Version          string                   `json:"version"`
+	Resource         DeliveryResource         `json:"resource"`
+	Outputs          []ViewerOutputChoice     `json:"outputs"`
+	Filters          []ViewerFilter           `json:"filters"`
+	Pages            []CompositionPageSummary `json:"pages"`
+	Trust            *Trust                   `json:"trust,omitempty"`
+	Dynamic          bool                     `json:"dynamic"`
+	Timezone         string                   `json:"timezone"`
 }
 
 // DeliveryRunRequest is deliberately side-effecting. It cannot contain SQL,

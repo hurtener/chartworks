@@ -109,6 +109,31 @@ tool names/operation IDs and ambiguous resource templates fail construction.
 no manually maintained second business registry. Registration and acceptance tests
 compare all current bindings to the actual HTTP definitions.
 
+The optional manual-authoring surface also registers the four
+[governed option operations](governed-authoring-options-v1.md) using the same
+closed HTTP DTOs, primary actions, errors and audit classifications. Dataset and
+report option Search can read a source and persist custody; status is retained
+metadata only; cancel/reconcile is explicit original-attempt control. The
+assembled inventory is 91 default tools or 96 with optional renditions, within
+the unchanged 96-tool registry ceiling and existing request/schema limits.
+
+The four [manual lifecycle operations](manual-publication-lifecycle-v1.md) add
+retained `reporting_authoring_lifecycle_v1` inspection and three metadata-only
+mutations: `reporting_authoring_block_publish_v1`,
+`reporting_authoring_rebind_published_v1`, and
+`reporting_authoring_report_transition_v1`. They use the shared domain DTOs,
+errors, resource loaders and native audit transactions. Inspection is read-only
+and idempotent; mutations persist metadata and are not idempotent, paid,
+open-world or destructive. All four declare `Replay=never` for generic callers.
+The report-transition editor entry requires `reporting.write`; native publish and
+reject independently require `reporting.publish` plus exact report publish reach.
+
+Publication guidance requires explicit user confirmation after whole-revision,
+all-output disclosure; eligibility for existing authorized readers is neither a
+grant nor an audience count. Chart publication, selected reference rebind, report
+review and report publication remain separate. After an unknown mutation result,
+inspect the original exact revision rather than automatically repeating it.
+
 ## Effects and outcomes
 
 MCP annotations and `chartworks/*` metadata describe actual work, not merely

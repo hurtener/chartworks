@@ -53,6 +53,35 @@ write and the dependencies of all selected published blocks. The central host mu
 approve/allocate this exact target through its existing ownership flow before
 supplying authority. An app editor grant alone cannot authorize creation.
 
+## Host operation inventory
+
+Initialized embedded hosts may supply `capabilities.supported_tools`; MCP hosts
+preserve the same extension at `hostContext['chartworks/supported-tools']`.
+Its closed shape is `{version:'chartworks-host-tools-v1',names:[exact names]}`:
+16 KiB maximum, at most 96 unique names, each 1..128 ASCII alphanumeric,
+underscore, dot, colon or hyphen characters. Invalid shapes, duplicate names,
+unknown versions and exceeded bounds fail closed. Valid unknown names never
+expand the app's fixed registered-operation allowlist. Missing metadata preserves
+legacy full-capable compatibility; an explicit empty list disables provider
+calls. The copied list is immutable for that frame/session. Context notifications
+cannot change it; inventory changes require a fresh frame/session.
+
+This is a presentation-only narrowing hint, independent of signed authority and
+independent of host target-allocation metadata. Creation requires allocation plus
+native capability/create/read/save tool availability, followed by the exact
+allocated report's native `can_create` check. Tool names never grant read, write,
+execute, preview or publish reach. The app transport independently rejects every
+unsupported provider call before sending it.
+
+Retained-only and text-only hosts hide unsupported chart/source/filter/execution
+controls while keeping their real report operations. Text-only full-report CAS
+save needs no widget-patch tool. Block/filter-bearing drafts remain inspection-only
+when block authoring metadata is unavailable. New reports use schema 3 with a
+single empty `Summary` page and omit top-level widgets/filters/defaults, so an
+explicit title-only save uses the genuine empty-page domain behavior. Existing
+schema-2 definitions are never implicitly converted. These deterministic source
+checks do not substitute for browser/deployed-host evidence.
+
 ## Bounded manual operations
 
 `/v1/reporting/authoring/v1/` carries closed POST DTOs and corresponding versioned
@@ -68,7 +97,8 @@ separate exact private mapping amendments and reviewed-dataset chart preparation
 described below. Report presentation itself never changes a query or mapping.
 Manual operations disable dynamic query widgets and narratives. Filters are typed
 canonical document parameters, not SQL or authority predicates; the complete
-manual filter editor remains unfinished.
+filter controls stage defaults and temporary choices independently; current hosted
+browser qualification remains pending.
 
 Targeted widget editing is an edit-intent boundary, not per-widget ACL. A separate
 narrow patch receives a stable widget ID, expected revision/CAS and allowlisted
@@ -159,7 +189,7 @@ uses native bounded source validation, returns narrowed evidence/schema and CAS
 coordinates, and never publishes. Its source work may carry cost and is not
 idempotent or automatically retried. Metadata alone cannot attribute an unknown
 request. Source validation, private report preview and public eligibility changes
-remain separate user actions. Mounted inventory is 83 default/88 with optional
+remain separate user actions. Mounted inventory is 91 default/96 with optional
 renditions under the unchanged 96-tool ceiling; execution and transport budgets
 are unchanged.
 
@@ -173,25 +203,62 @@ The five [reviewed-dataset preparation operations](manual-chart-preparation-v1.m
 provide metadata, explicit Prepare, status, Create and original-attempt control.
 The finite compiler is PostgreSQL-only, with zero to two direct reviewed
 dimensions, one reviewed measure and eight native initial chart kinds. It rejects
-unsupported filters, calendar/population/completeness policies, rules, joins and
-arbitrary expressions. Create consumes exact private preparation custody into an
+unsupported filter forms, calendar/population/completeness policies, rules, joins
+and arbitrary expressions. Up to four reviewed text select/multiselect or date-only
+range filters compile through the bounded typed v2 path; unfiltered v1 bytes remain
+unchanged. Create consumes exact private preparation custody into an
 unvalidated draft; validation and private report preview remain separate explicit
 source reads. Preparation cleanup is not yet implemented; bounded quotas fail
 closed without erasing unresolved execution liability.
 
+The four [governed option operations](governed-authoring-options-v1.md) expose
+explicit dataset/page-filter Search, retained status and original-attempt control
+through shared HTTP/MCP/SDK DTOs. No typing, selection, page navigation or retained
+redraw implies a source read. Lost values are distinct from empty choices;
+new_operation_allowed permits only a separately explicit new search after
+liability is resolved. Browser controls and their integration require separate
+qualification.
+
+## Manual lifecycle transport and agent guidance
+
+The four [manual lifecycle operations](manual-publication-lifecycle-v1.md) use the
+same closed domain DTOs on HTTP, MCP and the typed Go SDK: `lifecycle`,
+`block_publish`, `rebind_published` and `report_transition`. Inspection is retained
+metadata only; the other operations write metadata without source or model work.
+`report_transition` has a `reporting.write` editor-entry ceiling plus the native
+`reporting.publish` action and exact publish reach for publish/reject. Review,
+publish and reject are the only accepted transition values. No profile, mode,
+publication or advertised tool grants authority.
+
+The bounded guide requires explicit user confirmation before chart publication
+and separately before report publication. It discloses every output in the entire
+chart revision, even outputs not selected by a report. Existing-authorized-readers
+eligibility creates no grant and supplies no audience count. Chart publication,
+selected private-to-published rebind, report review and report publication remain
+separate actions. Rebind needs separate confirmation and cannot undo publication
+if its own CAS fails. Private retained previews remain private.
+
+Unknown mutation outcomes require inspection of the original exact revision,
+never automatic repetition or inferred rollback. Review clears draft and can be
+reopened through the independent review pointer. Transport/SDK source and focused
+unit qualification do not establish PostgreSQL lifecycle, browser or deployed-host
+qualification; their respective evidence remains independently required. The
+[transport qualification record](../reviews/manual-publication-transport-v1.md)
+names the exact checks and their limits.
+
 ## Remaining manual-product work
 
-- Governed option search, single/multiselect and staged date-range controls;
-  authored defaults versus temporary choices; explicit widget/filter applicability.
-  New dataset charts currently have no query parameters. Private chart parameter
-  discovery must use the authoring projection, not published-only delivery.
+- Hosted browser qualification for the locally implemented governed option search,
+  single/multiselect, staged date-range controls and applicability editing. Dataset
+  filter defaults and saved report filter defaults are distinct from temporary
+  `PageInput.Filters`; private metadata discovery uses the authoring projection.
 - Editable field labels and number/date/currency display settings, legend controls,
   data-point limits and additional qualified creation shapes. Saved semantic units
   and aggregation cannot be replaced by unvalidated display input. Combo has no
   native contract and is not offered as another kind.
-- In-app block publication, explicit private-to-published reference rebind and
-  report review/publication. Current private authoring does not publish or expand
-  visibility. Existing native lifecycle APIs retain their independent authority.
+- Browser qualification of explicit chart publication, selected private-to-published
+  reference rebind and independent report review/publication. Native domain and
+  shared HTTP/MCP/SDK lifecycle operations retain their independent authority.
 - Real Pengui no-chat launch, exact target allocation, dependency projection,
   authority refresh/withdrawal and production embedded registration. Hosted
   synthetic-browser proof does not close those integration gates.

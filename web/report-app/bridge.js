@@ -1,7 +1,16 @@
-import {boundedJSON} from '../report-viewer/app.js';
+import {boundedJSON} from '../report-viewer/presentation.js';
 import {appError, APP_MAX_WIRE} from './model.js';
 
-export const REPORT_APP_TOOLS = new Set(['chart_catalog','list_topics','describe_topic','reporting_search','reporting_describe','reporting_runs','reporting_view','reporting_run','reporting_filter_options',...['capabilities','drafts','read','create','save','preview','execute','widget','block_read','block_mapping','block_copy','block_validate','dataset','prepare_chart','preparation','create_prepared','preparation_control'].map(a=>`reporting_authoring_${a}_v1`)]);
+export const REPORT_APP_TOOLS = new Set(['chart_catalog','list_topics','describe_topic','reporting_search','reporting_describe','reporting_runs','reporting_view','reporting_run','reporting_filter_options',...['capabilities','drafts','read','create','save','preview','execute','widget','block_read','block_mapping','block_copy','block_validate','dataset','prepare_chart','preparation','create_prepared','preparation_control','dataset_options','report_options','option_status','option_control','lifecycle','block_publish','rebind_published','report_transition'].map(a=>`reporting_authoring_${a}_v1`)]);
+// Initialization metadata is a bounded immutable narrowing hint, never authority.
+export function hostToolHint(container,key) {
+  if(!container||!Object.hasOwn(container,key))return null;
+  try {
+    const value=boundedJSON(container[key],16<<10);
+    if(!value||Array.isArray(value)||Object.keys(value).length!==2||value.version!=='chartworks-host-tools-v1'||!Array.isArray(value.names)||value.names.length>96||value.names.some(name=>typeof name!=='string'||!/^[A-Za-z0-9_.:-]{1,128}$/.test(name))||new Set(value.names).size!==value.names.length)throw appError('invalid_request');
+    return Object.freeze([...value.names]);
+  }catch{return Object.freeze([]);}
+}
 const wireLimit=APP_MAX_WIRE;
 const bridgeAllocationVersion='report-app-allocation-v1';
 const bridgeAllocationMethod='app/allocate-target';
@@ -31,7 +40,8 @@ class ParentTransport {
   send(message) { if(this.closed)throw appError('unavailable');boundedJSON(message,wireLimit);this.parent.postMessage(message,this.origin||'*'); }
   request(method,params) { if(this.closed||this.pending.size>=16)return Promise.reject(appError('busy'));const id=++this.sequence;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.pending.delete(id);reject(appError('cancelled_or_timed_out',method==='tools/call'||method===bridgeAllocationMethod));},65000);this.pending.set(id,{resolve,reject,timer,method});try{this.send(this.envelope({id,method,params}));}catch(e){clearTimeout(timer);this.pending.delete(id);reject(method===bridgeAllocationMethod?appError('unavailable',true):e);}}); }
   settle(message) { const p=this.pending.get(message.id);if(!p)return false;this.pending.delete(message.id);clearTimeout(p.timer);if(message.error)p.reject(appError('unavailable',p.method==='tools/call'||p.method===bridgeAllocationMethod));else p.resolve(message.result);return true; }
-  async call(name,args) { if(!this.ready||this.closed||!REPORT_APP_TOOLS.has(name)||!this.canCall)throw appError('forbidden');boundedJSON(args,1<<20);return this.request('tools/call',{name,arguments:args}); }
+  supportsTool(name) { return this.ready&&!this.closed&&this.canCall&&REPORT_APP_TOOLS.has(name)&&(this.toolHint===null||this.toolHint?.includes(name)===true); }
+  async call(name,args) { if(!this.supportsTool(name))throw appError('forbidden');boundedJSON(args,1<<20);return this.request('tools/call',{name,arguments:args}); }
   // This host extension reserves an opaque target, never grants provider authority.
   // The caller owns the stable operation key and any explicit retry decision.
   supportsTargetAllocation() { return this.ready&&!this.closed&&this.targetAllocation; }
@@ -42,7 +52,7 @@ class ParentTransport {
 export class MCPReportAdapter extends ParentTransport {
   constructor(win=window) { super(win);this.canCall=false; }
   envelope(message) { return {jsonrpc:'2.0',...message}; }
-  async connect() { if(this.parent===this.win)throw appError('unavailable');const r=await this.request('ui/initialize',{protocolVersion:'2026-01-26',appInfo:{name:'Chartworks report app',version:'1'},appCapabilities:{availableDisplayModes:['inline','fullscreen']}});if(this.closed||r?.protocolVersion!=='2026-01-26'){this.close();throw appError('unavailable');}this.canCall=!!r.hostCapabilities?.serverTools;this.targetAllocation=bridgeAllocationSupport(r.hostContext?.['chartworks/target-allocation']);this.ready=true;this.oncontext(r.hostContext||{});this.send(this.envelope({method:'ui/notifications/initialized'}));return r; }
+  async connect() { if(this.closed||this.ready||this.pending.size)throw appError('forbidden');if(this.parent===this.win)throw appError('unavailable');const r=await this.request('ui/initialize',{protocolVersion:'2026-01-26',appInfo:{name:'Chartworks report app',version:'1'},appCapabilities:{availableDisplayModes:['inline','fullscreen']}});if(this.closed||r?.protocolVersion!=='2026-01-26'){this.close();throw appError('unavailable');}Object.defineProperty(this,'toolHint',{value:hostToolHint(r.hostContext,'chartworks/supported-tools')});this.canCall=!!r.hostCapabilities?.serverTools;this.targetAllocation=bridgeAllocationSupport(r.hostContext?.['chartworks/target-allocation']);this.ready=true;this.oncontext(r.hostContext||{});this.send(this.envelope({method:'ui/notifications/initialized'}));return r; }
   receive(event) { if(this.closed||event.source!==this.parent||this.origin!==null&&event.origin!==this.origin)return;try { const m=boundedJSON(event.data,wireLimit);if(m?.jsonrpc!=='2.0')return;
     if(m.id!==undefined&&(Object.hasOwn(m,'result')||Object.hasOwn(m,'error'))) { if(this.origin===null){if(this.pending.get(m.id)?.method!=='ui/initialize'||!bridgeOrigin(event.origin))return;this.origin=event.origin;}this.settle(m);return; }
     if(!this.ready)return;
@@ -59,7 +69,7 @@ export class MCPReportAdapter extends ParentTransport {
 export class EmbeddedReportAdapter extends ParentTransport {
   constructor({win=window,origin,frame,generation,challenge}) { if(!bridgeOrigin(origin,true)||typeof frame!=='string'||!/^[-A-Za-z0-9_.:]{1,128}$/.test(frame)||!Number.isSafeInteger(generation)||generation<1||typeof challenge!=='string'||!/^[-A-Za-z0-9_.:]{16,128}$/.test(challenge))throw appError('invalid_request');super(win,origin);this.frame=frame;this.generation=generation;this.challenge=challenge;this.canCall=false; }
   envelope(message) { return {protocol:'chartworks-report-app-v1',frame:this.frame,generation:this.generation,...message}; }
-  async connect() { if(this.parent===this.win)throw appError('unavailable');const result=await this.request('initialize',{challenge:this.challenge});if(this.closed||result?.challenge!==this.challenge){this.close();throw appError('forbidden');}this.challenge=null;this.canCall=result.tools===true;this.targetAllocation=bridgeAllocationSupport(result.capabilities?.target_allocation);this.ready=true;this.oncontext(result.context||{});return result; }
+  async connect() { if(this.closed||this.ready||this.pending.size)throw appError('forbidden');if(this.parent===this.win)throw appError('unavailable');const result=await this.request('initialize',{challenge:this.challenge});if(this.closed||result?.challenge!==this.challenge){this.close();throw appError('forbidden');}this.challenge=null;Object.defineProperty(this,'toolHint',{value:hostToolHint(result.capabilities,'supported_tools')});this.canCall=result.tools===true;this.targetAllocation=bridgeAllocationSupport(result.capabilities?.target_allocation);this.ready=true;this.oncontext(result.context||{});return result; }
   receive(event) { if(this.closed||event.source!==this.parent||event.origin!==this.origin)return;try { const m=boundedJSON(event.data,wireLimit);if(m?.protocol!=='chartworks-report-app-v1'||m.frame!==this.frame||m.generation!==this.generation)return;
     if(m.id!==undefined&&(Object.hasOwn(m,'result')||Object.hasOwn(m,'error'))){this.settle(m);return;}
     if(!this.ready)return;

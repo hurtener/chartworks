@@ -134,7 +134,7 @@ func authoringPreparationFence(ctx context.Context, tx pgx.Tx, e identity.Envelo
 	return nil
 }
 func authoringPreparationShape(r reporting.AuthoringPreparationRecord) error {
-	if !identity.Identifier(r.ID) || !identity.Identifier(r.Operation) || !identity.Identifier(r.Target) || r.Compiler != reporting.AuthoringCompilerVersion || r.InputDigest != readexec.Hash(r.Request) || r.Request.NewBlock != r.Target || r.Request.Operation != r.Operation || r.SourceOperation != "chart-prepare:"+readexec.Hash([]string{r.Binding.Tenant, r.Actor, r.Session, r.Target, r.Operation}) || len(r.Statement) < 1 || len(r.Statement) > 64<<10 || len(r.Scope) != 1 || len(r.Dependencies) != 1 || r.Scope[0].Dataset != r.Request.Intent.Dataset || r.Dependencies[0].Dataset != r.Request.Intent.Dataset || len(r.Topics) != 1 || r.Topics[0] != r.Request.Intent.Topic {
+	if !identity.Identifier(r.ID) || !identity.Identifier(r.Operation) || !identity.Identifier(r.Target) || r.Compiler != reporting.AuthoringCompilerForIntent(r.Request.Intent) || r.InputDigest != readexec.Hash(r.Request) || r.Request.NewBlock != r.Target || r.Request.Operation != r.Operation || r.SourceOperation != "chart-prepare:"+readexec.Hash([]string{r.Binding.Tenant, r.Actor, r.Session, r.Target, r.Operation}) || len(r.Statement) < 1 || len(r.Statement) > 64<<10 || len(r.Scope) != 1 || len(r.Dependencies) != 1 || r.Scope[0].Dataset != r.Request.Intent.Dataset || r.Dependencies[0].Dataset != r.Request.Intent.Dataset || len(r.Topics) != 1 || r.Topics[0] != r.Request.Intent.Topic {
 		return store.ErrInvalid
 	}
 	return nil

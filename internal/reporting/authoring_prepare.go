@@ -223,7 +223,7 @@ func (s *Authoring) PrepareDatasetChart(ctx context.Context, e identity.Envelope
 	now := time.Now().UTC()
 	timeout := min(time.Duration(blocks.limits.ValidationTimeout), time.Duration(blocks.limits.Execution.Timeout))
 	skeleton := Definition{Source: binding.Source, Context: binding.Context, Topics: []TopicPin{in.Intent.Topic}}
-	r := AuthoringPreparationRecord{ID: id, Actor: e.User(), Session: e.Session(), Target: in.NewBlock, Operation: in.Operation, InputDigest: digest(in), Compiler: AuthoringCompilerVersion, SourceOperation: "chart-prepare:" + digest([]string{e.Tenant(), e.User(), e.Session(), in.NewBlock, in.Operation}), Binding: binding.Clone(), Topics: clone(skeleton.Topics), References: definitionReferences(skeleton, []topics.Published{p}), Scope: compiled.Scope, Dependencies: compiled.Dependencies, Statement: compiled.SQL, Request: clone(in), CreatedAt: now, Deadline: minTime(now.Add(timeout), e.Deadline()), ExpiresAt: now.Add(min(time.Duration(blocks.limits.EvidenceTTL), 15*time.Minute)), Status: "accepted"}
+	r := AuthoringPreparationRecord{ID: id, Actor: e.User(), Session: e.Session(), Target: in.NewBlock, Operation: in.Operation, InputDigest: digest(in), Compiler: AuthoringCompilerForIntent(in.Intent), SourceOperation: "chart-prepare:" + digest([]string{e.Tenant(), e.User(), e.Session(), in.NewBlock, in.Operation}), Binding: binding.Clone(), Topics: clone(skeleton.Topics), References: definitionReferences(skeleton, []topics.Published{p}), Scope: compiled.Scope, Dependencies: compiled.Dependencies, Statement: compiled.SQL, Request: clone(in), CreatedAt: now, Deadline: minTime(now.Add(timeout), e.Deadline()), ExpiresAt: now.Add(min(time.Duration(blocks.limits.EvidenceTTL), 15*time.Minute)), Status: "accepted"}
 	if err := RequireAuthoringPreparation(e, r, true); err != nil {
 		return AuthoringPreparationView{}, err
 	}
@@ -263,12 +263,19 @@ func (s *Service) runAuthoringPreparation(ctx context.Context, e identity.Envelo
 	default:
 		return reject("preparation_busy")
 	}
-	plan, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: r.Binding.Source, Context: r.Binding.Context, SQL: r.Statement, Parameters: []exec.Parameter{}}, r.Scope)
+	resolved, err := ResolveParameters(c.Parameters, nil, Resolution{At: r.CreatedAt, Timezone: "UTC"})
+	if err != nil {
+		return reject("filter_values_unsupported")
+	}
+	if err := validateBoundedFilterSQL(ctx, r.Statement, c.Parameters); err != nil {
+		return reject("filter_predicates_unsupported")
+	}
+	plan, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: r.Binding.Source, Context: r.Binding.Context, SQL: r.Statement, Parameters: resolved.Parameters}, r.Scope)
 	if err != nil {
 		return reject("validation_rejected")
 	}
 	statement, parameters, err := plan.SQL(e, r.Binding)
-	if err != nil || statement != r.Statement || len(parameters) != 0 {
+	if err != nil || statement != r.Statement || parameterDigest(parameters) != parameterDigest(resolved.Parameters) {
 		return reject("source_binding_changed")
 	}
 	if reason, err := s.authoringRulesDisposition(ctx, e, r.Topics[0]); err != nil {
@@ -331,21 +338,29 @@ func (s *Service) runAuthoringPreparation(ctx context.Context, e identity.Envelo
 	if mapping.Kind == charts.KPI {
 		kind = "kpi"
 	}
-	d := Definition{SchemaVersion: SchemaVersion, Metadata: clone(r.Request.Metadata), Source: r.Binding.Source, Context: r.Binding.Context, Topics: clone(r.Topics), SQL: r.Statement, Parameters: []Parameter{}, ExpectedSchema: clone(result.Schema), Outputs: []Output{{ID: "chart", Kind: kind, Mapping: &mapping}}}
+	d := Definition{SchemaVersion: SchemaVersion, Metadata: clone(r.Request.Metadata), Source: r.Binding.Source, Context: r.Binding.Context, Topics: clone(r.Topics), SQL: r.Statement, Parameters: clone(c.Parameters), ExpectedSchema: clone(result.Schema), Outputs: []Output{{ID: "chart", Kind: kind, Mapping: &mapping}}}
+	if len(r.Request.Intent.Filters) > 0 {
+		d.SchemaVersion = CurrentSchemaVersion
+		intent := OutputIntent{Enabled: true, DefaultSelected: true, DisplayOrder: 0, Metadata: []OutputMetadata{}}
+		for _, metadata := range d.Metadata {
+			intent.Metadata = append(intent.Metadata, OutputMetadata{Locale: metadata.Locale, DisplayName: metadata.Title, Description: metadata.Description})
+		}
+		d.Outputs[0].Intent = &intent
+	}
 	if err := validateDefinition(ctx, d, s.limits, false); err != nil {
 		return reject("definition_unsupported")
 	}
 	if err := checkResult(ctx, d, result, s.limits); err != nil {
 		return reject("mapping_unsuitable")
 	}
-	revision, err := s.newRevision(e, 1, d, Provenance{Kind: "manual", RuleAbsence: clone(r.Topics), CaptureDigest: digest([]any{AuthoringCompilerVersion, r.InputDigest, r.Attempt})})
+	revision, err := s.newRevision(e, 1, d, Provenance{Kind: "manual", RuleAbsence: clone(r.Topics), CaptureDigest: digest([]any{r.Compiler, r.InputDigest, r.Attempt})})
 	if err != nil {
 		return r, err
 	}
 	r.Revision = &revision
 	r.Status = "prepared"
 	r.Code = ""
-	r.Digest = digest([]any{AuthoringCompilerVersion, r.ID, r.Target, r.InputDigest, revision.Digest, r.Attempt})
+	r.Digest = digest([]any{r.Compiler, r.ID, r.Target, r.InputDigest, revision.Digest, r.Attempt})
 	return r, nil
 }
 

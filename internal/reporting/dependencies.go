@@ -148,6 +148,22 @@ func (s *Service) resolveDefinitions(ctx context.Context, e identity.Envelope, d
 			}
 		}
 	}
+	for _, parameter := range d.Parameters {
+		if !boundedFilterParameter(parameter) {
+			continue
+		}
+		if s.sources == nil {
+			return nil, nil, ErrUnavailable
+		}
+		binding, err := s.sources.ContextBinding(ctx, e, d.Source, d.Context)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := validateBoundedFilterSemantics(ctx, d, binding, out); err != nil {
+			return nil, nil, err
+		}
+		break
+	}
 	return out, definitionReferences(d, out), nil
 }
 

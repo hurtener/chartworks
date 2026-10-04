@@ -44,10 +44,12 @@ Every operation rechecks its authoritative native domain contract. Resource IDs,
 UI modes, host profiles and the metadata projection never grant authority. Pengui
 allocates/authorizes new targets and keeps credentials outside the iframe.
 
-The assembled registry has 83 default tools, or 88 with all five optional
+The assembled registry has 91 default tools, or 96 with all five optional
 rendition operations, within the existing 96-entry metadata ceiling. Per-schema,
 aggregate response, request, concurrency, execution and renderer bounds remain
 unchanged. Bootstrap guidance stays bounded rather than dumping the entire catalog.
+The four [governed option operations](governed-authoring-options-v1.md) provide
+separately explicit dataset/page-filter searches and original-attempt recovery.
 
 ## Finite compiler and custody
 

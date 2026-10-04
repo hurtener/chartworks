@@ -1,4 +1,4 @@
-import {boundedJSON, validateRetainedView} from '../report-viewer/app.js';
+import {boundedJSON, validateRetainedView} from '../report-viewer/presentation.js';
 import {reportPages} from './pages.js';
 import {appError, copyData, validID} from './model.js';
 

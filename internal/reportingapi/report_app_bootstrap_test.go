@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,5 +97,37 @@ func TestReportAppBootstrapHTTPMCPAndStaticGuide(t *testing.T) {
 	guide, err := reportAppGuide(t.Context(), bootstrapAuthority(t, "reporting.read"), struct{}{})
 	if err != nil || !slices.Contains(guide.Documentation, "docs/contracts/report-pages-v3.md") {
 		t.Fatal("inline page contract missing from agent guidance", guide, err)
+	}
+}
+
+func TestReportAppGuidePreservesExplicitOptionLifecycle(t *testing.T) {
+	guide, err := reportAppGuide(t.Context(), bootstrapAuthority(t, "reporting.read"), struct{}{})
+	if err != nil || !slices.Contains(guide.Documentation, "docs/contracts/governed-authoring-options-v1.md") {
+		t.Fatal("governed option guidance missing", err)
+	}
+	steps := strings.Join(guide.Steps, " ")
+	for _, required := range []string{"explicit Search", "option:<UnixSeconds>:<32 lowercase hex>", "values_available=false", "new_operation_allowed=true", "original operation", "explicit mutation", "survives session changes"} {
+		if !strings.Contains(steps, required) {
+			t.Fatal("option agent safety guidance missing", required)
+		}
+	}
+	if len(steps) > 6000 || len(guide.Steps) > 16 {
+		t.Fatal("bootstrap guidance no longer bounded")
+	}
+}
+
+func TestReportAppGuideKeepsPublicationExplicitAndSeparate(t *testing.T) {
+	guide, err := reportAppGuide(t.Context(), bootstrapAuthority(t, "reporting.read"), struct{}{})
+	if err != nil || !slices.Contains(guide.Documentation, "docs/contracts/manual-publication-lifecycle-v1.md") {
+		t.Fatal("manual publication guidance missing", err)
+	}
+	steps := strings.Join(guide.Steps, " ")
+	for _, required := range []string{"every output", "entire_revision", "existing_authorized_readers", "no audience count", "can_publish is only a current hint", "explicit user confirmation", "separately before report publication", "chart publication, private-to-published widget rebind, report review and report publication separate", "Rebind requires separate confirmation", "reject requires a note and native publish authority", "original exact revision", "never automatically repeat a mutation", "independent review pointer"} {
+		if !strings.Contains(steps, required) {
+			t.Fatal("publication guidance lost", required)
+		}
+	}
+	if !strings.Contains(strings.Join(guide.Constraints, " "), "Failed rebind does not undo chart publication") || len(steps) > 6000 || len(guide.Steps) > 16 {
+		t.Fatal("bounded non-rollback guidance lost")
 	}
 }

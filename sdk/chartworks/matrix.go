@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"github.com/hurtener/chartworks/internal/gateway"
+	"github.com/hurtener/chartworks/internal/mcpserver"
 )
 
 // OperationMatrix joins installed HTTP contracts with currently visible MCP tools.
@@ -46,7 +47,7 @@ func (c *Client) OperationMatrix(ctx context.Context, mcpClient *Client) ([]Oper
 			} `json:"tools"`
 		} `json:"result"`
 	}
-	if json.Unmarshal(raw, &response) != nil || response.Version != "2.0" || string(response.ID) != "1" || response.Error != nil || response.Result == nil || len(response.Result.Tools) > 64 {
+	if json.Unmarshal(raw, &response) != nil || response.Version != "2.0" || string(response.ID) != "1" || response.Error != nil || response.Result == nil || len(response.Result.Tools) > mcpserver.MaxRegisteredTools {
 		return nil, ErrInvalidCatalog
 	}
 	byID := make(map[string]int, len(rows))
@@ -55,7 +56,7 @@ func (c *Client) OperationMatrix(ctx context.Context, mcpClient *Client) ([]Oper
 	}
 	names := map[string]bool{}
 	for _, tool := range response.Result.Tools {
-		if !wireID(tool.Name) || len(tool.Name) > 48 || names[tool.Name] {
+		if !matrixToolName(tool.Name) || names[tool.Name] {
 			return nil, ErrInvalidCatalog
 		}
 		names[tool.Name] = true
@@ -106,6 +107,20 @@ func errorContractEqual(expected []OperationError, raw json.RawMessage) bool {
 	}
 	for i := range expected {
 		if actual[i] != expected[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// MCP names obey the server's bounded lowercase operation-name grammar, which
+// is narrower than the ordinary resource identifier grammar used by wireID.
+func matrixToolName(name string) bool {
+	if len(name) < 1 || len(name) > 48 {
+		return false
+	}
+	for _, c := range name {
+		if c != '_' && (c < 'a' || c > 'z') && (c < '0' || c > '9') {
 			return false
 		}
 	}

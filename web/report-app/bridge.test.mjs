@@ -27,7 +27,7 @@ test('manual chart tools preserve explicit source and target without opening gen
  const catalog=h.bridge.call('chart_catalog',{}),message=h.sent.at(-1).message;
  assert.deepEqual(message.params,{name:'chart_catalog',arguments:{}});
  h.receive({jsonrpc:'2.0',id:message.id,result:{kinds:[]}});await catalog;
- for(const name of ['reporting_authoring_block_sql_v1','reporting_authoring_block_publish_v1','execute_sql'])await assert.rejects(h.bridge.call(name,{}),/forbidden/);
+ for(const name of ['reporting_authoring_block_sql_v1','reporting_authoring_block_certify_v1','execute_sql'])await assert.rejects(h.bridge.call(name,{}),/forbidden/);
  h.bridge.close();
 });
 
@@ -153,4 +153,64 @@ test('an allocation transport exception stays unknown and never triggers automat
  h.parent.postMessage=()=>{throw new Error('transport exception');};
  await assert.rejects(h.bridge.allocateTarget(allocationInput()),e=>e.code==='unavailable'&&e.unknown===true);
  assert.equal(h.bridge.pending.size,0);assert.equal(h.sent.length,count);h.bridge.close();
+});
+
+const hostToolsVersion='chartworks-host-tools-v1';
+const supportedHint=names=>({version:hostToolsVersion,names});
+async function toolsConnected(kind,hint,options={}) {
+ const initialize=kind==='mcp'?{hostContext:{'chartworks/target-allocation':{version:allocationVersion},...(hint===undefined?{}:{'chartworks/supported-tools':hint})}}:{capabilities:{target_allocation:{version:allocationVersion},...(hint===undefined?{}:{supported_tools:hint})}};
+ return allocationConnected(kind,{...initialize,...options});
+}
+
+test('both initialized bridges expose only advertised app tools and allocation stays a separate method',async()=>{
+ for(const kind of ['mcp','embedded']) {
+  const h=await toolsConnected(kind,supportedHint(['reporting_view','reporting_authoring_capabilities_v1','unrelated_registered_tool']));
+  assert.equal(h.bridge.supportsTool('reporting_view'),true);assert.equal(h.bridge.supportsTool('reporting_authoring_capabilities_v1'),true);
+  for(const name of ['reporting_run','chart_catalog','reporting_authoring_create_v1','reporting_authoring_block_publish_v1','unrelated_registered_tool','app/allocate-target']) {
+   assert.equal(h.bridge.supportsTool(name),false);const before=h.sent.length;await assert.rejects(h.bridge.call(name,{}),e=>e.code==='forbidden'&&!e.unknown);assert.equal(h.sent.length,before);
+  }
+  const pending=h.bridge.call('reporting_view',{run:'retained-a'}),message=h.sent.at(-1).message;h.receive(h.envelope({id:message.id,result:{ok:true}}));assert.deepEqual(await pending,{ok:true});
+  assert.equal(h.bridge.supportsTargetAllocation(),true);h.bridge.close();assert.equal(h.bridge.supportsTool('reporting_view'),false);
+ }
+});
+
+test('missing hint preserves legacy tool compatibility while an explicit empty list closes provider calls',async()=>{
+ for(const kind of ['mcp','embedded'])for(const hint of [undefined,supportedHint([])]){
+  const h=await toolsConnected(kind,hint);assert.equal(h.bridge.supportsTool('reporting_authoring_create_v1'),hint===undefined);assert.equal(h.bridge.supportsTargetAllocation(),true);h.bridge.close();
+ }
+});
+
+test('malformed, duplicate, unbounded and unknown-version advertised tool hints fail closed',async()=>{
+ const malformed=[null,true,[],{}, {version:hostToolsVersion}, {version:hostToolsVersion,names:'reporting_view'}, {version:'future',names:['reporting_view']}, {version:hostToolsVersion,names:['reporting_view'],grants:true},supportedHint(['reporting_view','reporting_view']),supportedHint(['']),supportedHint(['reporting_view','*']),supportedHint(['reporting_view','app/allocate-target']),supportedHint(['x'.repeat(129)]),supportedHint([null]),supportedHint(Array.from({length:97},(_,i)=>'tool_'+i)),{version:hostToolsVersion,names:['reporting_view'],extra:'x'.repeat(16<<10)}];
+ for(const kind of ['mcp','embedded'])for(const hint of malformed){
+  const h=await toolsConnected(kind,hint),before=h.sent.length;assert.equal(h.bridge.supportsTool('reporting_view'),false);await assert.rejects(h.bridge.call('reporting_view',{}),/forbidden/);assert.equal(h.sent.length,before);assert.equal(h.bridge.supportsTargetAllocation(),true);h.bridge.close();
+ }
+ for(const kind of ['mcp','embedded']){
+  const names=Array.from({length:95},(_,i)=>String(i).padStart(128,'x'));names.push('reporting_view');const h=await toolsConnected(kind,supportedHint(names));assert.equal(h.bridge.supportsTool('reporting_view'),true);assert.equal(h.bridge.supportsTool(names[0]),false);h.bridge.close();
+ }
+});
+
+test('registered names never override disabled provider tool transport or expand the fixed app tool allowlist',async()=>{
+ for(const kind of ['mcp','embedded']) {
+  const h=await toolsConnected(kind,supportedHint(['reporting_view','reporting_authoring_block_publish_v1']),kind==='mcp'?{hostCapabilities:{}}:{tools:false});
+  assert.equal(h.bridge.supportsTool('reporting_view'),false);await assert.rejects(h.bridge.call('reporting_view',{}),/forbidden/);assert.equal(h.bridge.supportsTargetAllocation(),true);h.bridge.close();
+  const active=await toolsConnected(kind,supportedHint(['reporting_authoring_block_certify_v1']));await assert.rejects(active.bridge.call('reporting_authoring_block_certify_v1',{}),/forbidden/);active.bridge.close();
+ }
+});
+
+test('tool hints are detached immutable initialization snapshots and context changes cannot widen or narrow them',async()=>{
+ for(const kind of ['mcp','embedded']) {
+  const hint=supportedHint(['reporting_view']),h=await toolsConnected(kind,hint);hint.names.push('reporting_run');
+  assert.equal(h.bridge.supportsTool('reporting_run'),false);assert(Object.isFrozen(h.bridge.toolHint));assert.throws(()=>h.bridge.toolHint.push('reporting_run'),TypeError);assert.throws(()=>{h.bridge.toolHint=['reporting_run'];},TypeError);
+  for(const names of [[],['reporting_view','reporting_run']])h.receive(h.envelope({method:kind==='mcp'?'ui/notifications/host-context-changed':'context',params:{'chartworks/supported-tools':supportedHint(names),supported_tools:supportedHint(names)}}));
+  assert.equal(h.bridge.supportsTool('reporting_view'),true);assert.equal(h.bridge.supportsTool('reporting_run'),false);
+  const before=h.sent.length;await assert.rejects(h.bridge.connect(),/forbidden/);assert.equal(h.sent.length,before);h.bridge.close();
+  const next=await toolsConnected(kind,supportedHint(['reporting_view','reporting_run']));assert.equal(next.bridge.supportsTool('reporting_run'),true);next.bridge.close();
+ }
+});
+
+
+test('both transports carry exact manual lifecycle tools only when advertised',async()=>{
+ const actions=['lifecycle','block_publish','rebind_published','report_transition'],names=actions.map(action=>`reporting_authoring_${action}_v1`);
+ for(const kind of ['mcp','embedded']){const h=await toolsConnected(kind,supportedHint(names));for(const name of names){const args={report:'exact-report',revision:7},pending=h.bridge.call(name,args),message=h.sent.at(-1).message;assert.deepEqual(message.params,{name,arguments:args});h.receive(h.envelope({id:message.id,result:{ok:true}}));assert.deepEqual(await pending,{ok:true});}h.bridge.close();const narrowed=await toolsConnected(kind,supportedHint(['reporting_authoring_lifecycle_v1']));for(const name of names.slice(1))await assert.rejects(narrowed.bridge.call(name,{}),/forbidden/);narrowed.bridge.close();}
 });

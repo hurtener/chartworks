@@ -17,7 +17,7 @@ func TestRegisteredCatalogCapacity(t *testing.T) {
 		}
 		return out
 	}
-	for _, count := range []int{64, 74, 77, 78, 79, 82, 83, 88, 96} {
+	for _, count := range []int{64, 74, 77, 78, 79, 82, 83, 87, 88, 91, 92, 96} {
 		registry, err := NewRegistry(entries(count))
 		if err != nil || len(registry.Manifest()) != count {
 			t.Fatal("bounded registered inventory rejected or dropped", count, err)
@@ -44,7 +44,7 @@ func TestRegisteredCatalogCapacity(t *testing.T) {
 }
 
 func TestManualChartMutationEffects(t *testing.T) {
-	for _, name := range []string{"block_draft_cas_commit", "private_block_copy_commit", "private_block_preparation_consume"} {
+	for _, name := range []string{"block_draft_cas_commit", "private_block_copy_commit", "private_block_preparation_consume", "block_publication_cas_commit", "report_document_transition_cas_commit"} {
 		got, ok := effectFor(name)
 		if !ok || !got.persists || got.readOnly || got.idempotent || got.paid || got.openWorld || got.destructive {
 			t.Fatalf("invalid metadata mutation effect %s: %+v", name, got)
@@ -68,5 +68,15 @@ func TestManualPreparationEffects(t *testing.T) {
 	status, ok := effectFor("retained_metadata_read")
 	if !ok || !status.readOnly || !status.idempotent || status.openWorld || status.persists || status.paid {
 		t.Fatal("status unexpectedly controls source", status)
+	}
+}
+
+func TestGovernedOptionEffects(t *testing.T) {
+	source, ok := effectFor("bounded_source_read_option_values")
+	if !ok || !source.openWorld || !source.persists || !source.paid || source.readOnly || source.idempotent || source.destructive {
+		t.Fatal("option source read hides cost or retry risk", source)
+	}
+	if MaxRegisteredTools != 96 {
+		t.Fatal("option inventory expanded the existing tool ceiling")
 	}
 }

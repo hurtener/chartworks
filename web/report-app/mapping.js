@@ -31,10 +31,14 @@ export function validateMappingDraft(draft,columns,catalog){
  return copyData(draft);
 }
 export function validationArguments(view,widget,page){
- const parameters=new Set((view.block.parameters||[]).map(p=>p.name)),values=new Map();
- for(const a of widget.literals||[]){if(!parameters.has(a.name)||values.has(a.name))throw appError('invalid_request');values.set(a.name,copyData(a.value));}
- for(const binding of widget.bindings||[]){const filter=page.filters?.find(f=>f.parameter.name===binding.filter);if(!filter||!parameters.has(binding.parameter)||values.has(binding.parameter))throw appError('invalid_request');const value=page.defaults?.find(a=>a.name===binding.filter)?.value??filter.parameter.default;if(value!==undefined)values.set(binding.parameter,copyData(value));}
- return Array.from(values,([name,value])=>({name,value}));
+ const parameters=(view.block.parameters||[]).map(p=>p.name),declared=new Set(parameters),values=new Map();
+ const apply=(arguments_,ignoreUnknown)=>{const seen=new Set();for(const a of arguments_||[]){if(seen.has(a.name)||!ignoreUnknown&&!declared.has(a.name))throw appError('invalid_request');seen.add(a.name);if(declared.has(a.name))values.set(a.name,copyData(a.value));}};
+ // Match native widgetArguments: report block-parameter fallback, widget
+ // literals, then bound filter defaults. Filter names are not fallback keys.
+ apply(page.defaults,true);apply(widget.literals,false);
+ const filters=new Map();for(const filter of page.filters||[]){if(filters.has(filter.parameter.name))throw appError('invalid_request');filters.set(filter.parameter.name,filter.parameter);}
+ const bound=new Set();for(const binding of widget.bindings||[]){const filter=filters.get(binding.filter);if(!filter||!declared.has(binding.parameter)||bound.has(binding.parameter))throw appError('invalid_request');bound.add(binding.parameter);if(filter.default!==undefined&&filter.default!==null)values.set(binding.parameter,copyData(filter.default));}
+ return parameters.filter(name=>values.has(name)).map(name=>({name,value:values.get(name)}));
 }
 export function hasFreshMappingEvidence(view){const b=view?.block,e=b?.validation;return !!e&&e.revision===b.revision&&e.definition_digest===b.digest&&e.execution_digest===b.execution_digest&&Date.parse(e.expires_at)>Date.now();}
 export class MappingSession {

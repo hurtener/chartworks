@@ -1,4 +1,4 @@
-import {boundedJSON} from '../report-viewer/app.js';
+import {boundedJSON} from '../report-viewer/presentation.js';
 import {reportPages, pageContent} from './pages.js';
 
 export const APP_MAX_RESULT = 4 << 20;
@@ -21,7 +21,7 @@ export function unpack(result) {
 export function titleFor(metadata, locale = 'en-US') { return metadata?.find(m => m.locale === locale)?.title || metadata?.[0]?.title || 'Untitled report'; }
 export function newDefinition(title, locale='en-US', timezone='UTC') {
   if (typeof title !== 'string' || !title.trim() || title.length > 256) throw appError('invalid_request');
-  return {schema_version:2, metadata:[{locale,title:title.trim()}],locale,timezone,partial_failure:'fail_closed',widgets:[],filters:[]};
+  return {schema_version:3, metadata:[{locale,title:title.trim()}],locale,timezone,partial_failure:'fail_closed',report_pages:[{id:'main',title:'Summary',widgets:[]}]};
 }
 export function manualDocument(definition) {
   if(!definition||definition.pages?.length||definition.sections?.length)return false;
@@ -29,6 +29,22 @@ export function manualDocument(definition) {
   else if(definition.schema_version===3){if(!Array.isArray(definition.report_pages)||!definition.report_pages.length||['widgets','filters','defaults'].some(k=>definition[k]?.length))return false;}
   else return false;
   return reportPages(definition).every(p=>Array.isArray(p.widgets)&&p.widgets.every(w=>w.kind==='text'||w.kind==='block'&&w.block?.narrative===false));
+}
+// Host registration only narrows native presentation hints; every call still reauthorizes.
+export function narrowCapabilities(value,supports) {
+  if(value?.version!==AUTHORING_VERSION)throw appError('unavailable');
+  const c=copyData(value),has=(...names)=>names.every(supports),author=(...actions)=>has(...actions.map(authoringTool));
+  c.builder=c.builder===true&&author('capabilities','read','save');
+  c.consumer=c.consumer===true&&has('reporting_search','reporting_describe');
+  c.can_create=c.can_create===true&&author('capabilities','create','read','save');
+  c.can_open=c.can_open===true&&author('capabilities','read');
+  c.can_save=c.can_save===true&&author('capabilities','read','save');
+  c.can_preview=c.can_preview===true&&author('preview','execute')&&has('reporting_view');
+  c.can_execute=c.can_execute===true&&has('reporting_run','reporting_view');
+  return c;
+}
+export function editableDocument(definition,supports) {
+  return manualDocument(definition)&&(supports(authoringTool('block_read'))||reportPages(definition).every(p=>!p.filters?.length&&!p.defaults?.length&&p.widgets.every(w=>w.kind==='text'&&!w.block&&!w.query&&!w.bindings?.length&&!w.literals?.length)));
 }
 export function layoutWidgets(widgets, columns=1) {
   if (![1,2,3].includes(columns)) throw appError('invalid_request');
@@ -65,26 +81,26 @@ export function validateManualDefinition(definition) {
 // This is a disposable editor buffer over the canonical DocumentDefinition DTO.
 // Server capabilities are display hints. Every call still needs current authority.
 export class DraftSession {
-  constructor(invoke) { this.invoke=invoke; this.generation=0; this.closed=false; this.pending=false; this.definition=null; this.baseline=null; this.state=null; this.revision=0; this.dirty=false; this.conflict=false; this.uncertain=false; this.capabilities={}; }
-  setCapabilities(c) { if(c?.version!==AUTHORING_VERSION)throw appError('unavailable'); this.capabilities=copyData(c); }
-  replace(view) { if(!validID(view?.state?.id)||!Number.isSafeInteger(view.state.version)||!Number.isSafeInteger(view.revision)||!view.definition)throw appError('unavailable'); this.state=copyData(view.state);this.definition=copyData(view.definition);this.baseline=copyData(view.definition);this.revision=view.revision;this.dirty=false;this.conflict=false;this.uncertain=false; }
-  new(title,locale,timezone) { if(this.closed||this.pending||!this.capabilities.can_create)throw appError('forbidden');this.generation++;this.definition=newDefinition(title,locale,timezone);this.state=null;this.baseline=null;this.revision=0;this.dirty=true;this.conflict=false;this.uncertain=false; }
-  edit(fn) { if(this.pending||this.closed||this.conflict||this.uncertain||!this.definition||!(this.state?this.capabilities.can_save:this.capabilities.can_create)||!manualDocument(this.definition))throw appError('forbidden');const next=copyData(this.definition);fn(next);boundedJSON(next,1<<20);this.definition=next;this.dirty=true; }
-  async open(report) { if(this.pending||!validID(report))throw appError('invalid_request'); const generation=++this.generation;const [capabilities,view]=await Promise.all([this.invoke(authoringTool('capabilities'),{report}),this.invoke(authoringTool('read'),{report,revision:0})]);if(this.closed||generation!==this.generation)return false;this.setCapabilities(capabilities);this.replace(view);return true; }
+  constructor(invoke,supports=()=>true) { this.invoke=invoke;this.supports=supports; this.generation=0; this.closed=false; this.pending=false; this.definition=null; this.baseline=null; this.state=null; this.revision=0; this.stage=''; this.digest=''; this.dirty=false; this.conflict=false; this.uncertain=false; this.capabilities={}; }
+  setCapabilities(c) { this.capabilities=narrowCapabilities(c,this.supports); }
+  replace(view) { if(!validID(view?.state?.id)||!Number.isSafeInteger(view.state.version)||!Number.isSafeInteger(view.revision)||!view.definition)throw appError('unavailable'); this.state=copyData(view.state);this.definition=copyData(view.definition);this.baseline=copyData(view.definition);this.revision=view.revision;this.digest=view.digest||'';this.stage=view.private===false?'published':view.state.review_revision===view.revision?'review':view.state.draft_revision===view.revision?'draft':'private_revision';this.dirty=false;this.conflict=false;this.uncertain=false; }
+  new(title,locale,timezone) { if(this.closed||this.pending||!this.capabilities.can_create)throw appError('forbidden');this.generation++;this.definition=newDefinition(title,locale,timezone);this.state=null;this.baseline=null;this.revision=0;this.stage='draft';this.digest='';this.dirty=true;this.conflict=false;this.uncertain=false; }
+  edit(fn) { if(this.pending||this.closed||this.conflict||this.uncertain||this.stage==='private_revision'||!this.definition||!(this.state?this.capabilities.can_save:this.capabilities.can_create)||!editableDocument(this.definition,this.supports))throw appError('forbidden');const next=copyData(this.definition);fn(next);boundedJSON(next,1<<20);if(!editableDocument(next,this.supports))throw appError('forbidden');this.definition=next;this.dirty=true; }
+  async open(report,stage='') { if(![authoringTool('capabilities'),authoringTool('read')].every(this.supports))throw appError('forbidden');if(this.pending||!validID(report)||!['','draft','review'].includes(stage))throw appError('invalid_request'); const generation=++this.generation;const [capabilities,view]=await Promise.all([this.invoke(authoringTool('capabilities'),{report}),this.invoke(authoringTool('read'),{report,revision:0,...(stage?{stage}:{})})]);if(this.closed||generation!==this.generation)return false;this.setCapabilities(capabilities);this.replace(view);return true; }
   async save(id) {
     if(this.pending||this.closed||this.conflict||this.uncertain||!this.dirty||!this.definition)throw appError('busy');
-    if(!(this.state?this.capabilities.can_save:this.capabilities.can_create))throw appError('forbidden');
+    if(!editableDocument(this.definition,this.supports)||!(this.state?this.capabilities.can_save:this.capabilities.can_create))throw appError('forbidden');
     const definition=copyData(validateManualDefinition(this.definition)),generation=this.generation;
     const creating=!this.state;if(creating&&!validID(id))throw appError('invalid_request');
     const args=creating?{id,definition}:{report:this.state.id,expected_version:this.state.version,revision:this.revision,definition};
     this.pending=true;
-    try { const state=await this.invoke(authoringTool(creating?'create':'save'),args); if(this.closed||generation!==this.generation)return false; if(!validID(state?.id)||state.id!==(creating?id:args.report)||!Number.isSafeInteger(state.version)||!Number.isSafeInteger(state.draft_revision)||state.draft_revision<1)throw appError('unavailable',true);this.state=copyData(state);this.revision=state.draft_revision;this.baseline=copyData(this.definition);this.dirty=false;return true; }
+    try { const state=await this.invoke(authoringTool(creating?'create':'save'),args); if(this.closed||generation!==this.generation)return false; if(!validID(state?.id)||state.id!==(creating?id:args.report)||!Number.isSafeInteger(state.version)||!Number.isSafeInteger(state.draft_revision)||state.draft_revision<1)throw appError('unavailable',true);this.state=copyData(state);this.revision=state.draft_revision;this.stage='draft';this.digest='';this.baseline=copyData(this.definition);this.dirty=false;return true; }
     catch(e) { if(!this.closed&&generation===this.generation){this.conflict=e.code==='conflict';this.uncertain=e.unknown===true||['unavailable','cancelled_or_timed_out'].includes(e.code);} throw e; }
     finally { this.pending=false; }
   }
   canSaveWidget(widget,page) {
     if(page===undefined){if(this.definition?.schema_version!==2)return false;page='main';}
-    if(!this.state||!this.baseline||!this.dirty||this.pending||this.conflict||this.uncertain||!this.capabilities.can_save)return false;
+    if(!this.supports(authoringTool('widget'))||!editableDocument(this.definition,this.supports)||!this.state||this.state.draft_revision!==this.revision||!this.baseline||!this.dirty||this.pending||this.conflict||this.uncertain||!this.capabilities.can_save)return false;
     let current,original;try{current=pageContent(this.definition,page).widgets.find(w=>w.id===widget);original=pageContent(this.baseline,page).widgets.find(w=>w.id===widget);}catch{return false;}if(!current||!original)return false;
     const projected=copyData(this.definition),target=pageContent(projected,page).widgets.find(w=>w.id===widget);target.presentation=copyData(original.presentation);if(original.text)target.text=copyData(original.text);
     return JSON.stringify(projected)===JSON.stringify(this.baseline);
@@ -93,7 +109,7 @@ export class DraftSession {
     if(this.closed||!this.canSaveWidget(widget,page))throw appError('forbidden');if(page===undefined)page='main';
     const current=pageContent(this.definition,page).widgets.find(w=>w.id===widget),patch={presentation:copyData(current.presentation)};if(current.text)patch.text=copyData(current.text);
     const generation=this.generation;this.pending=true;
-    try{const state=await this.invoke(authoringTool('widget'),{report:this.state.id,...(this.definition.schema_version===3?{page}:{}),widget,expected_version:this.state.version,revision:this.revision,patch});if(this.closed||generation!==this.generation)return false;if(state?.id!==this.state.id||!Number.isSafeInteger(state.version)||!Number.isSafeInteger(state.draft_revision)||state.draft_revision<1)throw appError('unavailable',true);this.state=copyData(state);this.revision=state.draft_revision;this.baseline=copyData(this.definition);this.dirty=false;return true;}
+    try{const state=await this.invoke(authoringTool('widget'),{report:this.state.id,...(this.definition.schema_version===3?{page}:{}),widget,expected_version:this.state.version,revision:this.revision,patch});if(this.closed||generation!==this.generation)return false;if(state?.id!==this.state.id||!Number.isSafeInteger(state.version)||!Number.isSafeInteger(state.draft_revision)||state.draft_revision<1)throw appError('unavailable',true);this.state=copyData(state);this.revision=state.draft_revision;this.stage='draft';this.digest='';this.baseline=copyData(this.definition);this.dirty=false;return true;}
     catch(e){if(!this.closed&&generation===this.generation){this.conflict=e.code==='conflict';this.uncertain=e.unknown===true||['unavailable','cancelled_or_timed_out'].includes(e.code);}throw e;}finally{this.pending=false;}
   }
   close() { this.closed=true;this.generation++;this.definition=null;this.baseline=null;this.state=null; }

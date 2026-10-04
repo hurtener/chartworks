@@ -38,7 +38,9 @@ func authoringEntries(service *reporting.Authoring) []runtimeEndpoint {
 		authoringEntry("execute", "reporting.execute", "bounded_frozen_source_read_retained_composition", "Explicitly execute one admitted private report preview with current signed dependency authority", service.Execute),
 	}
 	out = append(out, authoringBlockEntries(service)...)
-	return append(out, authoringPrepareEntries(service)...)
+	out = append(out, authoringPrepareEntries(service)...)
+	out = append(out, authoringLifecycleEntries(service)...)
+	return append(out, authoringOptionEntries(service)...)
 }
 
 // AuthoringRegistry advertises only the bounded manual slice, with exact native
@@ -109,5 +111,15 @@ func AuthoringMCPBindings(service *reporting.Authoring, app ...mcpserver.AppReso
 	if err != nil {
 		return nil, err
 	}
-	return append(out, prepared...), nil
+	out = append(out, prepared...)
+	options, err := authoringOptionMCPBindings(registry, service)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, options...)
+	lifecycle, err := authoringLifecycleMCPBindings(registry, service)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, lifecycle...), nil
 }

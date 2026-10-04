@@ -34,7 +34,7 @@ qualification remain separate gates.
 | Frozen reporting runs — phase 28 | Bounded selected-output execution, optional grounded narrative, durable results and read receipts, explicit recovery, artifact privacy and retention. |
 | Reports/dashboards — phase 29 | Independent revision/review/publication pointers, exact report pages, typed business filters, shared-block output fan-out, opt-in dynamic query durability, partial outcomes and metadata-only artifact summaries. |
 | Reporting schedules — phase 30 | Four real target types on the shared queue; fresh Pengui authority, immutable due/window/revision pins, CAS lifecycle/history, fenced budgets and independent artifact/catalog delivery. No local issuer or fabricated notification. |
-| MCP Apps — phases 22/31 | Shared read viewer and optional manual report app; 83 default mounted tools, or 88 with five optional rendition operations, under the unchanged 96-tool ceiling. Fourteen native mapping kinds; dataset-first creation has a narrower eight-kind compiler. No browser credentials or separate scheduler. |
+| MCP Apps — phases 22/31 | Shared read viewer and optional manual report app; 87 default mounted tools, or 92 with five optional rendition operations, under the unchanged 96-tool ceiling. Fourteen native mapping kinds; dataset-first creation has a narrower eight-kind compiler. No browser credentials or separate scheduler. |
 
 ## Ownership and security
 
@@ -69,7 +69,7 @@ Each request requires a fresh Pengui bearer for the MCP intended audience and
 The transport is stateless and returns JSON, with no bearer persistence or separate
 credential channel. HTTP and in-process clients use the same guarded dispatch.
 
-The current assembled inventory has 83 default tools, or 88 with all five optional
+The current assembled inventory has 87 default tools, or 92 with all five optional
 rendition operations. It includes source/topic/dataset discovery, query and chart
 operations, reporting delivery and versioned manual authoring. The reporting
 delivery tools include `reporting_search`, `reporting_describe`, `reporting_run`,

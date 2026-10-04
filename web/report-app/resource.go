@@ -17,55 +17,20 @@ import (
 
 const URI = "ui://chartworks/report-app/v1"
 
-//go:embed app.js
+const maxResourceBytes = 256 << 10
+
+//go:embed generated/report-app.js
 var appScript string
-
-//go:embed model.js
-var modelScript string
-
-//go:embed allocation.js
-var allocationScript string
-
-//go:embed pages.js
-var pagesScript string
-
-//go:embed mapping.js
-var mappingScript string
-
-//go:embed mapping-editor.js
-var mappingEditorScript string
-
-//go:embed dataset.js
-var datasetScript string
-
-//go:embed dataset-editor.js
-var datasetEditorScript string
-
-//go:embed grid.js
-var gridScript string
-
-//go:embed retained.js
-var retainedScript string
-
-//go:embed bridge.js
-var bridgeScript string
 
 //go:embed styles.css
 var appStyles string
 
-// Source modules stay independently testable. The data-free resource uses exact
-// compiled bytes and hashes, with one shared retained-output presenter rather than copied renderers.
+// The deterministic build consumes readable authored modules, including the
+// canonical retained-output presentation. Regenerate with npm run build; tests
+// reject stale generated assets. No compiler or network is used at runtime.
 func compiledAssets() (string, string) {
-	viewer, css := reportviewer.Assets()
-	script := "const retainedPresentation = (() => {\n" + strings.ReplaceAll(viewer, "export ", "") + "\nreturn {boundedJSON,validateRetainedView,renderRetainedOutput};\n})();\nconst {boundedJSON,validateRetainedView,renderRetainedOutput}=retainedPresentation;\n"
-	for _, source := range []string{modelScript, allocationScript, pagesScript, mappingScript, mappingEditorScript, datasetScript, datasetEditorScript, gridScript, retainedScript, bridgeScript, appScript} {
-		for _, line := range strings.Split(source, "\n") {
-			if !strings.HasPrefix(line, "import ") {
-				script += line + "\n"
-			}
-		}
-	}
-	return script, css + "\n" + appStyles
+	_, css := reportviewer.Assets()
+	return appScript, css + "\n" + appStyles
 }
 
 // HTML is the explicit MCP Apps entrypoint. It never falls back to embedding.
@@ -102,7 +67,11 @@ func EmbeddedHTML(parents []string) (string, error) {
 	}
 	script, css := compiledAssets()
 	script = "const REPORT_APP_EMBEDDED_PARENTS=" + string(encoded) + ";\n" + script
-	return htmlDocument(script, css), nil
+	html := htmlDocument(script, css)
+	if len(html) > maxResourceBytes {
+		return "", errors.New("registered parent origins exceed report app resource limit")
+	}
+	return html, nil
 }
 
 func htmlDocument(script, css string) string {

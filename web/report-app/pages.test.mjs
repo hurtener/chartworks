@@ -5,7 +5,7 @@ import {newDefinition,validateManualDefinition,DraftSession,appError} from './mo
 import {executionFingerprint} from './retained.js';
 const clone=v=>JSON.parse(JSON.stringify(v));
 const heading=(id='intro')=>({id,kind:'text',grid:{column:0,row:0,width:12,height:1},presentation:{title:'Introduction'},text:{format:'plain',text:'Hello'}});
-const flat=()=>({...newDefinition('Original'),widgets:[heading()],filters:[{parameter:{name:'period',type:'integer',default:{literal:'1'}},label:'Period'}],defaults:[{name:'period',value:{literal:'2'}}],audience:['Original audience']});
+const flat=()=>({schema_version:2,metadata:[{locale:'en-US',title:'Original'}],locale:'en-US',timezone:'UTC',partial_failure:'fail_closed',widgets:[heading()],filters:[{parameter:{name:'period',type:'integer',default:{literal:'1'}},label:'Period'}],defaults:[{name:'period',value:{literal:'2'}}],audience:['Original audience']});
 const paged=()=>addReportPage(upgradeReportPages(flat()),'detail','Details');
 const caps={version:'report-authoring-v1',can_save:true,can_create:true};
 function session(d,invoke){const s=new DraftSession(invoke);s.setCapabilities(caps);s.replace({state:{id:'report-a',version:4,draft_revision:3},revision:3,definition:d});return s;}

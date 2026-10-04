@@ -1,0 +1,423 @@
+package acceptance
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/hurtener/chartworks/internal/auth"
+	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/reporting"
+	"github.com/hurtener/chartworks/internal/store"
+)
+
+func optionKey(number int) string {
+	return "option:" + strconv.FormatInt(time.Now().Unix(), 10) + ":" + fmt.Sprintf("%032x", number)
+}
+
+func TestReportAppAuthoringOptions(t *testing.T) {
+	f, s, author, prepare, publication, scopes := filteredDatasetFixture(t)
+	ctx := t.Context()
+	before, models := f.attemptCount(t), f.f.model.requests.Load()
+	in := reporting.AuthoringOptionRequest{Target: reporting.AuthoringOptionTarget{Dataset: &reporting.AuthoringDatasetOptionTarget{NewBlock: prepare.NewBlock, Topic: prepare.Intent.Topic, Dataset: prepare.Intent.Dataset, Dimension: "region"}}, Operation: optionKey(1), Limit: 2, Locale: "en-US"}
+	firstRequest := phase27Copy(t, in)
+	first, err := s.DatasetOptions(ctx, author, in)
+	if err != nil || first.Status != "completed" || !first.ValuesAvailable || first.Complete || len(first.Options) != 2 || first.Next == "" || first.Options[0].Label != "" || first.Options[1].Label != "East" {
+		t.Fatal("first governed options", first, err)
+	}
+	if f.attemptCount(t) != before+1 {
+		t.Fatal("one explicit lookup did not use one read")
+	}
+	replay, err := s.DatasetOptions(ctx, author, in)
+	if err != nil || replay.ValuesAvailable || replay.Complete || !replay.NewOperationAllowed || replay.Code != "result_not_retained" || len(replay.Options) != 0 || f.attemptCount(t) != before+1 {
+		t.Fatal("option replay reran or fabricated empty values", replay, err)
+	}
+	status, err := s.OptionStatus(ctx, author, reporting.AuthoringOptionReference{Target: in.Target, Operation: in.Operation})
+	if err != nil || status.InputDigest != first.InputDigest || status.ValuesAvailable || f.attemptCount(t) != before+1 {
+		t.Fatal("status source work", status, err)
+	}
+	otherSession, err := f.f.f.token.verifier.Verify(ctx, phase27Token(t, f.f, author.User(), "second-options-session", scopes), auth.HTTP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response, err := s.DatasetOptions(ctx, otherSession, in); err == nil || response.ValuesAvailable || f.attemptCount(t) != before+1 {
+		t.Fatal("completed operation repeated across sessions", response, err)
+	}
+	changed := phase27Copy(t, in)
+	changed.Search = "North"
+	if _, err := s.DatasetOptions(ctx, author, changed); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("changed search reused operation", err)
+	}
+	changed.Operation = optionKey(2)
+	changed.Cursor = first.Next
+	if _, err := s.DatasetOptions(ctx, author, changed); err == nil {
+		t.Fatal("cursor rebound to search")
+	}
+	in.Operation = optionKey(3)
+	in.Cursor = first.Next
+	second, err := s.DatasetOptions(ctx, author, in)
+	if err != nil || !second.ValuesAvailable || len(second.Options) != 2 || second.Options[0].Label != "North" || second.Options[1].Label != "South" {
+		t.Fatal("keyset second page", second, err)
+	}
+	in.Operation = optionKey(4)
+	in.Cursor = second.Next
+	last, err := s.DatasetOptions(ctx, author, in)
+	if err != nil || !last.Complete || len(last.Options) != 1 || last.Options[0].Label != "x' OR true --" {
+		t.Fatal("NULL leaked or keyset skipped values", last, err)
+	}
+	in.Operation = optionKey(5)
+	in.Cursor = ""
+	in.Search = "x' OR true --"
+	literal, err := s.DatasetOptions(ctx, author, in)
+	if err != nil || len(literal.Options) != 1 || literal.Options[0].Label != in.Search {
+		t.Fatal("search was not literal", literal, err)
+	}
+	in.Operation = optionKey(6)
+	in.Search = "%"
+	empty, err := s.DatasetOptions(ctx, author, in)
+	if err != nil || !empty.ValuesAvailable || !empty.Complete || len(empty.Options) != 0 {
+		t.Fatal("escaped wildcard or genuine empty page", empty, err)
+	}
+	if f.attemptCount(t) != before+5 {
+		t.Fatal("unexpected retry source work")
+	}
+	// Search runs over the complete reviewed relation, not an initial client page.
+	if _, err := f.f.f.admin.Exec(ctx, `INSERT INTO analytics.sales(id,amount,created_at,name) SELECT 1000+n,1,'2026-01-02','region-'||lpad(n::text,3,'0') FROM generate_series(1,205) n`); err != nil {
+		t.Fatal(err)
+	}
+	in.Operation = optionKey(7)
+	in.Search = "region-205"
+	in.Limit = 199
+	full, err := s.DatasetOptions(ctx, author, in)
+	if err != nil || len(full.Options) != 1 || full.Options[0].Label != "region-205" || !full.Complete {
+		t.Fatal("full governed population search", full, err)
+	}
+	in.Operation = optionKey(8)
+	in.Search = ""
+	page, err := s.DatasetOptions(ctx, author, in)
+	if err != nil || len(page.Options) != 199 || page.Complete || page.Next == "" {
+		t.Fatal("199+1 options bound", page, err)
+	}
+	continuation := phase27Copy(t, in)
+	continuation.Operation = optionKey(13)
+	continuation.Cursor = page.Next
+	remaining, err := s.DatasetOptions(ctx, author, continuation)
+	if err != nil || !remaining.Complete || len(remaining.Options) != 11 || !remaining.ValuesAvailable {
+		t.Fatal("199 page omitted the remaining governed population", remaining, err)
+	}
+	for _, limit := range []int{200, 201} {
+		invalid := phase27Copy(t, in)
+		invalid.Operation = optionKey(100 + limit)
+		invalid.Limit = limit
+		if _, err := s.DatasetOptions(ctx, author, invalid); !errors.Is(err, reporting.ErrInvalid) {
+			t.Fatal("oversized page admitted", limit, err)
+		}
+	}
+	nextSession := phase27Copy(t, in)
+	nextSession.Operation = optionKey(12)
+	nextSession.Search = "East"
+	beforeSession := f.attemptCount(t)
+	if response, err := s.DatasetOptions(ctx, otherSession, nextSession); err != nil || !response.ValuesAvailable || f.attemptCount(t) != beforeSession+1 {
+		t.Fatal("explicit new session operation failed", response, err)
+	}
+	// Lost authority is checked before retained lookup payload projection.
+	limited := phase27Actor(t, f.f, author.User(), slices.DeleteFunc(slices.Clone(scopes), func(x string) bool { return x == "cw.source.query:"+publication.Definition.Datasets[0].Source.Source }))
+	denied, err := s.OptionStatus(ctx, limited, reporting.AuthoringOptionReference{Target: in.Target, Operation: in.Operation})
+	if err == nil || !reflect.DeepEqual(denied, reporting.AuthoringOptionView{}) {
+		t.Fatal("status leaked after source reach loss", denied, err)
+	}
+	// Expired operation IDs cannot dispatch after the metadata tombstone is gone.
+	expired := phase27Copy(t, in)
+	expired.Operation = "option:" + strconv.FormatInt(time.Now().Add(-25*time.Hour).Unix(), 10) + ":" + fmt.Sprintf("%032x", 9)
+	if _, err := s.DatasetOptions(ctx, author, expired); !errors.Is(err, store.ErrExpired) {
+		t.Fatal("expired operation became fresh", err)
+	}
+
+	if _, err := f.f.f.admin.Exec(ctx, `INSERT INTO analytics.sales(id,amount,created_at,name) VALUES(2000,1,'2026-01-02',$1)`, "oversize-"+strings.Repeat("q", 600<<10)); err != nil {
+		t.Fatal(err)
+	}
+	oversized := phase27Copy(t, in)
+	oversized.Operation = optionKey(23)
+	oversized.Search = "oversize-"
+	oversized.Cursor = ""
+	if response, err := s.DatasetOptions(ctx, author, oversized); err != nil || response.ValuesAvailable || len(response.Options) != 0 || response.Complete || response.Status != "failed" {
+		t.Fatal("oversized option values released", response, err)
+	}
+
+	if _, err := f.f.f.admin.Exec(ctx, `INSERT INTO analytics.sales(id,amount,created_at,name) SELECT 3000+n,1,'2026-01-02','serialization-'||lpad(n::text,3,'0')||repeat(chr(10),950) FROM generate_series(1,150) n`); err != nil {
+		t.Fatal(err)
+	}
+	escaped := phase27Copy(t, in)
+	escaped.Operation = optionKey(25)
+	escaped.Search = "serialization-"
+	escaped.Cursor = ""
+	if response, err := s.DatasetOptions(ctx, author, escaped); err != nil || response.ValuesAvailable || len(response.Options) != 0 || response.Code != "option_result_budget" || response.Status != "failed" {
+		t.Fatal("duplicated escaped options exceeded transport budget", response, err)
+	}
+	// The UI uses an explicit full bounded page, distinct from the small native
+	// pagination cases above. Capture this exact request/response for conformance.
+	wireRequest := phase27Copy(t, firstRequest)
+	wireRequest.Operation = optionKey(25)
+	wireRequest.Limit = 199
+	wireRequest.Search = "East"
+	wireResponse, err := s.DatasetOptions(ctx, author, wireRequest)
+	if err != nil || !wireResponse.ValuesAvailable || len(wireResponse.Options) != 1 || wireResponse.Options[0].Label != "East" {
+		t.Fatal("UI bounded lookup wire", wireResponse, err)
+	}
+	// The same source/options become report filters by exact native bindings.
+	prepared, err := s.PrepareDatasetChart(ctx, author, prepare)
+	if err != nil || prepared.Status != "prepared" {
+		t.Fatal(prepared, err)
+	}
+	created, err := s.CreatePreparedChart(ctx, author, reporting.AuthoringCreatePreparedRequest{NewBlock: prepare.NewBlock, Preparation: prepared.Preparation, Digest: prepared.Digest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	widget := phase29BlockWidget("options-widget", prepare.NewBlock, 0, "chart")
+	widget.Block.Policy = "private_preview"
+	widget.Block.Revision = created.Block.Revision
+	widget.Block.Digest = created.Block.Digest
+	var filter reporting.Parameter
+	for _, p := range created.Block.Parameters {
+		if p.Type == "dimension_set" {
+			filter = phase27Copy(t, p)
+			filter.Name = "region"
+			widget.Bindings = []reporting.FilterBinding{{Filter: "region", Parameter: p.Name}}
+		}
+	}
+	document := phase29Text("Option report")
+	document.SchemaVersion = reporting.PagedDocumentVersion
+	document.Widgets = nil
+	document.ReportPages = []reporting.ReportPage{{ID: "analysis", Title: "Analysis", Widgets: []reporting.Widget{widget}, Filters: []reporting.ReportFilter{{Parameter: filter, Label: "Region"}}}}
+	state, err := s.Create(ctx, author, reporting.AuthoringCreateRequest{ID: "filtered-report", Definition: document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := s.Read(ctx, author, reporting.AuthoringReadRequest{Report: state.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reportRequest := reporting.AuthoringOptionRequest{Target: reporting.AuthoringOptionTarget{Report: &reporting.AuthoringReportOptionTarget{Report: state.ID, Revision: state.DraftRevision, Digest: saved.Digest, Page: "analysis", Filter: "region", Policy: "private_preview"}}, Operation: optionKey(10), Search: "East", Limit: 20, Locale: "en-US"}
+	private, err := s.ReportOptions(ctx, author, reportRequest)
+	if err != nil || !private.ValuesAvailable || len(private.Options) != 1 || private.Options[0].Label != "East" {
+		t.Fatal("private exact options", private, err)
+	}
+	privateReads := f.attemptCount(t)
+	for _, deniedActor := range []identity.Envelope{phase27Actor(t, f.f, "other-private-actor", scopes), phase27Actor(t, f.f, author.User(), slices.DeleteFunc(slices.Clone(scopes), func(x string) bool { return x == "reporting.preview" || strings.Contains(x, ".preview:") }))} {
+		blocked := phase27Copy(t, reportRequest)
+		blocked.Operation = optionKey(14)
+		if response, err := s.ReportOptions(ctx, deniedActor, blocked); err == nil || !reflect.DeepEqual(response, reporting.AuthoringOptionView{}) || f.attemptCount(t) != privateReads {
+			t.Fatal("private actor/preview authority bypass", response, err)
+		}
+	}
+	current, err := s.Read(ctx, author, reporting.AuthoringReadRequest{Report: state.ID})
+	if err != nil || !reflect.DeepEqual(current.Definition, saved.Definition) {
+		t.Fatal("options changed defaults", err)
+	}
+	if f.f.model.requests.Load() != models {
+		t.Fatal("option lookup invoked model")
+	}
+	// Publication is explicit; saved defaults remain byte-identical on rebind.
+	publisher := phase27Actor(t, f.f, author.User(), append(slices.Clone(scopes), "reporting.publish", "cw.block.publish:"+prepare.NewBlock, "cw.report.publish:"+state.ID))
+	native, err := f.blocks.Read(ctx, publisher, prepare.NewBlock, reporting.Reference{Revision: created.Block.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	phase27ValidatePublish(t, f.blocks, publisher, native)
+	rebound := phase27Copy(t, saved.Definition)
+	rebound.ReportPages[0].Widgets[0].Block.Policy = "published"
+	rebound.ReportPages[0].Widgets[0].Block.Digest = ""
+	state, err = s.Save(ctx, publisher, reporting.AuthoringSaveRequest{Report: state.ID, ExpectedVersion: state.Version, Revision: state.DraftRevision, Definition: rebound})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	privatePublished, err := s.Read(ctx, publisher, reporting.AuthoringReadRequest{Report: state.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	draftPublished := phase27Copy(t, reportRequest)
+	draftPublished.Operation = optionKey(18)
+	draftPublished.Target.Report.Revision = state.DraftRevision
+	draftPublished.Target.Report.Digest = privatePublished.Digest
+	withoutBlockPreview := phase27Actor(t, f.f, author.User(), slices.DeleteFunc(slices.Clone(scopes), func(x string) bool { return x == "cw.block.preview:"+prepare.NewBlock }))
+	if choices, err := s.ReportOptions(ctx, withoutBlockPreview, draftPublished); err != nil || !choices.ValuesAvailable {
+		t.Fatal("private parent imposed preview on published dependency", choices, err)
+	}
+	mixedPolicies := phase27Copy(t, saved.Definition)
+	publishedWidget := phase27Copy(t, rebound.ReportPages[0].Widgets[0])
+	publishedWidget.ID = "published-same-revision"
+	publishedWidget.Grid.Row = 1
+	mixedPolicies.ReportPages[0].Widgets = append(mixedPolicies.ReportPages[0].Widgets, publishedWidget)
+	state, err = s.Save(ctx, publisher, reporting.AuthoringSaveRequest{Report: state.ID, ExpectedVersion: state.Version, Revision: state.DraftRevision, Definition: mixedPolicies})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mixedPrivate, err := s.Read(ctx, publisher, reporting.AuthoringReadRequest{Report: state.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mixedRequest := phase27Copy(t, reportRequest)
+	mixedRequest.Operation = optionKey(19)
+	mixedRequest.Target.Report.Revision = state.DraftRevision
+	mixedRequest.Target.Report.Digest = mixedPrivate.Digest
+	if choices, err := s.ReportOptions(ctx, publisher, mixedRequest); err != nil || !choices.ValuesAvailable {
+		t.Fatal("mixed private/public same revision", choices, err)
+	}
+	policies, err := f.f.f.db.ReadAuthoringOption(ctx, publisher, reporting.AuthoringOptionReference{Target: mixedRequest.Target, Operation: mixedRequest.Operation})
+	if err != nil || len(policies.Blocks) != 2 || policies.Blocks[0].Policy == policies.Blocks[1].Policy {
+		t.Fatal("policy custody collapsed", policies, err)
+	}
+	mixedRequest.Operation = optionKey(20)
+	if choices, err := s.ReportOptions(ctx, withoutBlockPreview, mixedRequest); err == nil || choices.ValuesAvailable {
+		t.Fatal("published reference laundered private preview requirement", choices, err)
+	}
+	// Explicitly rebind the remaining private reference before report publication.
+	mixedPolicies.ReportPages[0].Widgets[0].Block.Policy = "published"
+	mixedPolicies.ReportPages[0].Widgets[0].Block.Digest = ""
+	state, err = s.Save(ctx, publisher, reporting.AuthoringSaveRequest{Report: state.ID, ExpectedVersion: state.Version, Revision: state.DraftRevision, Definition: mixedPolicies})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = phase29Publish(t, f.documents, publisher, state)
+	published, err := f.documents.Read(ctx, publisher, "report", state.ID, reporting.DocumentReference{Revision: state.PublishedRevision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumerScopes := slices.DeleteFunc(slices.Clone(scopes), func(x string) bool {
+		return x == "reporting.preview" || x == "reporting.write" || x == "reporting.validate" || x == "charts.bind" || strings.Contains(x, ".preview:")
+	})
+	consumer := phase27Actor(t, f.f, "option-consumer", consumerScopes)
+	delivery, err := reporting.NewDelivery(f.blocks, f.runs, f.documents, f.compositions, f.f.f.db, f.limits.Viewer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	description, err := delivery.Describe(ctx, consumer, reporting.DeliveryDescribeRequest{Target: reporting.DeliveryTarget{Kind: "report", ID: state.ID, Revision: state.PublishedRevision}, Locale: "en-US"})
+	if err != nil || description.DefinitionDigest != published.Digest {
+		t.Fatal("published description omitted native digest", description, err)
+	}
+	reportRequest.Operation = optionKey(11)
+	reportRequest.Target.Report.Policy = "published"
+	reportRequest.Target.Report.Revision = state.PublishedRevision
+	reportRequest.Target.Report.Digest = description.DefinitionDigest
+	public, err := s.ReportOptions(ctx, consumer, reportRequest)
+	if err != nil || !public.ValuesAvailable || len(public.Options) != 1 || public.Options[0].Label != "East" {
+		t.Fatal("Consumer options continuity", public, err)
+	}
+	if !reflect.DeepEqual(saved.Definition.ReportPages[0].Filters, published.Definition.ReportPages[0].Filters) {
+		t.Fatal("publication changed canonical filters/defaults")
+	}
+	// A newer publication does not substitute an old exact eligible block pin.
+	rawBlock, err := f.f.f.db.ReadBlock(ctx, publisher, prepare.NewBlock, reporting.Reference{Revision: created.Block.Revision}, reporting.Write)
+	if err != nil {
+		t.Fatal(err)
+	}
+	amendment := phase27Copy(t, rawBlock.Revision.Definition)
+	amendment.Metadata[0].Description = "Second synthetic reviewed display revision"
+	updated, err := f.blocks.Edit(ctx, publisher, prepare.NewBlock, reporting.EditRequest{ExpectedVersion: rawBlock.State.Version, Definition: amendment})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondBlock, _ := phase27ValidatePublish(t, f.blocks, publisher, updated)
+	reportRequest.Operation = optionKey(16)
+	if old, err := s.ReportOptions(ctx, consumer, reportRequest); err != nil || !old.ValuesAvailable {
+		t.Fatal("new block publication invalidated exact old pin", old, err)
+	}
+	mixed := phase27Copy(t, published.Definition)
+	a := mixed.ReportPages[0].Widgets[0]
+	b := phase27Copy(t, a)
+	b.ID = "options-widget-two"
+	b.Grid.Row = 1
+	b.Block.Revision = secondBlock.PublishedRevision
+	c := phase27Copy(t, a)
+	c.ID = "options-widget-three"
+	c.Grid.Row = 2
+	mixed.ReportPages[0].Widgets = []reporting.Widget{a, b, c}
+	state, err = s.Save(ctx, publisher, reporting.AuthoringSaveRequest{Report: state.ID, ExpectedVersion: state.Version, Revision: state.PublishedRevision, Definition: mixed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = phase29Publish(t, f.documents, publisher, state)
+	published, err = f.documents.Read(ctx, publisher, "report", state.ID, reporting.DocumentReference{Revision: state.PublishedRevision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reportRequest.Operation = optionKey(17)
+	reportRequest.Target.Report.Revision = state.PublishedRevision
+	reportRequest.Target.Report.Digest = published.Digest
+	if mixedPage, err := s.ReportOptions(ctx, consumer, reportRequest); err != nil || !mixedPage.ValuesAvailable || len(mixedPage.Options) != 1 {
+		t.Fatal("repeated mixed published revision options", mixedPage, err)
+	}
+	record, err := f.f.f.db.ReadAuthoringOption(ctx, consumer, reporting.AuthoringOptionReference{Target: reportRequest.Target, Operation: reportRequest.Operation})
+	if err != nil || len(record.Blocks) != 2 {
+		t.Fatal("exact block refs not deduplicated", record, err)
+	}
+	floating := phase27Copy(t, published.Definition)
+	floating.ReportPages[0].Widgets[0].Block.Revision = 0
+	state, err = s.Save(ctx, publisher, reporting.AuthoringSaveRequest{Report: state.ID, ExpectedVersion: state.Version, Revision: state.PublishedRevision, Definition: floating})
+	if err != nil {
+		t.Fatal(err)
+	}
+	floatingView, err := s.Read(ctx, publisher, reporting.AuthoringReadRequest{Report: state.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	floatingRequest := phase27Copy(t, reportRequest)
+	floatingRequest.Operation = optionKey(24)
+	floatingRequest.Target.Report.Policy = "private_preview"
+	floatingRequest.Target.Report.Revision = state.DraftRevision
+	floatingRequest.Target.Report.Digest = floatingView.Digest
+	beforeFloating := f.attemptCount(t)
+	if response, err := s.ReportOptions(ctx, publisher, floatingRequest); err != nil || response.Status != "unsupported" || response.Code != "option_exact_block_revision_required" || response.ValuesAvailable || f.attemptCount(t) != beforeFloating {
+		t.Fatal("floating option pin not rejected before source work", response, err)
+	}
+
+	// Local-only synthetic wire capture for UI/native DTO conformance. The exporter
+	// deliberately excludes envelopes, SQL, source controls and operational records.
+	if path := os.Getenv("CHARTWORKS_FILTER_DTO_PATH"); path != "" {
+		metadata, err := s.Dataset(ctx, author, reporting.AuthoringDatasetRequest{Topic: prepare.Intent.Topic, Dataset: prepare.Intent.Dataset})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire, err := json.MarshalIndent(map[string]any{"dataset": metadata, "prepare_request": prepare, "option_request": wireRequest, "option_response": wireResponse, "created": created}, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var decoded any
+		if err := json.Unmarshal(wire, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		var inspect func(any)
+		inspect = func(value any) {
+			switch v := value.(type) {
+			case map[string]any:
+				for key, child := range v {
+					switch key {
+					case "sql", "statement", "attempt", "remote", "manifest", "session", "token", "credential", "authorization", "password", "dsn":
+						t.Fatal("private custody in DTO capture", key)
+					}
+					inspect(child)
+				}
+			case []any:
+				for _, child := range v {
+					inspect(child)
+				}
+			}
+		}
+		inspect(decoded)
+		if len(wire) > 512<<10 {
+			t.Fatal("DTO capture bound")
+		}
+		if err := os.WriteFile(path, wire, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+}

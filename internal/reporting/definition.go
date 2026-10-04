@@ -204,6 +204,9 @@ func validateDefinition(ctx context.Context, d Definition, limits config.Reporti
 	if err := validateDeclarations(d.Parameters, limits.MaxParameters); err != nil {
 		return err
 	}
+	if err := validateBoundedFilterSQL(ctx, d.SQL, d.Parameters); err != nil {
+		return err
+	}
 	fields := map[string]exec.Field{}
 	for _, f := range d.ExpectedSchema {
 		if strings.TrimSpace(f.Name) == "" || !text(f.Name, 256) || !text(f.NativeType, 128) || f.NativeType == "" || f.Encoding == "" || !text(f.Encoding, 64) || fields[f.Name].Name != "" || chartType(f.Type) == "" {
@@ -221,7 +224,7 @@ func validateDefinition(ctx context.Context, d Definition, limits config.Reporti
 			}
 		}
 		for _, parameter := range d.Parameters {
-			if listScalarType(parameter.Type) != "" {
+			if listScalarType(parameter.Type) != "" || boundedFilterParameter(parameter) {
 				return ErrInvalid
 			}
 		}

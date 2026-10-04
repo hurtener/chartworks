@@ -15,7 +15,8 @@ var _ reporting.DocumentDraftRepository = (*DB)(nil)
 
 // ListDocumentDrafts is a separate private authoring catalog. The signed
 // tenant, exact report-write selection and complete stored dependencies are
-// applied in SQL before metadata projection or pagination. Published-only
+// applied in SQL before metadata projection or pagination. Pending review stays
+// recoverable after the native transition clears the draft pointer. Published-only
 // ListDocuments and its consumer semantics remain unchanged.
 func (d *DB) ListDocumentDrafts(ctx context.Context, e identity.Envelope, after string, limit int) (out reporting.DraftList, err error) {
 	out.Items = []reporting.DraftSummary{}
@@ -44,9 +45,11 @@ func (d *DB) ListDocumentDrafts(ctx context.Context, e identity.Envelope, after 
 	}
 	defer cancel()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT h.document_id,h.version,r.revision,r.definition->'metadata',h.updated_at
+		rows, err := tx.Query(ctx, `SELECT h.document_id,h.version,r.revision,r.definition->'metadata',h.updated_at,
+ CASE WHEN h.draft_revision IS NOT NULL THEN 'draft' ELSE 'review' END,
+ COALESCE(h.draft_revision,0),COALESCE(h.review_revision,0)
  FROM chartworks.document_heads h JOIN chartworks.document_revisions r
- ON(r.tenant_id,r.kind,r.document_id,r.revision)=(h.tenant_id,h.kind,h.document_id,h.draft_revision)
+ ON(r.tenant_id,r.kind,r.document_id,r.revision)=(h.tenant_id,h.kind,h.document_id,COALESCE(h.draft_revision,h.review_revision))
  WHERE h.tenant_id=$1 AND h.kind='report' AND h.document_id>$2 AND NOT h.archived AND NOT h.deleted
  AND ($3::boolean OR h.document_id=ANY($4::text[]))
  AND NOT EXISTS(SELECT 1 FROM chartworks.document_publications p WHERE (p.tenant_id,p.kind,p.document_id,p.revision)=(r.tenant_id,r.kind,r.document_id,r.revision))
@@ -59,7 +62,7 @@ func (d *DB) ListDocumentDrafts(ctx context.Context, e identity.Envelope, after 
 		for rows.Next() {
 			var item reporting.DraftSummary
 			var metadata []byte
-			if err := rows.Scan(&item.ID, &item.Version, &item.Revision, &metadata, &item.Updated); err != nil {
+			if err := rows.Scan(&item.ID, &item.Version, &item.Revision, &metadata, &item.Updated, &item.Stage, &item.DraftRevision, &item.ReviewRevision); err != nil {
 				return err
 			}
 			if json.Unmarshal(metadata, &item.Metadata) != nil {

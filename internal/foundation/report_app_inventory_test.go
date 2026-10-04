@@ -77,30 +77,47 @@ func TestReportAppFullFactoryInventory(t *testing.T) {
 		{"delivery-and-renditions", 12, func() ([]mcpserver.Binding, error) {
 			return reportingapi.DeliveryMCPBindings(&reporting.Delivery{}, true, renderer)
 		}},
-		{"authoring", 17, func() ([]mcpserver.Binding, error) { return reportingapi.AuthoringMCPBindings(authoring, app) }},
+		{"authoring", 25, func() ([]mcpserver.Binding, error) { return reportingapi.AuthoringMCPBindings(authoring, app) }},
 		{"bootstrap", 2, func() ([]mcpserver.Binding, error) { return reportingapi.ReportAppBootstrapMCPBindings(authoring, app) }},
 	}
 	bindings := []mcpserver.Binding{}
+	defaultBindings := []mcpserver.Binding{}
 	for _, factory := range factories {
 		group, err := factory.build()
 		if err != nil || len(group) != factory.count {
 			t.Fatalf("actual %s factory: count=%d want=%d error=%v", factory.name, len(group), factory.count, err)
 		}
 		bindings = append(bindings, group...)
+		if factory.name != "delivery-and-renditions" {
+			defaultBindings = append(defaultBindings, group...)
+		}
+	}
+	defaultDelivery, err := reportingapi.DeliveryMCPBindings(&reporting.Delivery{}, true)
+	if err != nil || len(defaultDelivery) != 7 {
+		t.Fatal("default delivery inventory drift", len(defaultDelivery), err)
+	}
+	defaultBindings = append(defaultBindings, defaultDelivery...)
+	defaultSelected, err := mcpserver.SelectGroups(defaultBindings, defaults.MCP.Groups)
+	if err != nil || len(defaultBindings) != 91 || len(defaultSelected) != 91 {
+		t.Fatal("default inventory drift", len(defaultBindings), len(defaultSelected), err)
+	}
+	defaultRegistry, err := mcpserver.NewRegistry(defaultSelected)
+	if err != nil || len(defaultRegistry.Manifest()) != 91 || mcpserver.MaxRegisteredTools != 96 {
+		t.Fatal("default actual registry rejected or ceiling changed", err)
 	}
 	selected, err := mcpserver.SelectGroups(bindings, defaults.MCP.Groups)
-	if err != nil || len(bindings) != 88 || len(selected) != 88 {
+	if err != nil || len(bindings) != 96 || len(selected) != 96 {
 		t.Fatal("complete configured inventory drift", len(bindings), len(selected), err)
 	}
 	registry, err := mcpserver.NewRegistry(selected)
-	if err != nil || len(registry.Manifest()) != 88 {
+	if err != nil || len(registry.Manifest()) != 96 {
 		t.Fatal("complete actual registry rejected", err)
 	}
 	names := map[string]bool{}
 	for _, tool := range registry.Manifest() {
 		names[tool.Name] = true
 	}
-	for _, name := range []string{"get_query_context", "reporting_search", "reporting_view", "reporting_rendition_create", "reporting_rendition_read", "reporting_authoring_widget_v1", "reporting_authoring_block_read_v1", "reporting_authoring_block_mapping_v1", "reporting_authoring_block_copy_v1", "reporting_authoring_block_validate_v1", "reporting_authoring_dataset_v1", "reporting_authoring_prepare_chart_v1", "reporting_authoring_preparation_v1", "reporting_authoring_create_prepared_v1", "reporting_authoring_preparation_control_v1", "report_app_bootstrap_v1"} {
+	for _, name := range []string{"get_query_context", "reporting_search", "reporting_view", "reporting_rendition_create", "reporting_rendition_read", "reporting_authoring_widget_v1", "reporting_authoring_block_read_v1", "reporting_authoring_block_mapping_v1", "reporting_authoring_block_copy_v1", "reporting_authoring_block_validate_v1", "reporting_authoring_dataset_v1", "reporting_authoring_prepare_chart_v1", "reporting_authoring_preparation_v1", "reporting_authoring_create_prepared_v1", "reporting_authoring_preparation_control_v1", "reporting_authoring_dataset_options_v1", "reporting_authoring_report_options_v1", "reporting_authoring_option_status_v1", "reporting_authoring_option_control_v1", "report_app_bootstrap_v1", "reporting_authoring_lifecycle_v1", "reporting_authoring_block_publish_v1", "reporting_authoring_rebind_published_v1", "reporting_authoring_report_transition_v1"} {
 		if !names[name] {
 			t.Fatal("missing actual optional contract", name)
 		}

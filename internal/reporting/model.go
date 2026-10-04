@@ -114,7 +114,7 @@ type DimensionReference struct {
 // them to the common reader's typed bind parameters; SQL fragments are absent.
 type Parameter struct {
 	Name       string              `json:"name"`
-	Type       string              `json:"type" jsonschema:"enum=date,enum=datetime,enum=relative_period,enum=dimension_value,enum=number,enum=integer,enum=boolean,enum=grain,enum=top_n,enum=dimension_list,enum=number_list,enum=integer_list"`
+	Type       string              `json:"type" jsonschema:"enum=date,enum=datetime,enum=relative_period,enum=dimension_value,enum=number,enum=integer,enum=boolean,enum=grain,enum=top_n,enum=dimension_list,enum=number_list,enum=integer_list,enum=dimension_set,enum=date_range"`
 	Required   bool                `json:"required"`
 	Default    *Value              `json:"default,omitempty"`
 	Min        string              `json:"min,omitempty"`
@@ -124,11 +124,18 @@ type Parameter struct {
 	ListLength int                 `json:"list_length,omitempty" jsonschema:"minimum=0,maximum=32"`
 }
 
-// Value carries exactly one scalar literal or a structured period.
+// DateRange is a half-open range of civil dates, independent of any timezone.
+type DateRange struct {
+	Start        string `json:"start"`
+	EndExclusive string `json:"end_exclusive"`
+}
+
+// Value is a closed typed union interpreted by its parameter declaration.
 type Value struct {
-	Literal string   `json:"literal,omitempty"`
-	Period  *Period  `json:"period,omitempty"`
-	Items   []string `json:"items,omitempty"`
+	DateRange *DateRange `json:"date_range,omitempty"`
+	Literal   string     `json:"literal,omitempty"`
+	Period    *Period    `json:"period,omitempty"`
+	Items     []string   `json:"items,omitempty"`
 }
 
 // Argument assigns a typed value to a declared parameter by name.
@@ -167,11 +174,12 @@ type Resolution struct {
 
 // BoundValue records the resolved parameter identity, origin and digest without SQL fragments.
 type BoundValue struct {
-	Name       string  `json:"name"`
-	Type       string  `json:"type"`
-	Provenance string  `json:"provenance"`
-	Window     *Window `json:"window,omitempty"`
-	Digest     string  `json:"digest"`
+	DateRange  *DateRange `json:"date_range,omitempty"`
+	Name       string     `json:"name"`
+	Type       string     `json:"type"`
+	Provenance string     `json:"provenance"`
+	Window     *Window    `json:"window,omitempty"`
+	Digest     string     `json:"digest"`
 }
 
 // Resolved contains exact typed execution binds and their resolution evidence.

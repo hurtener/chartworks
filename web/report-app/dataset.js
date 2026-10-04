@@ -1,7 +1,40 @@
 import {appError,authoringTool,copyData,validID} from './model.js';
 import {checkMappingView,mappingDraft} from './mapping.js';
+import {FilterOptionLookup,displayFilterRange,inclusiveFilterRange,selectionFilterValue} from './filters.js';
+import {filterInputState} from './filter-controls.js';
 
 export const DATASET_CHART_KINDS=['bar','column','line','area','pie','donut','kpi','table'];
+export const DATASET_FILTER_KINDS=['select','multi_select','date_range'];
+const datasetFilterCompiler='reviewed-dataset-postgres-v2';
+const datasetFilterTypes={select:'dimension_value',multi_select:'dimension_set',date_range:'date_range'};
+const datasetKeys=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
+export function datasetFilterCapability(view,dimension){return view?.filter_compiler===datasetFilterCompiler?view.filter_capabilities?.find(c=>c.dimension===dimension):undefined;}
+function checkDatasetFilterMetadata(view){
+ if(view.filter_compiler===undefined&&view.filter_capabilities===undefined)return;
+ // Go omitempty omits the empty capability list for measure-only datasets.
+ if(view.filter_compiler===datasetFilterCompiler&&view.filter_capabilities===undefined&&!view.dimensions.length)return;
+ if(view.filter_compiler!==datasetFilterCompiler||!Array.isArray(view.filter_capabilities)||view.filter_capabilities.length>view.dimensions.length)throw appError('stale_validation');
+ const seen=new Set();
+ for(const capability of view.filter_capabilities){
+  if(!validID(capability?.dimension)||!view.dimensions.some(d=>d.id===capability.dimension)||seen.has(capability.dimension)||typeof capability.supported!=='boolean'||capability.default_required!==true||typeof capability.option_lookup!=='boolean'||!Array.isArray(capability.kinds)||new Set(capability.kinds).size!==capability.kinds.length||capability.kinds.some(kind=>!DATASET_FILTER_KINDS.includes(kind)))throw appError('stale_validation');
+  seen.add(capability.dimension);
+  if(capability.supported){
+   const text=capability.kinds.length===2&&capability.kinds.includes('select')&&capability.kinds.includes('multi_select'),date=capability.kinds.length===1&&capability.kinds[0]==='date_range';
+   if(!view.supported||!view.dimensions.find(d=>d.id===capability.dimension)?.supported||capability.reason||!text&&!date||text&&(capability.max_set_size!==16||capability.date_bounds!==undefined)||date&&(view.dimensions.find(d=>d.id===capability.dimension)?.role!=='temporal'||capability.option_lookup||capability.max_set_size!==undefined||capability.date_bounds!=='start_inclusive_end_exclusive_date_only'))throw appError('stale_validation');
+  }else if(capability.kinds.length||capability.option_lookup||typeof capability.reason!=='string'||!capability.reason||capability.max_set_size!==undefined||capability.date_bounds!==undefined)throw appError('stale_validation');
+ }
+}
+export function datasetFilterDefault(kind,value){
+ if(kind==='select'){if(!datasetKeys(value,['literal']))throw appError('invalid_request');return selectionFilterValue([value.literal],false);}
+ if(kind==='multi_select'){if(!datasetKeys(value,['items']))throw appError('invalid_request');return selectionFilterValue(value.items,true);}
+ if(kind==='date_range'){if(!datasetKeys(value,['date_range'])||!datasetKeys(value.date_range,['start','end_exclusive']))throw appError('invalid_request');const dates=displayFilterRange(value);return inclusiveFilterRange(dates.start,dates.end);}
+ throw appError('invalid_request');
+}
+function datasetFilters(view,filters){
+ if(filters===undefined)return [];
+ if(!Array.isArray(filters)||filters.length>4)throw appError('invalid_request');
+ const seen=new Set();return filters.map(filter=>{const capability=datasetFilterCapability(view,filter?.dimension);if(!datasetKeys(filter,['dimension','kind','default'])||!capability?.supported||!capability.kinds.includes(filter.kind)||seen.has(filter.dimension))throw appError('invalid_request');seen.add(filter.dimension);return {dimension:filter.dimension,kind:filter.kind,default:datasetFilterDefault(filter.kind,filter.default)};});
+}
 const datasetHash=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const sameDatasetPin=(a,b)=>a?.topic===b?.topic&&a?.version===b?.version&&a?.digest===b?.digest;
 const datasetDate=v=>typeof v==='string'&&Number.isFinite(Date.parse(v));
@@ -9,7 +42,7 @@ function datasetPin(v){if(!validID(v?.topic)||!validID(v.version)||!datasetHash(
 export function checkDatasetView(view,pin,dataset){
  if(view?.compiler!=='reviewed-dataset-postgres-v1'||!sameDatasetPin(view.topic,pin)||view.dataset!==dataset||!validID(view.source)||!validID(view.context)||!Number.isSafeInteger(view.source_revision)||view.source_revision<1||typeof view.supported!=='boolean'||!Array.isArray(view.dimensions)||!Array.isArray(view.measures)||view.dimensions.length+view.measures.length>512||!Array.isArray(view.chart_kinds)||new Set(view.chart_kinds).size!==view.chart_kinds.length||view.chart_kinds.some(k=>!DATASET_CHART_KINDS.includes(k))||!Array.isArray(view.limitations)||view.limitations.length>32)throw appError('stale_validation');
  const ids=new Set(),bindings=new Set();for(const field of [...view.dimensions,...view.measures]){if(!validID(field.id)||!validID(field.binding)||ids.has(field.id)||bindings.has(field.binding)||typeof field.name!=='string'||typeof field.supported!=='boolean')throw appError('stale_validation');ids.add(field.id);bindings.add(field.binding);}
- if(view.supported&&(view.dialect!=='postgres'||view.reason))throw appError('stale_validation');return view;
+ if(view.supported&&(view.dialect!=='postgres'||view.reason))throw appError('stale_validation');checkDatasetFilterMetadata(view);return view;
 }
 export function datasetIntent(view,draft){
  if(!view?.supported||!view.chart_kinds.includes(draft.kind)||!DATASET_CHART_KINDS.includes(draft.kind)||!Array.isArray(draft.dimensions)||draft.dimensions.length>2||new Set(draft.dimensions).size!==draft.dimensions.length||typeof draft.title!=='string'||!draft.title.trim()||draft.title.length>256)throw appError('invalid_request');
@@ -18,7 +51,7 @@ export function datasetIntent(view,draft){
  const bindings=draft.kind==='table'?{columns:[...dimensions,measure].map(f=>f.binding)}:draft.kind==='kpi'?{value:measure.binding}:{category:dimensions[0].binding,value:measure.binding,...(dimensions[1]?{series:dimensions[1].binding}:{})};
  const mapping={kind:draft.kind,bindings,order:['line','area'].includes(draft.kind)?[{column:dimensions[0].binding,direction:'asc'}]:[],options:{title:draft.title.trim(),legend:{visible:true,position:'bottom'},label_max_runes:80}};
  if(draft.kind==='table'){if(!Number.isSafeInteger(draft.pageSize)||draft.pageSize<1||draft.pageSize>1000)throw appError('invalid_request');mapping.table={columns:bindings.columns.map(column=>({column,visible:true})),page_size:draft.pageSize,show_totals:false};}
- return {topic:datasetPin(view.topic),dataset:view.dataset,dimensions:[...draft.dimensions],measure:draft.measure,mapping};
+ const filters=datasetFilters(view,draft.filters);return {topic:datasetPin(view.topic),dataset:view.dataset,dimensions:[...draft.dimensions],measure:draft.measure,mapping,...(filters.length?{filters}:{})};
 }
 export function checkPreparation(view,custody,previous=null){
  // Unsupported compilation happens before durable reservation and intentionally has no identity.
@@ -31,15 +64,32 @@ function stableDatasetValue(value){if(Array.isArray(value))return value.map(stab
 function datasetMappingIdentity(mapping){const value=mappingDraft(mapping);value.bindings=Object.fromEntries(Object.entries(value.bindings).filter(([,v])=>v!==null&&v!==''&&(!Array.isArray(v)||v.length)));return JSON.stringify(stableDatasetValue(value));}
 function checkPreparedIntent(value,intent){if(['prepared','consumed'].includes(value.status)&&(!intent||datasetMappingIdentity(value.mapping)!==datasetMappingIdentity(intent.mapping)||value.schema.length!==intent.dimensions.length+1||value.mapping.columns?.length!==value.schema.length||value.schema.some((f,i)=>typeof f.name!=='string'||typeof f.type!=='string'||f.name!==value.mapping.columns[i].name)))throw appError('stale_validation');}
 export class DatasetSession {
- constructor(invoke,{locale='en-US',operation=()=>crypto.randomUUID()}={}){this.invoke=invoke;this.locale=locale;this.operation=operation;this.generation=0;this.closed=false;this.pending=false;this.topics=[];this.next='';this.publication=null;this.datasets=[];this.view=null;this.draft={kind:'bar',dimensions:[],measure:'',title:'Untitled chart',pageSize:20};this.newBlock='';this.custody=null;this.preparation=null;this.unknown='';this.created=null;this.acceptedIntent=null;}
- get locked(){return this.pending||!!this.custody||this.closed;}
- intentValid(){try{datasetIntent(this.view,this.draft);return true;}catch{return false;}}
+ constructor(invoke,{locale='en-US',operation=()=>crypto.randomUUID(),optionOperation}={}){this.invoke=invoke;this.locale=locale;this.operation=operation;this.generation=0;this.closed=false;this.pending=false;this.topics=[];this.next='';this.publication=null;this.datasets=[];this.view=null;this.draft={kind:'bar',dimensions:[],measure:'',title:'Untitled chart',pageSize:20};this.newBlock='';this.custody=null;this.preparation=null;this.unknown='';this.created=null;this.acceptedIntent=null;this.optionOperation=optionOperation;this.filterLookups=new Map();this.filterStages=new Map();this.filterSelection={dimension:'',kind:''};}
+ get hasUnsettledFilterLookups(){return [...this.filterLookups.values()].some(lookup=>lookup.pending||lookup.unknown);}
+ get locked(){return this.pending||!!this.custody||this.closed||this.hasUnsettledFilterLookups;}
+ resetFilters(){if(this.hasUnsettledFilterLookups)throw appError('busy');for(const lookup of this.filterLookups.values())lookup.close();this.filterLookups.clear();this.filterStages.clear();this.filterSelection={dimension:'',kind:''};delete this.draft.filters;}
+ addFilter(dimension,kind){if(this.locked)throw appError('busy');const capability=datasetFilterCapability(this.view,dimension),filters=this.draft.filters||[];if(!capability?.supported||!capability.kinds.includes(kind)||filters.length>=4||filters.some(f=>f.dimension===dimension))throw appError('invalid_request');this.draft.filters=[...filters,{dimension,kind,default:null}];this.filterSelection={dimension:'',kind:''};this.beginFilter(dimension);}
+ removeFilter(dimension){if(this.locked)throw appError('busy');if(!this.draft.filters?.some(f=>f.dimension===dimension))throw appError('invalid_request');this.draft.filters=this.draft.filters.filter(f=>f.dimension!==dimension);this.filterStages.delete(dimension);this.filterLookups.get(dimension)?.close();this.filterLookups.delete(dimension);}
+ changeFilterKind(dimension,kind){if(this.locked)throw appError('busy');const filter=this.draft.filters?.find(f=>f.dimension===dimension),capability=datasetFilterCapability(this.view,dimension);if(!filter||!capability?.supported||!capability.kinds.includes(kind))throw appError('invalid_request');if(filter.kind!==kind){filter.kind=kind;filter.default=null;}this.beginFilter(dimension);}
+ beginFilter(dimension){if(this.locked)throw appError('busy');const filter=this.draft.filters?.find(f=>f.dimension===dimension);if(!filter)throw appError('invalid_request');this.filterStages.set(dimension,filterInputState({type:datasetFilterTypes[filter.kind]},filter.default));return this.filterStages.get(dimension);}
+ commitFilter(dimension,value){if(this.locked)throw appError('busy');const filter=this.draft.filters?.find(f=>f.dimension===dimension);if(!filter||!this.filterStages.has(dimension))throw appError('invalid_request');filter.default=datasetFilterDefault(filter.kind,value);this.filterStages.delete(dimension);}
+ cancelFilter(dimension){if(this.locked)throw appError('busy');this.filterStages.delete(dimension);}
+ async searchFilter(dimension,newBlock,search='',cursor=''){
+  if(this.locked)throw appError('busy');const capability=datasetFilterCapability(this.view,dimension),filter=this.draft.filters?.find(f=>f.dimension===dimension);
+  if(!this.view?.supported||!capability?.supported||!capability.option_lookup||!filter||!['select','multi_select'].includes(filter.kind)||!validID(newBlock)||this.newBlock&&this.newBlock!==newBlock)throw appError('invalid_request');
+  this.newBlock=newBlock;const target={dataset:{topic:datasetPin(this.view.topic),dataset:this.view.dataset,dimension,new_block:newBlock}};let lookup=this.filterLookups.get(dimension);
+  if(lookup&&JSON.stringify(stableDatasetValue(lookup.target))!==JSON.stringify(stableDatasetValue(target)))throw appError('stale_validation');
+  if(!lookup){lookup=new FilterOptionLookup(this.invoke,target,{locale:this.locale,...(this.optionOperation?{operation:this.optionOperation}:{})});this.filterLookups.set(dimension,lookup);}
+  return lookup.search(search,cursor);
+ }
+ async inspectFilter(dimension,action=''){if(this.closed||this.pending||this.custody)throw appError('busy');const lookup=this.filterLookups.get(dimension);if(!lookup)throw appError('invalid_request');return lookup.inspect(action);}
+ intentValid(){if(this.filterStages.size)return false;try{datasetIntent(this.view,this.draft);return true;}catch{return false;}}
  valid(){return this.intentValid()&&validID(this.newBlock);}
  edit(fn){if(this.locked)throw appError('busy');const next=copyData(this.draft);fn(next);this.draft=next;}
- async read(name,args,accept){if(this.closed||this.pending||this.custody)throw appError('busy');const generation=++this.generation;this.pending=true;try{const value=await this.invoke(name,args);if(this.closed||generation!==this.generation)return null;return accept(value);}finally{this.pending=false;}}
+ async read(name,args,accept){if(this.locked)throw appError('busy');const generation=++this.generation;this.pending=true;try{const value=await this.invoke(name,args);if(this.closed||generation!==this.generation)return null;return accept(value);}finally{this.pending=false;}}
  async loadTopics(after=''){return this.read('list_topics',{after,limit:40},items=>{if(!Array.isArray(items)||items.length>40||items.some((item,i)=>{datasetPin(item);return typeof item.name!=='string'||i>0&&item.topic<=items[i-1].topic||after&&item.topic<=after;}))throw appError('stale_validation');this.topics=after?[...this.topics,...copyData(items)].slice(0,200):copyData(items);this.next=items.length===40&&this.topics.length<200?items.at(-1).topic:'';return items;});}
- async selectTopic(item){const pin=datasetPin(item);return this.read('describe_topic',{topic:pin.topic},value=>{const d=value?.definition,s=value?.state;if(!sameDatasetPin({topic:d?.topic,version:d?.version,digest:value?.digest},pin)||s?.topic!==pin.topic||s.version!==pin.version||s.active!==true||s.archived===true||!Array.isArray(d.datasets)||d.datasets.length>100||new Set(d.datasets.map(v=>v.id)).size!==d.datasets.length||d.datasets.some(v=>!validID(v.id)||typeof v.name!=='string'))throw appError('stale_validation');this.publication={...pin,name:item.name};this.datasets=d.datasets.map(v=>({id:v.id,name:v.name}));this.view=null;this.draft.dimensions=[];this.draft.measure='';return this.datasets;});}
- async selectDataset(id){if(!this.publication||!this.datasets.some(d=>d.id===id))throw appError('invalid_request');const pin=datasetPin(this.publication);return this.read(authoringTool('dataset'),{topic:pin,dataset:id},value=>{checkDatasetView(value,pin,id);this.view=copyData(value);this.draft.dimensions=[];this.draft.measure='';return this.view;});}
+ async selectTopic(item){const pin=datasetPin(item);return this.read('describe_topic',{topic:pin.topic},value=>{const d=value?.definition,s=value?.state;if(!sameDatasetPin({topic:d?.topic,version:d?.version,digest:value?.digest},pin)||s?.topic!==pin.topic||s.version!==pin.version||s.active!==true||s.archived===true||!Array.isArray(d.datasets)||d.datasets.length>100||new Set(d.datasets.map(v=>v.id)).size!==d.datasets.length||d.datasets.some(v=>!validID(v.id)||typeof v.name!=='string'))throw appError('stale_validation');this.resetFilters();this.publication={...pin,name:item.name};this.datasets=d.datasets.map(v=>({id:v.id,name:v.name}));this.view=null;this.draft.dimensions=[];this.draft.measure='';return this.datasets;});}
+ async selectDataset(id){if(!this.publication||!this.datasets.some(d=>d.id===id))throw appError('invalid_request');const pin=datasetPin(this.publication);return this.read(authoringTool('dataset'),{topic:pin,dataset:id},value=>{checkDatasetView(value,pin,id);this.resetFilters();this.view=copyData(value);this.draft.dimensions=[];this.draft.measure='';return this.view;});}
  async prepare(){
   if(this.locked||!this.valid())throw appError('busy');const intent=datasetIntent(this.view,this.draft),operation=this.operation();if(!validID(operation))throw appError('invalid_request');
   const args={new_block:this.newBlock,operation,intent,metadata:[{locale:this.locale,title:this.draft.title.trim(),question:this.draft.title.trim(),aliases:[],description:''}]},generation=this.generation;
@@ -58,6 +108,6 @@ export class DatasetSession {
   try{const value=await this.invoke(authoringTool('create_prepared'),args);if(this.closed||generation!==this.generation)return null;try{checkMappingView(value,args.new_block,1,'chart');if(!value.block.private||value.block.state.draft_revision!==1||value.block.validation&&!recover||value.block.outputs.length!==1||datasetMappingIdentity(value.block.outputs[0].mapping)!==datasetMappingIdentity(this.preparation.mapping)||JSON.stringify(stableDatasetValue(value.block.expected_schema))!==JSON.stringify(stableDatasetValue(this.preparation.schema)))throw appError('stale_validation');}catch{throw appError('unavailable',true);}this.created=copyData(value);this.unknown='';return this.created;}
   catch(e){if(!this.closed&&generation===this.generation)this.unknown='create';throw e;}finally{this.pending=false;}
  }
- suspend(){if(this.pending)throw appError('busy');this.topics=[];this.datasets=[];this.publication=null;this.view=null;this.preparation=null;this.created=null;}
- close(){this.closed=true;this.generation++;this.topics=[];this.datasets=[];this.publication=null;this.view=null;this.draft=null;this.preparation=null;this.created=null;this.acceptedIntent=null;}
+ suspend(){if(this.pending||[...this.filterLookups.values()].some(lookup=>lookup.pending))throw appError('busy');for(const [dimension,lookup]of this.filterLookups)if(!lookup.unknown){lookup.close();this.filterLookups.delete(dimension);}this.topics=[];this.datasets=[];this.publication=null;this.view=null;this.preparation=null;this.created=null;}
+ close(){for(const lookup of this.filterLookups.values())lookup.close();this.filterLookups.clear();this.filterStages.clear();this.closed=true;this.generation++;this.topics=[];this.datasets=[];this.publication=null;this.view=null;this.draft=null;this.preparation=null;this.created=null;this.acceptedIntent=null;}
 }

@@ -106,11 +106,14 @@ func (s *Authoring) Capabilities(ctx context.Context, e identity.Envelope, in Au
 
 // DraftSummary exposes only bounded metadata and revision/CAS coordinates.
 type DraftSummary struct {
-	ID       string             `json:"id"`
-	Version  int64              `json:"version"`
-	Revision int64              `json:"revision"`
-	Metadata []DocumentMetadata `json:"metadata"`
-	Updated  time.Time          `json:"updated_at"`
+	Stage          string             `json:"stage" jsonschema:"enum=draft,enum=review"`
+	DraftRevision  int64              `json:"draft_revision"`
+	ReviewRevision int64              `json:"review_revision"`
+	ID             string             `json:"id"`
+	Version        int64              `json:"version"`
+	Revision       int64              `json:"revision"`
+	Metadata       []DocumentMetadata `json:"metadata"`
+	Updated        time.Time          `json:"updated_at"`
 }
 
 type DraftList struct {
@@ -156,26 +159,32 @@ func (s *Authoring) Drafts(ctx context.Context, e identity.Envelope, in DraftLis
 }
 
 type AuthoringReadRequest struct {
+	Stage    string `json:"stage,omitempty" jsonschema:"enum=draft,enum=review"`
 	Report   string `json:"report"`
 	Revision int64  `json:"revision"`
 }
 
 func (s *Authoring) Read(ctx context.Context, e identity.Envelope, in AuthoringReadRequest) (DocumentView, error) {
-	if s == nil || ctx == nil || in.Revision < 0 || in.Revision > 256 {
+	if s == nil || ctx == nil {
 		return DocumentView{}, ErrInvalid
 	}
 	if err := requireAuthoringEnvelope(e); err != nil {
 		return DocumentView{}, err
 	}
-	if err := RequireDocument(e, "report", in.Report, Write); err != nil {
+	ctx, cancel := context.WithDeadline(ctx, e.Deadline())
+	defer cancel()
+	snapshot, err := s.authoringDocumentSnapshot(ctx, e, in)
+	if err != nil {
 		return DocumentView{}, err
 	}
-	ref := DocumentReference{Revision: in.Revision}
-	if in.Revision == 0 {
-		ref.Stage = "draft"
+	d, err := ProjectStoredDocument(snapshot.Revision.Raw, "report")
+	if err != nil {
+		return DocumentView{}, err
 	}
-	// Write access never substitutes for read and private-preview authority.
-	return s.documents.Read(ctx, e, "report", in.Report, ref)
+	if !e.Valid() {
+		return DocumentView{}, access.ErrUnauthenticated
+	}
+	return DocumentView{UnavailableQueries: snapshot.UnavailableQueries, State: snapshot.State, Revision: snapshot.Revision.Number, Digest: snapshot.Revision.Digest, Private: snapshot.PublishedAt == nil, Definition: d}, ctx.Err()
 }
 
 type AuthoringCreateRequest struct {

@@ -19,11 +19,12 @@ const AuthoringCompilerVersion = "reviewed-dataset-postgres-v1"
 
 // Logical reviewed selections only; no physical names, SQL, types or rows.
 type AuthoringDatasetIntent struct {
-	Topic      TopicPin              `json:"topic"`
-	Dataset    string                `json:"dataset"`
-	Dimensions []string              `json:"dimensions"`
-	Measure    string                `json:"measure"`
-	Mapping    AuthoringChartMapping `json:"mapping"`
+	Filters    []AuthoringDatasetFilter `json:"filters,omitempty"`
+	Topic      TopicPin                 `json:"topic"`
+	Dataset    string                   `json:"dataset"`
+	Dimensions []string                 `json:"dimensions"`
+	Measure    string                   `json:"measure"`
+	Mapping    AuthoringChartMapping    `json:"mapping"`
 }
 type AuthoringDatasetRequest struct {
 	Topic   TopicPin `json:"topic"`
@@ -40,19 +41,21 @@ type AuthoringSemanticField struct {
 	Reason      string `json:"reason,omitempty"`
 }
 type AuthoringDatasetView struct {
-	Compiler       string                   `json:"compiler"`
-	Topic          TopicPin                 `json:"topic"`
-	Dataset        string                   `json:"dataset"`
-	Source         string                   `json:"source"`
-	Context        string                   `json:"context"`
-	SourceRevision int64                    `json:"source_revision"`
-	Dialect        string                   `json:"dialect"`
-	Dimensions     []AuthoringSemanticField `json:"dimensions"`
-	Measures       []AuthoringSemanticField `json:"measures"`
-	ChartKinds     []charts.Kind            `json:"chart_kinds"`
-	Limits         []string                 `json:"limitations"`
-	Supported      bool                     `json:"supported"`
-	Reason         string                   `json:"reason,omitempty"`
+	FilterCompiler     string                      `json:"filter_compiler,omitempty"`
+	FilterCapabilities []AuthoringFilterCapability `json:"filter_capabilities,omitempty"`
+	Compiler           string                      `json:"compiler"`
+	Topic              TopicPin                    `json:"topic"`
+	Dataset            string                      `json:"dataset"`
+	Source             string                      `json:"source"`
+	Context            string                      `json:"context"`
+	SourceRevision     int64                       `json:"source_revision"`
+	Dialect            string                      `json:"dialect"`
+	Dimensions         []AuthoringSemanticField    `json:"dimensions"`
+	Measures           []AuthoringSemanticField    `json:"measures"`
+	ChartKinds         []charts.Kind               `json:"chart_kinds"`
+	Limits             []string                    `json:"limitations"`
+	Supported          bool                        `json:"supported"`
+	Reason             string                      `json:"reason,omitempty"`
 }
 type authoringUnsupported struct{ code string }
 
@@ -150,7 +153,8 @@ func (s *Authoring) Dataset(ctx context.Context, e identity.Envelope, in Authori
 	if err != nil {
 		return AuthoringDatasetView{}, err
 	}
-	out := AuthoringDatasetView{Compiler: AuthoringCompilerVersion, Topic: in.Topic, Dataset: d.ID, Source: d.Source.Source, Context: d.Source.Context, SourceRevision: d.Source.SourceRevision, Dimensions: []AuthoringSemanticField{}, Measures: []AuthoringSemanticField{}, ChartKinds: manualChartKinds(), Limits: []string{"PostgreSQL only; zero to two direct dimensions and one reviewed measure.", "No filters, group policies, calendar bucketing, joins, arbitrary KPI expressions, active rules or amount-completeness policies in the initial compiler.", "Prepare reads actual schema. Create remains private and unvalidated; Validate is a separate explicit read."}}
+	out := AuthoringDatasetView{Compiler: AuthoringCompilerVersion, Topic: in.Topic, Dataset: d.ID, Source: d.Source.Source, Context: d.Source.Context, SourceRevision: d.Source.SourceRevision, Dimensions: []AuthoringSemanticField{}, Measures: []AuthoringSemanticField{}, ChartKinds: manualChartKinds(), Limits: []string{"PostgreSQL only; zero to two direct dimensions and one reviewed measure.", "The v1 branch is unfiltered. The v2 branch supports only the advertised required-default filters; group policies, calendar bucketing, joins, arbitrary KPI expressions, active rules and amount-completeness policies remain unsupported.", "Prepare reads actual schema. Create remains private and unvalidated; Validate is a separate explicit read."}}
+	var filterBinding exec.Binding
 	out.Reason = datasetUnsupported(p)
 	if out.Reason == "" {
 		out.Reason, err = blocks.authoringRulesDisposition(ctx, e, in.Topic)
@@ -167,6 +171,7 @@ func (s *Authoring) Dataset(ctx context.Context, e identity.Envelope, in Authori
 		if err != nil {
 			return AuthoringDatasetView{}, err
 		}
+		filterBinding = binding
 		out.Dialect = binding.Dialect
 		if binding.Source != d.Source.Source || binding.Context != d.Source.Context || binding.Revision != d.Source.SourceRevision {
 			out.Reason = "source_binding_changed"
@@ -186,10 +191,14 @@ func (s *Authoring) Dataset(ctx context.Context, e identity.Envelope, in Authori
 	if out.Supported && !slices.ContainsFunc(out.Measures, func(field AuthoringSemanticField) bool { return field.Supported }) {
 		out.Supported, out.Reason = false, "no_supported_measure"
 	}
+	out.FilterCompiler = AuthoringFilteredCompilerVersion
+	_, optionsAvailable := blocks.repo.(AuthoringOptionRepository)
+	out.FilterCapabilities = authoringFilterCapabilities(p, d, filterBinding, out.Reason, optionsAvailable && blocks.CanValidate())
 	return out, ctx.Err()
 }
 
 type authoringCompiled struct {
+	Parameters   []Parameter
 	SQL          string
 	Columns      []charts.Column
 	Scope        []exec.RelationScope
@@ -311,6 +320,14 @@ func compileAuthoringDataset(in AuthoringDatasetIntent, p topics.Published, data
 	projection = append(projection, op+"("+argument+") AS "+pgx.Identifier{alias}.Sanitize())
 	out.Columns = append(out.Columns, charts.Column{ID: alias, Name: alias, DisplayLabel: measure.Name, Role: "measure", Aggregation: string(measure.Aggregation), Format: charts.Format{Unit: measure.Unit}, Provenance: charts.Provenance{Version: 1, Source: binding.Source, SourceRevision: binding.Revision, Topic: in.Topic.Topic, TopicVersion: in.Topic.Version, SemanticID: measure.ID}})
 	out.SQL = "SELECT " + strings.Join(projection, ", ") + " FROM " + pgx.Identifier{relation.Schema, relation.Name}.Sanitize()
+	predicates, parameters, err := compileAuthoringFilters(in, p, resolve)
+	if err != nil {
+		return out, err
+	}
+	out.Parameters = parameters
+	if len(predicates) > 0 {
+		out.SQL += " WHERE " + strings.Join(predicates, " AND ")
+	}
 	if len(grouping) > 0 {
 		out.SQL += " GROUP BY " + strings.Join(grouping, ", ") + " ORDER BY " + strings.Join(grouping, ", ")
 	}

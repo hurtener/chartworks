@@ -80,7 +80,8 @@ func documentTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, kind, id st
    FROM chartworks.document_page_refs page
    WHERE (page.tenant_id,page.kind,page.document_id,page.revision)=(r.tenant_id,r.kind,r.document_id,r.revision)
    AND `+documentPageEligibility+`)) ELSE r.definition END,
- r.digest,r.actor_id,r.session_id,r.created_at,r.origins,p.created_at
+ r.digest,r.actor_id,r.session_id,r.created_at,r.origins,p.created_at,
+ EXISTS(SELECT 1 FROM chartworks.document_events event WHERE (event.tenant_id,event.kind,event.document_id,event.revision)=(r.tenant_id,r.kind,r.document_id,r.revision) AND event.operation='reject')
  FROM chartworks.document_heads h
  JOIN chartworks.document_revisions r ON(r.tenant_id,r.kind,r.document_id)=(h.tenant_id,h.kind,h.document_id)
  AND r.revision=CASE WHEN $4::bigint>0 THEN $4 WHEN $5='draft' THEN h.draft_revision WHEN $5='review' THEN h.review_revision ELSE h.published_revision END
@@ -93,7 +94,7 @@ func documentTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, kind, id st
   WHERE (page.tenant_id,page.kind,page.document_id,page.revision)=(r.tenant_id,r.kind,r.document_id,r.revision)
   AND NOT `+documentPageEligibility+`))`, args...).Scan(
 		&out.State.Kind, &out.State.ID, &out.State.Version, &out.State.LatestRevision, &out.State.DraftRevision, &out.State.ReviewRevision, &out.State.PublishedRevision, &out.State.Archived, &out.State.Created, &out.State.Updated,
-		&out.Revision.Number, &raw, &out.Revision.Digest, &out.Revision.Actor, &out.Revision.Session, &out.Revision.Created, &origins, &out.PublishedAt)
+		&out.Revision.Number, &raw, &out.Revision.Digest, &out.Revision.Actor, &out.Revision.Session, &out.Revision.Created, &origins, &out.PublishedAt, &out.Rejected)
 	if err != nil {
 		return out, err
 	}

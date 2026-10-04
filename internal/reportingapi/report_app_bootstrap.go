@@ -68,7 +68,13 @@ func reportAppGuide(ctx context.Context, e identity.Envelope, _ struct{}) (Repor
 			"After a successful save, reopen the exact retained revision. On conflict reload and reconcile; never overwrite blindly.",
 			"For new charts use reviewed dataset metadata and only supported dimensions, measures and kinds. Preparation is an explicit bounded PostgreSQL read; create consumes its exact private digest into an unvalidated draft. Native validation is a separate deliberate read.",
 			"For unknown preparation outcomes read status by the original operation. Source attempt inspect/cancel/reconcile is an explicit mutation; never restart a query automatically.",
+			"Search options only after explicit Search on an exact reviewed dataset target or saved page/filter. Typing, selecting, applying filters, redraw and page navigation never query options. Use option:<UnixSeconds>:<32 lowercase hex> for each deliberate search or next page.",
+			"After an unknown option outcome preserve the original operation and read option_status. values_available=false means choices are unavailable, not No matches. A new explicit search requires new_operation_allowed=true; never reconstruct lost values automatically.",
+			"Option cancel/reconcile is an explicit mutation on the original attempt. Unresolved same-actor target liability survives session changes; a new session, search text or operation key cannot bypass it.",
 			"Preview is explicit private execution. Read and redraw retained outputs without rerunning queries.",
+			"Before publication inspect the exact lifecycle revision and disclose every output of the entire block revision. entire_revision eligibility for existing_authorized_readers creates no grant and asserts no audience count; can_publish is only a current hint.",
+			"Obtain explicit user confirmation before chart publication and separately before report publication. Keep chart publication, private-to-published widget rebind, report review and report publication separate. Rebind requires separate confirmation; reject requires a note and native publish authority.",
+			"After unknown publication, rebind or report transition outcomes inspect the original exact revision; never automatically repeat a mutation or infer rollback. Reopen on CAS conflict. Report review clears draft and remains reopenable through its independent review pointer.",
 		},
 		Constraints: []string{
 			"Guidance, interaction mode, profile, audience, creator and target locators never grant authority.",
@@ -77,11 +83,11 @@ func reportAppGuide(ctx context.Context, e identity.Envelope, _ struct{}) (Repor
 			"Published definitions are immutable; amendments create private revisions under CAS. Private previews remain private after publication.",
 			"Do not invoke natural-language query generation, narratives, models or arbitrary code as part of manual composition.",
 			"Copying requires independent source read/preview, new-target tenant/block/topic/dependency authority and charts.bind. Report-write never substitutes for them.",
-			"Schema binding is not data validation. Never execute or publish automatically. Publication can expose an existing central audience and is not private approval.",
+			"Schema binding is not data validation. Never execute or publish automatically. Publication changes eligibility only for existing centrally authorized readers; it creates no grant or certification. Failed rebind does not undo chart publication.",
 			"Page IDs are stable, widget IDs report-global, and filters/defaults page-local. Never silently drop unsupported pages.",
 			"Credentials and host-only nonces stay in the trusted host and never enter iframe messages, URLs or persisted browser state.",
 		},
-		Documentation: []string{"docs/contracts/report-app-v1.md", "docs/contracts/report-pages-v3.md", "docs/contracts/manual-chart-preparation-v1.md", "docs/contracts/pengui-authority.md", "docs/reporting/contracts.md", "docs/reporting/delivery.md"},
+		Documentation: []string{"docs/contracts/report-app-v1.md", "docs/contracts/report-pages-v3.md", "docs/contracts/manual-chart-preparation-v1.md", "docs/contracts/governed-authoring-options-v1.md", "docs/contracts/manual-publication-lifecycle-v1.md", "docs/contracts/pengui-authority.md", "docs/reporting/contracts.md", "docs/reporting/delivery.md"},
 	}, nil
 }
 
