@@ -83,7 +83,8 @@ report** can preserve it without any source read. Other widgets keep their pins.
 widget literals and the selected page's bound defaults; result rows are not sent
 through this authoring lane. **Check chart status** is metadata-only. Private
 preview requires fresh exact validation evidence and still rechecks access and
-dependencies server-side. No publication occurs in this editor.
+dependencies server-side. Mapping edits never publish implicitly; the separate
+publication and review controls below require explicit confirmation.
 
 Unknown save or validation outcomes stay fenced, including after editor close or
 a status read. An inspection does not attribute a hidden definition to an earlier
@@ -262,7 +263,7 @@ Field/type/page-size edits stay local. Prepare chart explicitly performs the
 bounded actual-schema source read. Create private chart consumes its exact
 preparation/digest and inserts an unvalidated private reference on the selected
 page. Save report remains source-free; Validate data and Private preview are
-separate deliberate actions. No publication occurs.
+separate deliberate actions. Preparation and private creation do not publish.
 
 Once preparation dispatches, the operation and target stay pinned. All uncertain
 or failed dispatch replies retain custody; Inspect preparation reads metadata by
@@ -301,9 +302,11 @@ local native/Node/bundled-code qualification; current hosted browser screenshots
 are still pending. Field labels, numeric/date/currency formatting, legend settings
 and data-point limits are not yet fully editable.
 
-There is no in-app block/report publication or private-to-published reference
-rebind workflow. These require the existing independently authorized native
-lifecycle. Raw target-ID entry has been removed. The versioned host allocation
+The separate in-app publication workflow below uses the existing independently
+authorized native lifecycle for whole-chart publication, selected reference
+rebinding, review and report publication. Unsupported hosts do not offer these
+operations. Its current hosted-browser qualification is pending.
+Raw target-ID entry has been removed. The versioned host allocation
 extension is optional; unsupported hosts explain that creation is unavailable.
 The actual Pengui allocation endpoint, real no-chat launch, authority
 projection/refresh and production registration remain host integration gates. Synthetic browser proof does not qualify them or mobile layouts.

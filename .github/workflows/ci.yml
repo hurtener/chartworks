@@ -150,6 +150,11 @@ jobs:
           set -o pipefail
           node web/report-app/browser.test.mjs "$RUNNER_TEMP/report-app-proof/mcp.html" "$RUNNER_TEMP/report-app-proof/mcp.png" mcp | tee "$RUNNER_TEMP/report-app-proof/mcp.log"
           node web/report-app/browser.test.mjs "$RUNNER_TEMP/report-app-proof/embedded.html" "$RUNNER_TEMP/report-app-proof/embedded.png" embedded | tee "$RUNNER_TEMP/report-app-proof/embedded.log"
+      - name: Actual Chromium explicit publication in both adapters
+        run: |
+          set -o pipefail
+          node web/report-app/publication.browser.mjs "$RUNNER_TEMP/report-app-proof/mcp.html" "$RUNNER_TEMP/report-app-proof/mcp.publication.png" mcp | tee "$RUNNER_TEMP/report-app-proof/mcp.publication.log"
+          node web/report-app/publication.browser.mjs "$RUNNER_TEMP/report-app-proof/embedded.html" "$RUNNER_TEMP/report-app-proof/embedded.publication.png" embedded | tee "$RUNNER_TEMP/report-app-proof/embedded.publication.log"
       - name: Retain synthetic host proof and screenshots
         if: always()
         uses: actions/upload-artifact@v4
