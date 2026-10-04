@@ -64,7 +64,16 @@ for(const embedded of [false,true])test(`compiled ${embedded?'embedded':'MCP'} n
     await f.click('Use saved default for preview',0);await f.click('Use saved default for preview',0);assert.equal(counts(),3);assert(f.root.textContent.includes('Preview is stale.'));
     await f.click('Browse');await f.click(d.published_catalog.items[0].title);await f.click('Choose Region');await f.click('East · remove');f.input('Find values','East');f.arm(d.published_option_request);await f.click('Search options');await f.click('Done');assert.equal(counts(),4);
     await f.click('Choose Day');f.input('Start date','2026-01-01');f.input('End date · inclusive','2026-01-01');await f.click('Done');f.arm(f.fixture.publicRun.run_request,'run');await f.click('Run with these filters');assert.equal(counts(),5);assert(f.root.textContent.includes('Retained report'));assert(!f.root.textContent.includes('Retained output unavailable.'));
-    await f.click('Use published default');await f.click('Use published default');assert.equal(counts(),5);assert(f.root.textContent.includes('These retained values use earlier filter selections.'));
+    const disclosure=()=>f.all('details').find(e=>e.className==='consumer-tools');
+    // Simulate the browser's native summary toggle, then deliver the actual
+    // toggle event. Clicking hidden descendant buttons would miss this defect.
+    if(!disclosure().open){disclosure().open=true;disclosure().listeners.toggle?.({target:disclosure(),currentTarget:disclosure()});await f.pump();}
+    assert.equal(disclosure().open,true,'retained controls explicitly opened');
+    await f.click('Use published default');assert.equal(disclosure().open,true,'first Clear must not close its remaining controls');
+    await f.click('Choose Region');assert.equal(disclosure().open,true,'post-run filter editor must remain visible');
+    assert(f.all('legend').some(e=>e.textContent==='Region · temporary selection'));
+    f.input('Find values','North');await f.click('Cancel');assert.equal(disclosure().open,true,'Cancel must preserve the user-opened disclosure');
+    await f.click('Use published default');assert.equal(disclosure().open,true,'second Clear must remain visible without reopening');assert.equal(counts(),5);assert(f.root.textContent.includes('These retained values use earlier filter selections.'));
     assert.deepEqual(f.fixture.snapshot().report,d.private_report);assert.equal(f.fixture.calls.filter(c=>c.name==='reporting_authoring_save_v1').length,1);
   }finally{f.close();}
 });

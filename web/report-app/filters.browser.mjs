@@ -262,9 +262,18 @@ async function filterJourney() {
   await check(`${root}.querySelector('.preview-provenance')?.textContent.includes('Retained report')&&${root}.textContent.includes('1.250')&&!${root}.textContent.includes('Retained output unavailable.')`,'Consumer displays the native public retained result');
   equal(fixture.counts(),{optionSearches:3,privateExecutions:1,publishedRuns:1,nativeSourceReadsRepresented:5},'Three explicit lookups and two deliberate executions account for all represented native source reads');
   await capture(screenshotPath.replace(/\.png$/,'.published.png'));
-  await noSource('Consumer clear changes only future invocation inputs',async()=>{
-    await click('Use published default');await click('Use published default');
-    await check(`!${button('Use published default')}&&${root}.textContent.includes('These retained values use earlier filter selections. Run explicitly to update them.')`,'Clear keeps old retained values explicitly stale until another deliberate run');
+  await noSource('Reopening retained controls, Cancel and clear change only future invocation inputs',async()=>{
+    const disclosure=`${root}.querySelector('.consumer-tools')`;
+    if(!await evaluate(`${disclosure}.open`))await clickElement(`${disclosure}.querySelector('summary')`);
+    await until(()=>evaluate(`${disclosure}.open&&${button('Use published default')}?.getClientRects().length>0`),'Run and retained history did not open after its pointer click');
+    await click('Use published default');
+    await check(`${disclosure}.open&&${button('Use published default')}?.getClientRects().length>0`,'First clear preserves the expanded disclosure and visible remaining clear action');
+    await click('Choose Region');
+    await check(`${disclosure}.open&&${editor}?.querySelector('legend')?.textContent==='Region · temporary selection'&&${field('Find values')}?.getClientRects().length>0`,'Post-run Region editor remains visible inside the expanded disclosure');
+    await setInput('Find values','North');await click('Cancel');
+    await check(`${disclosure}.open&&${editor}===null&&${button('Use published default')}?.getClientRects().length>0&&${root}.textContent.includes('These retained values use earlier filter selections. Run explicitly to update them.')`,'Post-run Cancel preserves visibility, temporary Region and the earlier retained-value warning');
+    await click('Use published default');
+    await check(`${disclosure}.open&&!${button('Use published default')}&&${root}.textContent.includes('These retained values use earlier filter selections. Run explicitly to update them.')`,'Final clear stays visible and keeps old retained values explicitly stale until another deliberate run');
     equal(snapshot(),saved,'Consumer temporary clear leaves all captured saved defaults intact');
   });
   equal(await evaluate('hostCalls.map(c=>({name:c.name,args:c.arguments}))'),fixture.calls,'Every adapter invocation is accounted for by the exact native-backed ledger');
