@@ -114,12 +114,20 @@ async function proofDisclosure(selector,open){
  await until(()=>evaluate(`${target}?.open===${open}`),'Pointer did not toggle disclosure: '+selector);
  await pause(25); // Deliver the native toggle event before a later render.
 }
+function pageSettingsFit({bar,tabs,buttons,settings,fields,viewportWidth}){
+ const rect=r=>r&&['left','right','top','bottom','width','height'].every(k=>Number.isFinite(r[k]))&&r.width>0&&r.height>0;
+ const inside=(r,b)=>rect(r)&&r.left>=b.left-1&&r.right<=b.right+1&&r.top>=b.top-1&&r.bottom<=b.bottom+1;
+ return rect(bar)&&rect(tabs)&&rect(settings)&&bar.left>=0&&bar.right<=viewportWidth+1&&bar.height<=540&&inside(tabs,bar)&&tabs.height<=48&&tabs.scrollWidth<=tabs.clientWidth+1&&buttons.length===4&&buttons.every(r=>inside(r,tabs)&&Math.abs(r.top-tabs.top)<=2)&&inside(settings,bar)&&settings.top>=tabs.bottom&&settings.height<=480&&fields.length===3&&fields.every(r=>inside(r,settings)&&r.width>=280&&r.width<=520&&r.height>=40&&r.scrollWidth<=r.clientWidth+1);
+}
+async function checkPageSettingsGeometry(){
+ await check(`(()=>{const bar=${body}.querySelector('.page-bar'),tabs=bar.querySelector('.report-page-tabs'),settings=bar.querySelector('.page-controls'),box=e=>e?{...e.getBoundingClientRect().toJSON(),scrollWidth:e.scrollWidth,clientWidth:e.clientWidth}:null,fields=['Page title','Page locale','Page timezone'].map(label=>Array.from(settings.querySelectorAll('input,select')).find(e=>e.getAttribute('aria-label')===label));return settings.open&&Array.from(tabs.querySelectorAll('[data-page]')).map(e=>e.dataset.page).join(',')==='main,page-1,page-2'&&(${pageSettingsFit.toString()})({bar:box(bar),tabs:box(tabs),buttons:Array.from(tabs.querySelectorAll('button'),box),settings:box(settings),fields:fields.map(box),viewportWidth:document.getElementById('app').clientWidth});})()`,'expanded page settings keep all three page tabs and Add page in one compact visible top row, with every readable setting bounded below');
+}
 async function captureExpandedProof(selector,labels,path){
  const target=`${body}.querySelector(${JSON.stringify(selector)})`,wasOpen=await evaluate(`${target}.open`),before=await evaluate('calls.length');
  // Exercise a real opening even if an earlier form helper left it expanded.
  await proofDisclosure(selector,false);await proofDisclosure(selector,true);
  await check(`(()=>{const d=${target};return d.open&&${JSON.stringify(labels)}.every(label=>{const e=Array.from(d.querySelectorAll('input,select')).find(e=>e.getAttribute('aria-label')===label),r=e?.getBoundingClientRect(),b=d.getBoundingClientRect();return r&&r.width>0&&r.height>0&&r.left>=b.left-1&&r.right<=b.right+1&&r.top>=b.top&&r.bottom<=b.bottom;});})()`,'expanded '+selector+' proof exposes every requested setting within its disclosure');
- await captureProof(path);await proofDisclosure(selector,wasOpen);
+ if(path)await captureProof(path);else await resetProofScroll();if(selector==='.page-controls')await checkPageSettingsGeometry();await proofDisclosure(selector,wasOpen);
  await check(`calls.length===${before}`,'expanded '+selector+' proof and disclosure restoration make zero tool calls');
 }
 async function resetProofScroll(){await evaluate(`window.scrollTo(0,0);document.getElementById('app').contentWindow.scrollTo(0,0);for(const e of ${body}.querySelectorAll('.composition-canvas,.widget-body,.scroll')){e.scrollTop=0;e.scrollLeft=0;}`);}
@@ -408,7 +416,7 @@ try{
  await evaluate('window.beforeChartPages=structuredClone(definition.report_pages)');await click('Reload latest');await textHas('Private draft revision 11 loaded.');await ready();
  await check(`${body}.dataset.page==='page-2'&&${allCanvas}.querySelectorAll('article[data-widget]').length===0`,'save and reopen retain the selected empty page rather than falling back to the first page');
  await check(`${body}.querySelector('select[aria-label="Page locale"]').value==='es-AR'&&${body}.querySelector('select[aria-label="Page timezone"]').value==='America/Argentina/Buenos_Aires'`,'reopened page restores exact saved locale/timezone choices without a legacy rewrite');
- if(screenshotPath)await captureExpandedProof('.page-controls',['Page title','Page locale','Page timezone'],screenshotPath.replace(/\.png$/,'.page-settings.png'));
+ await captureExpandedProof('.page-controls',['Page title','Page locale','Page timezone'],screenshotPath?screenshotPath.replace(/\.png$/,'.page-settings.png'):null);
  await pageTab('page-1');await checkGrid('definition.report_pages[1]','Reopened Details page');await pageTab('main');await selectOutput('trend-main');
  const mappingStart=await evaluate('calls.length');await click('Edit chart');await textHas('Changes are staged here.');await ready();
  await check(`${body}.querySelector('.mapping-editor').textContent.includes('Field-label and number-format editing is unavailable')&&!Array.from(${body}.querySelectorAll('.mapping-editor input')).some(i=>/currency|fraction|unit/i.test(i.getAttribute('aria-label')||''))`,'chart editor exposes the native format limitation without unsupported unit or currency inputs');await fill('Chart title','Staged display title');await selectOption('Legend position','left');await fill('Maximum displayed label characters','24');

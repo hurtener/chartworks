@@ -41,3 +41,25 @@ test('actual report screenshot helpers still reject intrinsic blank tails and im
  await assert.rejects(capture(geometry(446,500),{contentWidth:1601}),/must not silently crop/);
  await assert.rejects(capture(geometry(446,500),{contentHeight:6001}),/must not silently crop/);
 });
+
+// Test the same measured-geometry predicate that the hosted page-settings
+// journey invokes, including the prior horizontally stretched screenshot shape.
+const pageStart=source.indexOf('function pageSettingsFit('),pageEnd=source.indexOf('async function checkPageSettingsGeometry(',pageStart);
+assert(pageStart>=0&&pageEnd>pageStart,'Hosted page-settings geometry predicate must exist');
+const pageContext=vm.createContext({});vm.runInContext(source.slice(pageStart,pageEnd),pageContext);
+const box=(left,top,width,height)=>({left,top,right:left+width,bottom:top+height,width,height,scrollWidth:width,clientWidth:width});
+const pageGeometry=()=>({bar:box(24,230,1392,416),tabs:box(24,234,1380,34),buttons:[box(24,234,85,34),box(129,234,72,34),box(221,234,110,34),box(351,234,88,34)],settings:box(24,272,1392,370),fields:[box(24,326,480,44),box(24,400,480,44),box(24,474,480,44)],viewportWidth:1440});
+const pageFits=sample=>{pageContext.sample=sample;return vm.runInContext('pageSettingsFit(sample)',pageContext);};
+test('hosted page-settings geometry accepts a compact top tab row and readable settings below',()=>{
+ assert.equal(pageFits(pageGeometry()),true);
+ assert(source.includes("if(selector==='.page-controls')await checkPageSettingsGeometry()"),'expanded proof must invoke the measured check');
+ assert(source.includes("await captureExpandedProof('.page-controls',['Page title','Page locale','Page timezone'],screenshotPath?"),'the geometry journey must run even when no screenshot path is requested');
+});
+test('hosted page-settings geometry rejects hidden tabs, stretched rows and clipped settings',()=>{
+ for(const mutate of [
+  g=>{g.tabs=box(24,400,140,34);g.buttons=[box(24,400,85,34),box(129,400,72,34),box(221,400,110,34),box(351,400,88,34)];g.settings=box(178,234,1238,370);},
+  g=>{g.tabs.scrollWidth=1600;},g=>{g.buttons.pop();},g=>{g.buttons[2]=box(221,300,110,34);},g=>{g.buttons[2]=box(1400,234,110,34);},
+  g=>{g.settings=box(24,272,1392,2000);g.bar=box(24,230,1392,2100);},g=>{g.fields[1]=box(24,400,240,44);},g=>{g.fields[1]=box(24,400,1500,44);},
+  g=>{g.fields[2].scrollWidth=600;},g=>{g.fields[0]=null;},g=>{g.fields[0].height=0;},g=>{g.tabs.height=100;},g=>{g.bar.right=1600;}
+ ]){const sample=pageGeometry();mutate(sample);assert.equal(pageFits(sample),false);}
+});
