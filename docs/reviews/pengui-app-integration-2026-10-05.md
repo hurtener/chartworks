@@ -41,7 +41,7 @@ keyboard navigation; it is not a responsive reflow of the saved report layout.
   of all three creation intents. Allocation alone does not create a provider draft.
 - [x] Authenticated native report/block dependency discovery and the first exact
   block-read and report-reopen authority consumers (D-098 / Pengui PD-238–239).
-- [ ] Complete topic/preparation/run discovery and projections for every Builder
+- [ ] Complete run discovery and remaining projections for every Builder
   operation. Operator-maintained references and browser definitions are not
   substitutes for this contract.
 - [ ] Exact interactive read/edit/query/execute/preview/publish authority through
@@ -205,3 +205,36 @@ roots, complete publication reach, original actor/session/target custody,
 compact consumed receipts, closed wire shapes and absence of execution authority
 in discovery seeds. No P0/P1 finding remains in this bounded source change.
 The live fixture has reached ready state; HTTP/browser results are still pending.
+
+### Real-service reviewed-data checkpoint
+
+Runtime source `438f91fbb6c5ae243048e50f5e938c539a9c52a5` was exercised with
+Pengui runtime/Console `561c38037212eb794b5cdca0c59d5bec26a237f0`. The native image
+is `sha256:b23f939b607f912a09f901ef6fa24ef17da9365607042410aeb1226624e3fc2b`.
+Fourteen real HTTP checks passed, including named topic/dataset selection,
+independent dataset/source/preview withdrawal, allocation/prepare/consume retry,
+close/reopen custody and guessed-target denial. Five registered-iframe checks
+passed in sandboxed Playwright Chromium 148.0.7778.96: named keyboard selection,
+explicit KPI preparation, 375-pixel inspection/recovery, private chart creation
+and report save, then named reopening through a fresh App admission.
+
+Desktop, narrow preparation, saved-chart and reopened-chart screenshots were
+visually inspected. The chart is honestly displayed as unvalidated; this proves
+its saved native reference, not rendered values or publication. Narrow canvas
+navigation remains horizontal. External Chrome 154 is still unqualified.
+
+The complete live campaign recorded four source attempts for four explicit
+preparations (two HTTP and two browser attempts, including probe corrections),
+with zero fixture model calls and the runtime gateway disabled. Retry, inspect,
+consume and retained navigation added no source attempt. Probe corrections
+compared immutable revision fields rather than current-health envelopes, used
+the current default paged report, and explicitly inspected resumed custody.
+They changed no runtime code. Fixture shutdown passed and left zero disposable
+databases and zero reader/writer roles. Only this task's containers are stopped.
+
+The local `real-services-reviewed-data/source-manifest.json` binds binary hashes,
+document digest, source versions, logs, counters and screenshot results. Hosted
+CI was not requested. Private preview/run authority, validation/mapping/copy and
+publication projections, independent Consumer and restricted MCP journeys, and
+the migration/activation rehearsal remain open; this is not completion of the
+cross-repository goal.
