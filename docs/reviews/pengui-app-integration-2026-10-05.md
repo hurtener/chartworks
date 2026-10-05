@@ -34,8 +34,11 @@ keyboard navigation; it is not a responsive reflow of the saved report layout.
   supported-operation presentation hints; neither is permission to create.
 - [x] Pengui central App/reference grants, five-operation HTTP Consumer host,
   document digest binding and expiry/navigation teardown.
-- [ ] Explicit central permission to create, separate from consumption; durable
-  server-owned idempotent targets and consistently persisted creator grants.
+- [x] Source report/chart ID allocation under explicit central creation permission,
+  with atomic server-owned idempotent targets and creator grants in all three
+  Pengui stores (PD-237, migration 0107; companion draft PR367).
+- [ ] Native pinned-source validation for copy allocation and real host negotiation
+  of all three creation intents. Allocation alone does not create a provider draft.
 - [ ] Authenticated provider metadata that discovers each operation's complete
   trusted dependency/context closure. Operator-maintained references and browser
   definitions are not this contract.
@@ -47,11 +50,11 @@ keyboard navigation; it is not a responsive reflow of the saved report layout.
 - [ ] Real dev Builder create/edit/save/reopen/preview/publish to independent
   Consumer read on both delivery modes, with negative/interruption checks.
 
-The handoff reports a prior platform restriction on Builder authorization. Its
-exact rejected action and reason were requested before expanding that path.
-This is an unresolved reported restriction, not a newly observed platform denial.
-The isolated dev-service target was also requested. Independent Consumer
-teardown corrections and documentation do not bypass either prerequisite.
+On 2026-10-05 the owner clarified that no rejection/review text is known and
+authorized dev administration or an isolated local Docker environment. No platform
+rejection has occurred in this continuation. The unspecified historical report
+is not a current gate. A separate local database is being used; production and
+other workstreams remain unchanged.
 
 ## Contract and migration requirements
 
@@ -102,3 +105,31 @@ planning test run failed five harness path comparisons because macOS aliases
 61 checker tests and the planning DAG/coverage coherence check. No test was
 skipped to repair that path mismatch. These checks do not replace the native
 database, protected-renderer or real-service gates described above.
+
+
+## Allocation continuation
+
+Pengui's companion [draft PR367](https://github.com/pengui-ai/pengui/pull/367)
+at `81e0a89d4af5093eac04df958bd11f0b1900b5e5` adds exact permission references to
+the canonical ShareGrant model and an
+HTTP allocation endpoint for `create_report` and `create_chart`. Current App
+editor reach and an independent creation grant are required; independent
+preview/execute/publish decisions constrain creator grants. Same-key replay does
+not restore revoked authority. The old HTTP Consumer continues to expose only
+its five operations. `copy_chart` remains rejected pending the provider-native
+source projection; no manual Builder journey is claimed.
+
+Local real PostgreSQL/SQLite and in-memory race tests qualify the allocation
+transaction, migration preservation, generation/identity fences, concurrent
+retries and revoked-grant behavior. A Project-deletion deadlock was reproduced
+and fixed by locking the parent before the reference. These are Pengui backend
+checks, not provider or browser acceptance of the Builder.
+
+Pengui Actions at checkpoint `d68cf20ade0e96068fa61898a4ed69237ccb86e7` did not
+start: GitHub reports failed recent payments or a required spending-limit increase.
+This is a confirmed hosted-runner/account limitation, not a source-test result.
+Chartworks source checkpoint `edc156b21f31125f1eef834bae7e8334a8c2df5f` passed
+ordinary CI 37330388517, SQL recovery 37330388699 and protected renderer
+37330564330 (22 events, 100 renders); ordinary reporting recovery 37330389435
+failed the missing cgroup-root prerequisite. The protected log binds the tested
+candidate explicitly. No all-CI-green or real-service completion claim follows.

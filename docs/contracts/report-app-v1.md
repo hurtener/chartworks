@@ -178,8 +178,10 @@ real provider connection or Builder authority. The
 records current gaps, evidence and migration/activation requirements. Provider metadata does not
 yet supply a dynamically discovered whole-catalog dependency closure. Do not infer
 that closure from browser-provided definitions. Manual host activation additionally
-needs central exact-target allocation, action projection, no-chat admission and
-both HTTP/MCP credential realms wired end to end.
+needs completed host allocation negotiation, native copy-source validation,
+action projection, no-chat admission and both HTTP/MCP credential realms wired
+end to end. Pengui PR367 now contains backend report/chart ID allocation through
+central grants; that source checkpoint is not a working Builder journey.
 
 Required evidence includes draft create/save/reopen/CAS/private preview on actual
 domain storage; exact and missing target/dependency/context negatives; cross-tenant
