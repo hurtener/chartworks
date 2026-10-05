@@ -810,3 +810,5 @@ Renderer containment continuation: [D-095 resource controls on a protected outer
 Optional manual report application: [D-096 one shared Builder/Consumer app with Pengui-owned authority](decisions/2026-10-03-manual-report-app.md).
 
 Visual authoring continuation: [D-097 canvas-first chart authoring and genuine private pages](decisions/2026-10-03-visual-chart-authoring.md).
+
+Native authority discovery: [D-098 exact-target dependency metadata for Pengui](decisions/2026-10-05-report-dependency-discovery.md).

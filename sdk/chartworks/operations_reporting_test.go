@@ -25,6 +25,7 @@ func TestCW03ReportingOperationCatalog(t *testing.T) {
 		func() (*api.Registry, error) { return reportingapi.DocumentsRegistry(true) },
 		reportingapi.AuthoringRegistry,
 		reportingapi.ReportAppBootstrapRegistry,
+		reportingapi.DependencyRegistry,
 		func() (*api.Registry, error) { return reportingapi.DeliveryRegistry(true, true) },
 	}
 	registries := make([]*api.Registry, 0, len(factories))

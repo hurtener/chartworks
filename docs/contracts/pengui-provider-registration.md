@@ -62,6 +62,13 @@ Phase 13 newly consumes four opaque action strings through the existing Pengui m
 
 ## Verification and boundaries
 
+The manual App BFF additionally consumes `reporting.discover` with exact target
+read and private-preview/custody under
+[D-098 dependency discovery](report-dependencies-v1.md). This metadata action
+cannot read definitions/results or execute work. Pengui checks each returned
+native requirement centrally before minting actual operation scopes. There is no
+automatic deployment grant or increase to the issuer's scope ceiling.
+
 `TestPhase03/AC04` uses a synthetic signed fixture matching the inspected issuer serialization; `TestProviderRegistrationManifest` pins the published manifest/example to the actual registry and decoder. `TestPhase04` exercises the real PostgreSQL consumer through HTTP and the public SDK; `TestCompiledAuthorityLifecycle` builds and starts the actual binary with an ephemeral trusted TLS issuer, runs permitted operations, denies unsigned/foreign calls, and joins SIGTERM shutdown.
 
 These tests establish consumer and serializer conformance. The phase 11/12 manifest parity check pins the published engineering inventory to `sourceapi.EngineeringRegistry(true, true)`; those phases are shipped. The phase 13/14 pipeline and source registrations are accepted at exact head `6883bc2103b2b870595222e623cd4d79bc01bc41` by [qualifying hosted CI run 34182486766](https://github.com/hurtener/chartworks/actions/runs/34182486766). These tests do not claim a deployed Pengui session, production signing key, customer connection or live model was used. No external platform deployment or new platform API was created. Phase 22 implements MCP transport/tools through the same intended-audience verification core; see its operator requirements below. Later reporting and source adapters must supply complete, server-resolved dependency/context metadata and apply selections before their own data access.

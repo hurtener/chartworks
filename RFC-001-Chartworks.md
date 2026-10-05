@@ -233,3 +233,7 @@ reconstructs the proof. This adds no authority path or generic entailment solver
 ## Canvas-first manual authoring continuation
 
 [D-097](docs/decisions/2026-10-03-visual-chart-authoring.md) requires direct grid editing, real chart/field authoring, governed dataset-first creation and independent private pages beyond the initial approved-output checkpoint. Copies, validation, private previews and publication keep distinct native authority and lifecycle gates. No automatic source work on edit or deployed-host claim is introduced.
+
+## Exact-target App dependency metadata
+
+D-098 adds the bounded [dependency discovery contract](docs/contracts/report-dependencies-v1.md): signed `reporting.discover` plus exact target read and private-preview/custody permit identifiers and revision metadata only. Pengui remains the sole policy owner; ordinary content and execution still require every native dependency.

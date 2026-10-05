@@ -60,3 +60,7 @@ are separate work.
 ## Canvas-first manual authoring continuation
 
 [D-097](docs/decisions/2026-10-03-visual-chart-authoring.md) requires direct grid editing, real chart/field authoring, governed dataset-first creation and independent private pages beyond the initial approved-output checkpoint. Copies, validation, private previews and publication keep distinct native authority and lifecycle gates. No automatic source work on edit or deployed-host claim is introduced.
+
+## Central App dependency discovery
+
+The [D-098 dependency contract](docs/contracts/report-dependencies-v1.md) supplies exact-target native identifiers and revision metadata to the Pengui BFF. It never supplies authority or content. Full manual Builder/Consumer qualification in both delivery modes remains required.

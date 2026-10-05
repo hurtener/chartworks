@@ -63,12 +63,17 @@ func mountDocuments(limits config.Reporting, renderConfig config.Rendering, db *
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
-	registry, err = api.Compose(registry, deliveryRegistry, authoringRegistry, bootstrapRegistry)
+	dependencyRegistry, err := reportingapi.DependencyRegistry()
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, err
+	}
+	registry, err = api.Compose(registry, deliveryRegistry, authoringRegistry, bootstrapRegistry, dependencyRegistry)
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
 	handler := reportingapi.DocumentsHandler(verifier, documents, compositions, next)
 	handler = reportingapi.AuthoringHandler(verifier, authoring, handler)
 	handler = reportingapi.ReportAppBootstrapHandler(verifier, authoring, handler)
+	handler = reportingapi.DependencyHandler(verifier, authoring, handler)
 	return registry, documents, delivery, authoring, renderer, reportingapi.DeliveryHandler(verifier, delivery, delivery.CanExecute(), handler, renderer), nil
 }

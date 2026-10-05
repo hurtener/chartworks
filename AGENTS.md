@@ -155,3 +155,7 @@ D-095 places resource controls on a protected outer job domain and atomically
 launches workers into its controller-free inner namespace leaf. Preserve absent
 inner controllers, whole-job OOM proof and ordered two-level cleanup; namespace
 delegation alone does not protect memory.oom.group at a worker-visible root.
+
+## App dependency discovery
+
+D-098 and docs/contracts/report-dependencies-v1.md permit exact-target metadata discovery only under signed discovery/read plus private-preview/custody checks. Project native identifiers and revisions without definitions, SQL or values. Never construct an envelope or weaken ordinary dependency enforcement to bootstrap authority; Pengui independently resolves every requirement.

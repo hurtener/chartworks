@@ -124,3 +124,7 @@ qualification remains separate from pure functional tests.
 ## Canvas-first manual authoring continuation
 
 [D-097](docs/decisions/2026-10-03-visual-chart-authoring.md) requires direct grid editing, real chart/field authoring, governed dataset-first creation and independent private pages beyond the initial approved-output checkpoint. Copies, validation, private previews and publication keep distinct native authority and lifecycle gates. No automatic source work on edit or deployed-host claim is introduced.
+
+## App dependency discovery continuation
+
+[D-098](docs/decisions/2026-10-05-report-dependency-discovery.md) supplies a metadata-only BFF projection from native block/report reference indexes. Current publication pins are resolved before Pengui checks central grants. No definition, SQL, values, issuer or source/model work is added; the full Builder integration remains under qualification.

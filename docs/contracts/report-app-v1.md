@@ -296,3 +296,7 @@ names the exact checks and their limits.
 - Real Pengui no-chat launch, exact target allocation, dependency projection,
   authority refresh/withdrawal and production embedded registration. Hosted
   synthetic-browser proof does not close those integration gates.
+
+## Native dependency discovery
+
+The [D-098 metadata contract](report-dependencies-v1.md) lets the Pengui BFF resolve exact block/report dependencies before issuing operation authority. It uses a separate signed metadata action, exposes no content, and is absent from the iframe/MCP tool inventory. Complete Builder and restricted MCP qualification remain pending.

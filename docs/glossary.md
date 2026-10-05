@@ -92,3 +92,5 @@ consumption profile. Neither term is a Chartworks role, grant, user or issuer.
 parent; it never transfers provider credentials to the child frame.
 
 **Report-local chart copy** is a separately authorized private block, not an in-place change to a shared publication. **Structural mapping validation** checks schema compatibility; it is not observed-data validation or publication approval.
+
+- **Dependency discovery manifest**: content-free native target/revision/reference coordinates for Pengui policy projection under D-098. It is neither a grant nor a validated execution plan.

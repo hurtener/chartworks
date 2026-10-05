@@ -39,9 +39,11 @@ keyboard navigation; it is not a responsive reflow of the saved report layout.
   Pengui stores (PD-237, migration 0107; companion draft PR367).
 - [ ] Native pinned-source validation for copy allocation and real host negotiation
   of all three creation intents. Allocation alone does not create a provider draft.
-- [ ] Authenticated provider metadata that discovers each operation's complete
-  trusted dependency/context closure. Operator-maintained references and browser
-  definitions are not this contract.
+- [x] Authenticated native report/block dependency discovery and the first exact
+  block-read and report-reopen authority consumers (D-098 / Pengui PD-238–239).
+- [ ] Complete topic/preparation/run discovery and projections for every Builder
+  operation. Operator-maintained references and browser definitions are not
+  substitutes for this contract.
 - [ ] Exact interactive read/edit/query/execute/preview/publish authority through
   Pengui's existing session, Team, ShareGrant, allowance and issuer machinery.
 - [ ] Fresh exact-run authority after preview, without rerunning a denied read.
@@ -67,7 +69,9 @@ persistence; provider draft creation remains a separate cross-service effect.
 Dependency discovery requires a reviewed authenticated metadata entry point,
 exact operation/target/revision/digest binding, independent central checks of
 every resource and versioned context, and provider revalidation at execution.
-No endpoint or bootstrap credential is asserted to exist yet. The actual
+The metadata-only endpoint is specified in
+[report-dependencies-v1](../contracts/report-dependencies-v1.md); it creates no
+bootstrap credential. The actual
 `internal/reportingapi/authoring*.go` operation registry remains authoritative for
 actions/effects/loaders. Scope overflow denies under the existing 32-entry and
 4096-byte limits; no omitted dependency or wildcard fallback is permitted.
@@ -133,3 +137,36 @@ ordinary CI 37330388517, SQL recovery 37330388699 and protected renderer
 37330564330 (22 events, 100 renders); ordinary reporting recovery 37330389435
 failed the missing cgroup-root prerequisite. The protected log binds the tested
 candidate explicitly. No all-CI-green or real-service completion claim follows.
+
+
+## Native dependency continuation
+
+D-098 adds the HTTP-only `reportAppDependenciesV1` metadata seam over existing
+native PostgreSQL indexes. It returns complete bounded IDs, revision/digest and
+privacy, resolves current publication pins, and retains private custody. Ordinary
+content reads still require all dependencies. There is no migration or new MCP
+App tool; the 96-tool ceiling is unchanged. Pengui PD-238 uses this seam for the
+exact block-read and report-reopen projections, with independent
+canonical permission grants and a final policy-generation check after minting.
+
+Direct adversarial review found two dependency-completeness hazards and added
+regressions before qualification: replayable query widgets are not necessarily
+in the session-query index, so the manual discovery lane explicitly rejects all
+query widgets; latest-publication pins must resolve the current block revision
+and its context requirements rather than the report's older snapshot. Missing
+selected revisions fail instead of disappearing from a dependency join.
+
+The owner requires local testing because hosted billing prevents runners from
+starting. Historical CI results above remain historical; they do not qualify
+these new sources. Local `go test -p 2 -race ./test/acceptance -run '^TestReportAppDependenc'
+-count=1` passed with PostgreSQL 17/pgvector, the pinned patched native parser and
+its freshly built executable. Both dependency tests ran (including native
+draft/review selection); no source/model work occurs during metadata discovery.
+Targeted API, SDK consumer/schema parity and full App tool-inventory checks also
+passed. Native artifact hashes and full local logs are retained outside source.
+These are local native acceptance results, not a deployed Builder journey.
+
+Existing native authoring/block-mapping regressions also passed locally under
+`-race` against PostgreSQL (`TestReportAppAuthoring`,
+`TestReportAppAuthoringBlockReach`, `TestReportAppBlockMappingAuthoring`). This
+checks the existing content/authoring domain alongside the new metadata seam.

@@ -180,3 +180,5 @@ continuation has shipped. Its integration and verification are recorded in
 ## Visual authoring continuation
 
 [D-097](../decisions/2026-10-03-visual-chart-authoring.md) requires direct-grid, chart/field and genuine private-page authoring beyond D-096. Preserve existing criteria and historical evidence; qualify new domain, HTTP/MCP/SDK and browser paths separately. Scope approval does not change phase status or make unsupported controls available.
+
+The manual App integration now includes [D-098 exact-target dependency discovery](../contracts/report-dependencies-v1.md). Source implementation and local tests do not change phase release status or establish the complete cross-service journey.
