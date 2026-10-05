@@ -309,3 +309,15 @@ names the exact checks and their limits.
 ## Native dependency discovery
 
 The [D-098 metadata contract](report-dependencies-v1.md) lets the Pengui BFF resolve exact block/report dependencies before issuing operation authority. It uses a separate signed metadata action, exposes no content, and is absent from the iframe/MCP tool inventory. Complete Builder and restricted MCP qualification remain pending.
+
+The registered HTTP host can now compose the existing private draft catalog from
+current canonical report edit grants. It resolves each exact report's native
+`editing` dependencies, authorizes all requirements, and requests `/drafts` with
+that one report's complete bounded scope. Native storage still checks dependencies
+and private-block custody before returning a name or revision. No Chartworks
+catalog, validator, scope ceiling or renderer operation changes are required.
+The host scans at most eight granted roots per page and can return an empty page
+with a continuation cursor; the existing UI's More drafts action follows it.
+Existing report editors can receive Builder hints without a create-report grant.
+This is named reopening through HTTP; chart preparation, publication/Consumer and
+restricted no-chat MCP qualification remain separate integration requirements.
