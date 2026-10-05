@@ -111,3 +111,9 @@ they do not replace the phase's domain/browser/deployed-host acceptance evidence
 ## Native dependency discovery continuation
 
 AC02/AC07/AC08 include the [D-098 BFF metadata seam](../contracts/report-dependencies-v1.md), its native complete-reference projection and private/tenant/input negatives. `TestReportAppDependencyDiscovery` and `TestReportAppDependenciesResolveCurrentPublishedPin` are the focused acceptance tests. The metadata route is HTTP-only control plane, so the App tool inventory is unchanged. This does not close the full Pengui Builder or restricted MCP journeys.
+
+AC02/AC07/AC08 additionally include D-099 proposed-write discovery and
+`TestReportAppWriteDependencyDiscovery`: native create/save consumption, removed
+baseline requirements, private custody and closed HTTP inputs. This remains a
+BFF metadata route outside the MCP/App tool inventory; no new migration or
+phase-completion claim is introduced.

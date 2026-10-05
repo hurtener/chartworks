@@ -128,3 +128,11 @@ qualification remains separate from pure functional tests.
 ## App dependency discovery continuation
 
 [D-098](docs/decisions/2026-10-05-report-dependency-discovery.md) supplies a metadata-only BFF projection from native block/report reference indexes. Current publication pins are resolved before Pengui checks central grants. No definition, SQL, values, issuer or source/model work is added; the full Builder integration remains under qualification.
+
+D-099 extends the [native dependency contract](docs/contracts/report-dependencies-v1.md)
+with proposed manual create/save definitions and the existing save baseline.
+Exact report-write discovery and original private-block custody precede metadata
+projection; Pengui owns allocation receipts and every final grant decision.
+No source/model work or report mutation occurs during discovery. Native writes
+retain full dependency, content and CAS checks. Complete cross-service acceptance
+remains outstanding.

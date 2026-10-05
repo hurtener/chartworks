@@ -237,3 +237,11 @@ reconstructs the proof. This adds no authority path or generic entailment solver
 ## Exact-target App dependency metadata
 
 D-098 adds the bounded [dependency discovery contract](docs/contracts/report-dependencies-v1.md): signed `reporting.discover` plus exact target read and private-preview/custody permit identifiers and revision metadata only. Pengui remains the sole policy owner; ordinary content and execution still require every native dependency.
+
+D-099 extends the [native dependency contract](docs/contracts/report-dependencies-v1.md)
+with proposed manual create/save definitions and the existing save baseline.
+Exact report-write discovery and original private-block custody precede metadata
+projection; Pengui owns allocation receipts and every final grant decision.
+No source/model work or report mutation occurs during discovery. Native writes
+retain full dependency, content and CAS checks. Complete cross-service acceptance
+remains outstanding.

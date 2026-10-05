@@ -812,3 +812,5 @@ Optional manual report application: [D-096 one shared Builder/Consumer app with 
 Visual authoring continuation: [D-097 canvas-first chart authoring and genuine private pages](decisions/2026-10-03-visual-chart-authoring.md).
 
 Native authority discovery: [D-098 exact-target dependency metadata for Pengui](decisions/2026-10-05-report-dependency-discovery.md).
+
+Manual write authority discovery: [D-099 proposed definitions and native save baselines](decisions/2026-10-05-report-write-dependency-discovery.md).

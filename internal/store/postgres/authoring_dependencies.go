@@ -20,13 +20,19 @@ func (d *DB) DiscoverReportDependencies(ctx context.Context, e identity.Envelope
 	if err = reporting.RequireDependencyDiscovery(e, in); err != nil {
 		return out, err
 	}
+	return d.discoverReportDependencies(ctx, e, in, false)
+}
+
+// write is used only after exact report-write discovery admission. A native edit
+// can read its private baseline under write authority; block custody is unchanged.
+func (d *DB) discoverReportDependencies(ctx context.Context, e identity.Envelope, in reporting.DependencyRequest, write bool) (out reporting.DependencyManifest, err error) {
 	ctx, cancel, err := requestContext(ctx, e)
 	if err != nil {
 		return out, err
 	}
 	defer cancel()
 	out = reporting.DependencyManifest{Version: "report-dependencies-v1", Kind: in.Kind, ID: in.ID, References: []reporting.ResourceReference{}, Blocks: []reporting.DependencyBlock{}}
-	preview := access.Require(e, "reporting.preview", access.Resource{Tenant: e.Tenant(), Kind: in.Kind, ID: in.ID, Permission: "preview"}) == nil
+	preview := write || access.Require(e, "reporting.preview", access.Resource{Tenant: e.Tenant(), Kind: in.Kind, ID: in.ID, Permission: "preview"}) == nil
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if in.Kind == "block" {
 			var b reporting.DependencyBlock

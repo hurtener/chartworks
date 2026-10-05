@@ -52,8 +52,42 @@ sent to the frame. Deployment does not add any policy grants automatically.
 
 Current Pengui projections consume this contract for exact SQL-free block read
 and manual report reopening, with independent report read/write and App editor
-admission. Private roots and pins additionally require preview. Report mutations, topic/preparation discovery, retained private-run discovery,
+admission. Private roots and pins additionally require preview. Proposed report writes use the extension below. Topic/preparation discovery, retained private-run discovery,
 restricted MCP admission and the complete Builder journey remain separate work.
 `TestReportAppDependencyDiscovery` and
 `TestReportAppDependenciesResolveCurrentPublishedPin` exercise the real PostgreSQL
 and verifier boundaries; local results are recorded in the integration review.
+
+## Proposed report writes (D-099)
+
+`POST /v1/reporting/authoring/v1/write-dependencies` accepts a closed object with
+`operation: create|save`, `id`, `expected_version`, `revision`, and `definition`.
+Create requires zero version/revision; save requires a positive expected version
+and exact baseline revision 1–256. The body limit is 1 MiB. The typed SDK method is
+`ReportWriteDependencies`, registration ID `reportAppWriteDependenciesV1`.
+
+The metadata seed requires `reporting.discover` and exact report write, plus exact
+tenant write for create. The provider normalizes and structurally validates the
+same manual definition as the real operation. Query/narrative widgets deny.
+Proposed public blocks resolve native publication pointers; private pins must
+match their original actor, revision and digest before metadata projection. A
+private pin stays private after publication. Save also discovers its native
+baseline under write authority and rejects a stale expected version. Its old
+dependencies remain required even when the proposed edit removes those widgets.
+
+The response is `report-write-dependencies-v1` with operation/ID, expected
+version, base revision/digest (zero/empty for create), normalized definition
+digest, references, blocks and `metadata_actions`. The last field is empty unless
+governed option definitions require native semantic/source metadata reads, in
+which case it is exactly `sources.read` and `topics.read`. It never includes
+source query, execution or publishing. Bounds remain 128 references/block pins
+and the SDK accepts at most 128 KiB. No content is returned or persisted.
+
+Pengui verifies the server-owned allocation receipt for creation, current App
+editor and independent read/write/creation policy, then every native dependency.
+Private block preview is independently checked; report write alone does not grant
+it. Native writes still perform complete content/binding validation and CAS under
+the final bearer. A successful manifest does not promise those checks will pass.
+`TestReportAppWriteDependencyDiscovery` covers native create/save consumption,
+removed baseline requirements, private custody, tenant/target/input negatives,
+zero source/model work and the actual registered HTTP schema.
