@@ -291,8 +291,8 @@
     },
     {
       "path": "web/report-app/styles.css",
-      "bytes": 22502,
-      "sha256": "fb9a15dd3401a79d6baeb958e6bd31dad834eaf16aea28da383a87b710703b01"
+      "bytes": 22499,
+      "sha256": "04df8fff8ace316bec09ac08b05fd7ab40b529900260cc899c759128d26b1170"
     }
   ],
   "output": {
