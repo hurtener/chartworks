@@ -36,6 +36,15 @@ on logout, organization change, withdrawal, navigation or frame replacement.
 
 ## Native authority and presentation
 
+Both adapters consume the host's `theme` and MCP Apps `styles.variables` fields.
+The compiled renderer maps a fixed subset of surface, text, border, font-size,
+font-family and radius tokens to its controls and canvas. Values must pass the
+corresponding CSS property grammar; URLs, variable references, rules, unknown
+keys and oversized values are not applied. Missing/invalid values remove old
+overrides. The host's existing theme relay supplies live computed values.
+Repainting does not reopen admission, change operation inventory, fetch fonts,
+mutate saved definitions or execute sources/models. Asset CSP remains unchanged.
+
 Pengui resolves current user, Team, organization, audiences, entitlement and grants.
 Read, write and grant remain separate central permissions. Chartworks validates
 Pengui authority and applies exact `cw.<kind>.<permission>:<id>` references and

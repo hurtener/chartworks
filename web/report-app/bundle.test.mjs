@@ -60,6 +60,7 @@ function harness({embedded = false, topLevel = false} = {}) {
   let timerID = 0;
   const context = vm.createContext({
     window: win, document, URL, TextEncoder, console,
+    CSS: {supports: (property, value) => property === 'color' && /^#[0-9a-f]{6}$/.test(value)},
     setTimeout(callback, delay) { const id = ++timerID; timers.set(id, {callback, delay}); return id; },
     clearTimeout(id) { timers.delete(id); },
   }, {codeGeneration: {strings: false, wasm: false}});
@@ -175,6 +176,28 @@ test('literal embedded prefix selects registered bootstrap with no MCP fallback'
   await flush();
   assert.equal(frame.timers.size, 0);
   assert.equal([...frame.listeners.values()].reduce((sum, set) => sum + set.size, 0), 0);
+});
+
+for (const embedded of [false, true]) test(`compiled ${embedded ? 'embedded' : 'MCP'} context repaints without tool calls or content replacement`, async () => {
+  const frame = harness({embedded});
+  const bootstrap = {protocol: 'chartworks-report-app-v1', frame: 'theme-frame', generation: 1, method: 'bootstrap', params: {challenge: 'synthetic-theme-challenge'}};
+  try {
+    if (embedded) {
+      frame.emit(bootstrap);
+      frame.reply(frame.sent[0], {challenge: bootstrap.params.challenge, tools: true, capabilities: {supported_tools: toolHint}, context: {}});
+      await flush();
+    } else await initializeMCP(frame);
+    await finishCatalog(frame);
+    const content = frame.root.textContent, calls = frame.sent.filter(item => item.message.method === 'tools/call').length;
+    const patch = {theme: 'dark', styles: {variables: {'--color-background-primary': '#123456'}}};
+    const message = embedded ? {...bootstrap, method: 'context', params: patch} : {jsonrpc: '2.0', method: 'ui/notifications/host-context-changed', params: patch};
+    frame.emit(message, {source: {}});
+    assert.notEqual(frame.document.documentElement.style['--app-paper'], '#123456');
+    frame.emit(message); await flush();
+    assert.equal(frame.document.documentElement.style['--app-paper'], '#123456');
+    assert.equal(frame.root.textContent, content);
+    assert.equal(frame.sent.filter(item => item.message.method === 'tools/call').length, calls);
+  } finally { frame.close(); }
 });
 
 test('compiled retained presenter displays exact values through the bounded bridge only', async () => {

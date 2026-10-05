@@ -17,7 +17,7 @@ export function renderPublicationControls(parent,app){
     if(op.status==='unknown')section.append(node('p',`Unknown ${op.action.replaceAll('_',' ')} outcome at revision ${op.args.revision}. Repeating the change is blocked. Inspect its exact original revision.`, 'notice error'),button('Inspect uncertain '+op.action.replaceAll('_',' '),()=>void app.perform(()=>app.inspectPublicationOperation(op)),app.busy));
     else if(op.action==='block_publish'&&['confirmed','observed'].includes(op.status))section.append(node('p',`Chart ${op.args.block}, revision ${op.args.revision}, is published. A later report edit cannot roll that publication back.`, 'metadata'));
     if(p.retryEligible(op)){
-      section.append(node('p','Exact inspection found the original head and version unchanged. The earlier request may still be completing. A separately confirmed retry sends the identical metadata-only request, with the same version check, and cannot commit twice. It does not validate data or run queries.','notice'));
+      section.append(node('p','The head and version are unchanged, but the request may still be completing. Confirming retry sends the same metadata-only request and version check; it cannot commit twice, validate data or run queries.','notice'));
       section.append(node('p',`Original ${op.action.replaceAll('_',' ')}: ${op.args.block||op.args.report} · revision ${op.args.revision} · expected version ${op.args.expected_version} · digest ${op.args.digest||op.digest}${op.args.evidence?' · evidence '+op.args.evidence:''}`,'metadata'));
       if(op.disclosure){section.append(node('p','The ENTIRE chart revision and ALL these outputs become available to currently centrally authorized readers:','metadata'));for(const output of op.disclosure)section.append(node('p',`${output.id} · ${output.kind}${output.title?' · '+output.title:''}`,'metadata'));}
       if(op.action==='reject')section.append(node('p',`Original rejection note: ${op.args.note}`,'metadata'),node('p','Return only this reviewed revision for amendment. The newer draft and current publication are preserved.','notice'));
@@ -37,16 +37,16 @@ export function renderPublicationControls(parent,app){
     card.append(node('h3',b.metadata?.[0]?.title||b.state.id),node('p',`Chart revision ${b.revision} · ${item.published_at?'Published':'Private'} · ${b.outputs.length} outputs`,'metadata'));
     const outputs=node('ul');for(const output of b.outputs)outputs.append(node('li',`${output.id} · ${output.kind}${output.mapping?.options?.title?' · '+output.mapping.options.title:''}`));card.append(outputs);
     if(!item.published_at&&p.available('block_publish')){
-      card.append(node('p','Publishing exposes this ENTIRE immutable chart revision, including every output listed above, to readers already entitled by centrally signed authority. The audience names and count are not provided. This does not publish the report or change sharing permissions.','notice'));
+      card.append(node('p','Publish this ENTIRE immutable chart revision and all listed outputs for authorized readers. Audience details are unavailable. This does not publish the report or change sharing permissions.','notice'));
       const evidence=node('details');evidence.append(node('summary','Exact publication and validation coordinates'),node('p',`Block ${b.state.id} · version ${b.state.version} · revision ${b.revision} · digest ${b.digest} · evidence ${b.validation?.id||'missing'}`,'metadata'));card.append(evidence);
       if(publicationEligible(item))confirm(card,app,'block_publish',`${b.state.id}:${b.revision}`,'I confirm publishing the entire chart revision and all listed outputs.','Publish entire chart revision',locked);
-      else card.append(node('p','This exact revision is not currently eligible to publish. Check chart status and validate private data when required, then inspect again. Current authority and evidence are rechecked by the server.','metadata'));
+      else card.append(node('p','This revision cannot be published yet. Check status, validate private data if required, and inspect again. Access and evidence are rechecked.','metadata'));
     }
     section.append(card);
   }
   const options=publishedWidgets(view);
   if(options.length&&r.private&&r.state.draft_revision===r.revision&&p.available('rebind_published')){
-    const group=node('section');group.append(node('h3','Use published charts in this report'),node('p','Choose the exact widgets to rebind. This creates a new private draft revision; selected outputs, filters, parameters, pages and layout stay intact. Other widgets keep their existing policies.','metadata'));
+    const group=node('section');group.append(node('h3','Use published charts in this report'),node('p','Choose widgets to rebind in a new private draft. Outputs, filters, parameters, pages and layout stay intact; other widgets keep their policies.','metadata'));
     for(const option of options)group.append(checkbox(`${option.page} / ${option.title} · ${option.widget} · ${option.block} revision ${option.revision}`,p.selection.has(option.widget),locked,value=>{p.select(option.widget,value);app.render();}));
     if(p.selection.size)confirm(group,app,'rebind_published',undefined,'I confirm rebinding only the selected widgets to their exact published chart revisions.','Rebind selected widgets',locked);
     section.append(group);
@@ -54,16 +54,16 @@ export function renderPublicationControls(parent,app){
   if(hasPrivatePins(view))section.append(node('p','Private chart pins must be explicitly rebound to published revisions before report review.','notice'));
   else if(p.available('report_transition')&&r.private){
     if(r.state.draft_revision===r.revision&&!r.state.review_revision&&view.can_review===true&&view.rejected!==true&&!p.rejected(r.state.id,r.revision)){section.append(node('p','Submit this saved revision for review. Submission clears its draft pointer, retains a recoverable pending review, and does not publish.','metadata'));confirm(section,app,'review',undefined,'I confirm submitting this exact report revision for review.','Submit report for review',locked);}
-    if(r.state.review_revision===r.revision&&view.can_publish===true){section.append(node('p','Publish this exact reviewed report revision for currently authorized readers. Native publication authority is checked separately. Existing private preview results stay private. No public data run occurs here.','notice'));confirm(section,app,'publish',undefined,'I confirm publishing this exact reviewed report revision.','Publish reviewed report',locked);}
+    if(r.state.review_revision===r.revision&&view.can_publish===true){section.append(node('p','Publish this reviewed revision for authorized readers, with a separate publication access check. Private previews stay private. No public run is created.','notice'));confirm(section,app,'publish',undefined,'I confirm publishing this exact reviewed report revision.','Publish reviewed report',locked);}
   }
   if(p.available('report_transition')&&r.private&&r.state.review_revision===r.revision&&view.can_reject===true){
-    const group=node('section');group.append(node('h3','Return review for amendment'),node('p','Reject this exact reviewed revision with a note. Its review pointer is cleared; any newer draft and the current publication are preserved. If no draft exists, this revision returns as a private draft. Edit and save a new revision before resubmission.','notice'));
+    const group=node('section');group.append(node('h3','Return review for amendment'),node('p','Reject this reviewed revision with a note. Keep any newer draft and the current publication. If no draft exists, return this revision to draft. Edit and save before resubmitting.','notice'));
     const label=node('label','Reason for returning review'),input=node('textarea');input.value=p.rejectNote;input.defaultValue=input.value;input.maxLength=2048;input.disabled=locked;input.setAttribute('aria-label','Reason for returning review');input.addEventListener('input',()=>{p.setRejectNote(input.value);app.render();});label.append(input);group.append(label,node('p','A note is required, up to 2,048 UTF-8 bytes.','metadata'));
     if(validRejectionNote(p.rejectNote))confirm(group,app,'reject',undefined,'I confirm rejecting this exact reviewed revision with the note above.','Return reviewed report',locked);
     else group.append(button('Return reviewed report',()=>{},true));
     section.append(group);
   }
   if(r.private&&!hasPrivatePins(view)&&p.available('report_transition')&&(r.state.draft_revision===r.revision&&!r.state.review_revision&&view.can_review!==true||r.state.review_revision===r.revision&&view.can_publish!==true))section.append(node('p','This transition is unavailable under the current lifecycle state or native authority. Refresh access through your host if needed, then inspect again.','metadata'));
-  if(!r.private)section.append(node('p','The report revision is published. Switch to Browse to read the actual publication. Use Run explicitly to create its first public result; any earlier private preview stays private.','notice'));
+  if(!r.private)section.append(node('p','Published. Switch to Browse, then use Run explicitly to create its first public result. Earlier private previews stay private.','notice'));
   parent.append(section);
 }

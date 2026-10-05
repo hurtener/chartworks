@@ -14,7 +14,7 @@ function datasetFilterSummary(filter){
 }
 function renderDatasetFilters(parent,session,{locked,busy,canAllocate,change,searchFilter,inspectFilter}){
  const view=session.view,filters=session.draft.filters||[],section=datasetNode('section',undefined,'dataset-filters');
- section.append(datasetNode('h3','Chart filters'),datasetNode('p','Choose up to four reviewed fields and a required default for each. These defaults are saved with the new chart; temporary report selections are separate.','metadata'));
+ section.append(datasetNode('h3','Chart filters'),datasetNode('p','Choose up to four reviewed fields with required defaults. Defaults are saved with the chart, separately from temporary report selections.','metadata'));
  const availability=field=>{
   const capability=datasetFilterCapability(view,field.id);
   if(!capability?.supported)return capability?.reason?.replaceAll('_',' ')||'No reviewed filter capability is available';

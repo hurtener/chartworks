@@ -51,7 +51,7 @@ export function renderMappingEditor(parent,session,{busy=false,allocation=null,c
  if(session.copy)editor.append(mapNode('p',!canAllocate?TARGET_ALLOCATION_UNAVAILABLE:allocation?.unknown?'Resume chart creation asks your host for the same private copy.':'Saving will create a private copy through your host.','metadata'));
  editor.append(fields);
  if(formatting&&session.dirty&&!session.valid())editor.append(mapNode('p','Use headers up to 256 UTF-8 bytes and whole fraction digits from 0 to 20. Reset inherits. Save requires a presentation change.','notice'));
- if(!formatting&&!session.valid())editor.append(mapNode('p','Choose compatible fields and valid display settings. Use a plain-text chart title, a supported legend position and a label length from 1 to 1024. All required slots must be filled; each field can occupy one slot.','notice'));
+ if(!formatting&&!session.valid())editor.append(mapNode('p','Choose compatible fields for every required slot; each field can fill one slot. Use a plain-text title, a supported legend position and label length 1–1024.','notice'));
  if(!formatting)editor.append(...actions);
  if(allocation?.unknown)editor.append(mapButton('Resume chart creation',resume,busy||allocation.pending||!canAllocate));
  if(session.unknown)editor.append(mapButton('Inspect chart state',inspect,locked));parent.append(editor);

@@ -18,8 +18,8 @@
     },
     {
       "path": "web/report-app/app.js",
-      "bytes": 95065,
-      "sha256": "e626f02868b02f16f87d36b6176e0584f8e2997e155ed2529320887e38b3aaee",
+      "bytes": 94787,
+      "sha256": "3abe2b68ca1d7a667519759aabb9a66a451fb8221089ed213e21a231d7fa72d0",
       "imports": [
         "web/report-app/allocation.js",
         "web/report-app/bridge.js",
@@ -38,9 +38,10 @@
         "web/report-app/publication.js",
         "web/report-app/report-filters.js",
         "web/report-app/retained.js",
+        "web/report-app/theme.js",
         "web/report-viewer/presentation.js"
       ],
-      "bytesInOutput": 75413
+      "bytesInOutput": 75080
     },
     {
       "path": "web/report-app/bridge.js",
@@ -65,8 +66,8 @@
     },
     {
       "path": "web/report-app/dataset-editor.js",
-      "bytes": 14708,
-      "sha256": "92597ba597be8859117f0c4e0cb667bd21fbfaf3f974f3757cc90ae758172da9",
+      "bytes": 14692,
+      "sha256": "4b14920e4802f11e391874d054d50f8ee739871f9e68202c30d592b744bdf70f",
       "imports": [
         "web/report-app/allocation.js",
         "web/report-app/dataset.js",
@@ -74,7 +75,7 @@
         "web/report-app/filter-controls.js",
         "web/report-app/filters.js"
       ],
-      "bytesInOutput": 10326
+      "bytesInOutput": 10310
     },
     {
       "path": "web/report-app/dataset.js",
@@ -148,15 +149,15 @@
     },
     {
       "path": "web/report-app/mapping-editor.js",
-      "bytes": 11289,
-      "sha256": "dc9154c06ca2e1688a8733af48fc736b312782245ab0f01b955409bafdf5ac95",
+      "bytes": 11235,
+      "sha256": "77ff006880d6d9b9f4c907ec9343a47a9a4146a8db3002e7955b267328ef1d67",
       "imports": [
         "web/report-app/allocation.js",
         "web/report-app/dom.js",
         "web/report-app/formatting.js",
         "web/report-app/mapping.js"
       ],
-      "bytesInOutput": 8321
+      "bytesInOutput": 8267
     },
     {
       "path": "web/report-app/mapping.js",
@@ -204,13 +205,13 @@
     },
     {
       "path": "web/report-app/publication-controls.js",
-      "bytes": 11434,
-      "sha256": "d574e798465cf232dcdb7af00b2e00d64f543034053fb85bf791b2a11699a824",
+      "bytes": 11003,
+      "sha256": "ebbd1638872cc9a5f99ddeece085cbc7be8324b164719bfed14b7bca1f2ddb09",
       "imports": [
         "web/report-app/dom.js",
         "web/report-app/publication.js"
       ],
-      "bytesInOutput": 9310
+      "bytesInOutput": 8879
     },
     {
       "path": "web/report-app/publication.js",
@@ -251,6 +252,13 @@
       "bytesInOutput": 5936
     },
     {
+      "path": "web/report-app/theme.js",
+      "bytes": 1530,
+      "sha256": "2c4659b81d46d4f9c29b3f1f4ff8d14864d57451738c4fc78a545eccc7e78a92",
+      "imports": [],
+      "bytesInOutput": 886
+    },
+    {
       "path": "web/report-viewer/presentation.js",
       "bytes": 48407,
       "sha256": "2d91cd317f6d9b5c7831eda06e9526e6c34bb43150eef4486d685ad3a9babc9d",
@@ -283,13 +291,13 @@
     },
     {
       "path": "web/report-app/styles.css",
-      "bytes": 22477,
-      "sha256": "33adbebf644cf5911eca1d7e098369a8bad7d1a50b3097740512426c20fc98fe"
+      "bytes": 22502,
+      "sha256": "fb9a15dd3401a79d6baeb958e6bd31dad834eaf16aea28da383a87b710703b01"
     }
   ],
   "output": {
     "path": "web/report-app/generated/report-app.js",
-    "bytes": 232837,
-    "sha256": "e25b51edf51012664a6d8532a259efffbb54db8947df79c8c523af1e237b141b"
+    "bytes": 232889,
+    "sha256": "717d73f0ad3d30bc7b3619105d10deec4b288af2d166076d64643bc9648d3f2b"
   }
 }
