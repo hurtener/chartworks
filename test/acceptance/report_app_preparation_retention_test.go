@@ -337,6 +337,12 @@ func TestReportAppPreparationConsumedReplayAfterCleanup(t *testing.T) {
 	if count(t, raw, `SELECT count(*) FROM chartworks.authoring_preparations WHERE tenant_id=$1 AND preparation_id=$2`, e.Tenant(), base.ID) != 0 || count(t, raw, `SELECT count(*) FROM chartworks.authoring_preparation_consumed WHERE tenant_id=$1 AND preparation_id=$2`, e.Tenant(), base.ID) != 1 {
 		t.Fatal("consumed payload not compacted")
 	}
+	discovery := phase27Actor(t, f.f, e.User(), []string{"reporting.discover", "reporting.preview", "cw.block.read:" + base.Target, "cw.block.write:" + base.Target, "cw.block.preview:" + base.Target})
+	requirements, err := s.DataDependencies(ctx, discovery, reporting.DataDependencyRequest{NewBlock: base.Target, Preparation: base.ID})
+	if err != nil || requirements.Preparation != base.ID || requirements.Operation != in.Operation || requirements.Dataset != in.Intent.Dataset || requirements.Topic != in.Intent.Topic || len(requirements.QueryReferences) != 3 {
+		t.Fatal("compacted discovery lost original custody", requirements, err)
+	}
+
 	replay, err := s.CreatePreparedChart(ctx, e, create)
 	if err != nil || replay.Block.Revision != 1 || replay.Block.Digest != created.Block.Digest {
 		t.Fatal("original Create replay", err)

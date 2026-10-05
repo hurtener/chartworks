@@ -170,3 +170,38 @@ Existing native authoring/block-mapping regressions also passed locally under
 `-race` against PostgreSQL (`TestReportAppAuthoring`,
 `TestReportAppAuthoringBlockReach`, `TestReportAppBlockMappingAuthoring`). This
 checks the existing content/authoring domain alongside the new metadata seam.
+
+
+## Reviewed data projection candidate
+
+D-100 adds provider-native reviewed-topic and original preparation dependency
+metadata. The Pengui candidate consumes it for named topic pages, topic/dataset
+reads and allocated chart Prepare/Inspect/Consume/Control. Native custody is
+stable across iframe admissions inside one canonical Pengui login and remains
+partitioned by App, user, organization, recipient and tenant. Both implementations
+are under local qualification; no real-service chart or MCP acceptance is claimed
+by this source checkpoint. Billing CI is intentionally not requested.
+
+The opt-in `chartworks_live_fixture` build tag supplies
+`TestReportAppLiveFixture` for the separate real-service lane. With an isolated
+`CHARTWORKS_TEST_STORE_URL` and a fresh absolute
+`CHARTWORKS_LIVE_FIXTURE_OUTPUT`, it seeds synthetic reviewed data through the
+existing domain services, exports a private read-only connector configuration
+and a public logical selection descriptor, then keeps its disposable databases
+alive for at most two hours. The reference service uses the real platform issuer;
+the fixture's test issuer and recorded setup gateway are never exported to it.
+Creating `OUTPUT/stop` records source/model deltas and runs normal database/role
+cleanup. Private connector output must never enter evidence or source control.
+This harness does not itself establish browser, publication or MCP acceptance.
+
+Local source gates: reporting, reporting API, PostgreSQL and SDK focused race
+checks passed. `TestReportAppDataDependencyDiscovery` and
+`TestReportAppPreparationConsumedReplayAfterCleanup` passed on real PostgreSQL 17
+with verified TLS (61.039s together). The first run used an unencrypted Docker
+hostname and correctly failed source registration; only the test database
+transport/configuration changed. Assets (33 assertions), generated bundle checks,
+planning and mirrored rules passed. Direct diff review checked exact discovery
+roots, complete publication reach, original actor/session/target custody,
+compact consumed receipts, closed wire shapes and absence of execution authority
+in discovery seeds. No P0/P1 finding remains in this bounded source change.
+The live fixture has reached ready state; HTTP/browser results are still pending.

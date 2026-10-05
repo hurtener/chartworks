@@ -245,3 +245,9 @@ projection; Pengui owns allocation receipts and every final grant decision.
 No source/model work or report mutation occurs during discovery. Native writes
 retain full dependency, content and CAS checks. Complete cross-service acceptance
 remains outstanding.
+
+D-100 extends the same metadata boundary to whole reviewed publications and
+original preparation custody, including consumed receipts. Pengui resolves the
+returned requirements independently; metadata does not authorize source execution
+or return definitions, names, schemas or values. The embedded topic catalog can
+consume explicit bounded host cursors without dropping dependency-filtered pages.

@@ -117,3 +117,8 @@ AC02/AC07/AC08 additionally include D-099 proposed-write discovery and
 baseline requirements, private custody and closed HTTP inputs. This remains a
 BFF metadata route outside the MCP/App tool inventory; no new migration or
 phase-completion claim is introduced.
+
+AC02/AC07/AC08 also cover D-100's native publication/preparation requirement
+projection via `TestReportAppDataDependencyDiscovery`, preserving exact original
+custody, full unselected-dataset dependencies and zero source/model metadata work.
+This HTTP control-plane consumer changes no MCP tool inventory or framework gate.

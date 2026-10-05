@@ -13,6 +13,7 @@ import (
 
 const DependencyDiscoveryPath = "/v1/reporting/authoring/v1/dependencies"
 const WriteDependencyDiscoveryPath = "/v1/reporting/authoring/v1/write-dependencies"
+const DataDependencyDiscoveryPath = "/v1/reporting/authoring/v1/data-dependencies"
 
 // Discovery is a BFF control-plane call, deliberately absent from the iframe
 // tool inventory and MCP app tools. Both delivery modes share this HTTP seam.
@@ -31,7 +32,14 @@ func dependencyEntries(s *reporting.Authoring) []runtimeEndpoint {
 	write.definition.MaxBodyBytes = 1 << 20
 	write.definition.Audit = "read_only_no_domain_audit"
 	write.definition.ResourceLoader = "exact signed report write and discovery action; create requires tenant write; native proposal pins and save baseline requirements; private block custody; no values or definitions returned"
-	return []runtimeEndpoint{entry, write}
+	data := runtimeEntry("POST", DataDependencyDiscoveryPath, reporting.DependencyDiscoveryAction, "reportAppDataDependenciesV1", "Discover native publication or original preparation dependency coordinates", func(ctx context.Context, e identity.Envelope, _ string, _ url.Values, in reporting.DataDependencyRequest) (reporting.DataDependencyManifest, error) {
+		return s.DataDependencies(ctx, e, in)
+	})
+	data.definition.Effect = "retained_metadata_read"
+	data.definition.MaxBodyBytes = 8 << 10
+	data.definition.Audit = "read_only_no_domain_audit"
+	data.definition.ResourceLoader = "exact topic read or block read/write/preview; original preparation tenant/actor/session/target custody; no definitions, values or source work"
+	return []runtimeEndpoint{entry, write, data}
 }
 
 func DependencyRegistry() (*api.Registry, error) { return registryForEntries(dependencyEntries(nil)) }

@@ -79,3 +79,18 @@ test('unchanged real PostgreSQL public DTOs satisfy the actual frontend preparat
  assert.equal(retained.get(selection.page,selection.widget,selection.output).output.chart.points[0].value.exact,'9007199254740998.625');
  assert.deepEqual(calls.map(c=>c.name),['list_topics','describe_topic','reporting_authoring_dataset_v1','reporting_authoring_prepare_chart_v1','reporting_authoring_create_prepared_v1','reporting_authoring_block_validate_v1']);
 });
+
+
+test('bounded host topic pages advance through empty and short dependency-filtered pages',async()=>{
+ const topic=datasetClone(datasetTopic),calls=[];
+ const session=new DatasetSession(async(name,args)=>{calls.push({name,args});if(!args.after)return {items:[],next:'a'};if(args.after==='a')return {items:[{...topic,topic:'b'}],next:'c'};return {items:[{...topic,topic:'d'}]};});
+ await session.loadTopics();assert.equal(session.next,'a');assert.deepEqual(session.topics,[]);
+ await session.loadTopics(session.next);assert.equal(session.next,'c');assert.equal(session.topics[0].topic,'b');
+ await session.loadTopics(session.next);assert.equal(session.next,'');assert.deepEqual(session.topics.map(t=>t.topic),['b','d']);assert.equal(calls.length,3);
+});
+
+test('host topic cursor and shape corruption fail without replacing the prior catalog',async()=>{
+ for(const page of [{items:[],next:0},{items:[],next:'a'},{items:[],next:'../bad'},{items:[],extra:true},{items:[{...datasetClone(datasetTopic),topic:'z'}],next:'b'}]){
+  const session=new DatasetSession(async()=>page);await assert.rejects(session.loadTopics('a'),/stale_validation/);assert.deepEqual(session.topics,[]);
+ }
+});

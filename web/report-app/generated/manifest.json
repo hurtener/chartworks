@@ -79,8 +79,8 @@
     },
     {
       "path": "web/report-app/dataset.js",
-      "bytes": 21578,
-      "sha256": "53d8cb8e949a8e268b6234953fd88395b70f904a6eb3191137d00d567f9a025b",
+      "bytes": 21920,
+      "sha256": "3ebd080cc240fef01b78ee2c525cf7009c07537a52f62726f2d035609d8b9cc3",
       "imports": [
         "web/report-app/error-codes.js",
         "web/report-app/filter-controls.js",
@@ -88,7 +88,7 @@
         "web/report-app/mapping.js",
         "web/report-app/model.js"
       ],
-      "bytesInOutput": 15197
+      "bytesInOutput": 15426
     },
     {
       "path": "web/report-app/dom.js",
@@ -297,7 +297,7 @@
   ],
   "output": {
     "path": "web/report-app/generated/report-app.js",
-    "bytes": 232889,
-    "sha256": "717d73f0ad3d30bc7b3619105d10deec4b288af2d166076d64643bc9648d3f2b"
+    "bytes": 233118,
+    "sha256": "ee6ed475bfc7d95c64b8478034a9f79180df003a01f21024b65128a9b82e17e6"
   }
 }

@@ -25,3 +25,13 @@ func (c *Client) ReportWriteDependencies(ctx context.Context, in ReportWriteDepe
 	err = c.callLimit(ctx, "POST", reportingapi.WriteDependencyDiscoveryPath, "", in, &out, 128<<10)
 	return
 }
+
+// ReportDataDependencies discovers publication or original preparation coordinates.
+// This metadata-only method does not grant content access or execute source work.
+type ReportDataDependencyRequest = reporting.DataDependencyRequest
+type ReportDataDependencyManifest = reporting.DataDependencyManifest
+
+func (c *Client) ReportDataDependencies(ctx context.Context, in ReportDataDependencyRequest) (out ReportDataDependencyManifest, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.DataDependencyDiscoveryPath, "", in, &out, 128<<10)
+	return
+}

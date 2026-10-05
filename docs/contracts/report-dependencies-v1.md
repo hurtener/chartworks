@@ -52,7 +52,7 @@ sent to the frame. Deployment does not add any policy grants automatically.
 
 Current Pengui projections consume this contract for exact SQL-free block read
 and manual report reopening, with independent report read/write and App editor
-admission. Private roots and pins additionally require preview. Proposed report writes use the extension below. Topic/preparation discovery, retained private-run discovery,
+admission. Private roots and pins additionally require preview. Proposed report writes use the extension below. Topic/preparation discovery uses D-100 below; retained private-run discovery,
 restricted MCP admission and the complete Builder journey remain separate work.
 `TestReportAppDependencyDiscovery` and
 `TestReportAppDependenciesResolveCurrentPublishedPin` exercise the real PostgreSQL
@@ -91,3 +91,39 @@ the final bearer. A successful manifest does not promise those checks will pass.
 `TestReportAppWriteDependencyDiscovery` covers native create/save consumption,
 removed baseline requirements, private custody, tenant/target/input negatives,
 zero source/model work and the actual registered HTTP schema.
+
+## Reviewed data and original preparation custody (D-100)
+
+`POST /v1/reporting/authoring/v1/data-dependencies` accepts the closed fields
+`topic` (topic/version/digest), `dataset`, `new_block`, `preparation`, and
+`operation`. Empty strings select the unused branch. A topic-only request may
+omit the version/digest together to select the current active publication, or
+pin both. A dataset, when supplied, must belong to that exact publication.
+Preparation requests select an exact target and exactly one preparation or
+operation. Fresh Prepare supplies the original operation, exact reviewed topic
+pin and dataset; existing operation custody takes precedence over proposed pins.
+
+The metadata seed requires reporting.discover with exact topic read, or exact
+block read/write plus separate reporting.preview/block preview. Private custody
+is filtered by tenant, original actor, native session and target before any
+coordinates are projected. No normal content-read envelope is forged. The
+provider reads only publication dependency indexes and bounded fields of the
+existing preparation/consumed records; it never decodes SQL, schemas, results,
+source operation coordinates, identities or credentials for this response.
+
+`version: report-data-dependencies-v1` returns the native topic pin, selected
+dataset, target, preparation/operation identifiers, complete `references` and
+`query_references`. References include the entire publication, even unselected
+datasets. Query references identify only the selected dataset's source query,
+dataset query and execution context. Original preparation requirements survive
+publication movement and native consumed-record retention. Native Inspect,
+Prepare, Consume and Control still enforce their distinct full authority and
+current-state requirements. Metadata never retries a physical source attempt.
+
+At most 128 distinct references are returned; overflow rejects. Body limit is
+8 KiB. Registration ID is `reportAppDataDependenciesV1`; typed SDK method is
+`ReportDataDependencies`. This endpoint adds no MCP tool or schema migration.
+`TestReportAppDataDependencyDiscovery` exercises actual PostgreSQL custody,
+complete publication dependencies, missing roots, cross-tenant/user/session,
+original operation replay and zero extra source/model work. Local results and
+real-service acceptance must be reported separately.

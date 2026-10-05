@@ -187,3 +187,7 @@ D-099 adds provider-native proposed-write requirements and save-baseline union;
 see the [dependency contract](../contracts/report-dependencies-v1.md). The first
 Pengui create/save projections use it under central grants and allocation receipts.
 Full Builder/Consumer and restricted MCP journeys remain required.
+
+D-100 extends native dependency discovery to reviewed publications and original
+preparation custody. The first consumer is Pengui's bounded manual data projector;
+local qualification and full cross-service acceptance remain distinct.
