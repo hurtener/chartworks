@@ -170,8 +170,12 @@ profiles consume these same public interfaces and obey target operation bounds.
 
 ## Integration boundary and verification
 
-Pengui's initial registered App lane is pending retained-read coverage using
-operator-approved exact resource/context references. Provider metadata does not
+Pengui's registered five-operation HTTP Consumer lane has exact-version synthetic
+browser coverage at ea9f6d3 using this application's 8bfe9a1 HTML and
+operator-approved exact resource/context references. This does not establish a
+real provider connection or Builder authority. The
+[cross-repository checkpoint](../reviews/pengui-app-integration-2026-10-05.md)
+records current gaps, evidence and migration/activation requirements. Provider metadata does not
 yet supply a dynamically discovered whole-catalog dependency closure. Do not infer
 that closure from browser-provided definitions. Manual host activation additionally
 needs central exact-target allocation, action projection, no-chat admission and
