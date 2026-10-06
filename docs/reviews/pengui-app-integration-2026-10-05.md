@@ -293,3 +293,51 @@ publication/rebinding, native projections replacing legacy non-report Consumer
 selectors, independent published Consumer acceptance and restricted no-chat MCP
 through the existing framework. Migration 087/088 plus Pengui 0107 still require
 quiescence/compatibility and activation rehearsal; D-101/PD-244 add no migration.
+
+## Explicit publication integration checkpoint — 2026-10-05
+
+The Pengui HTTP host now exposes 24 closed operations, including the existing
+native lifecycle inspection, whole-chart publication, selected-widget rebind and
+report review/publication/rejection seam. This stage changes Pengui projection and
+transport only; Chartworks runtime remains `4e551e94`. It reuses native definition
+metadata and independent canonical publish grants, with optional inspection hints,
+strict scope bounds and the existing final live policy fence. No source/model
+permission is inferred from publication or editor status.
+
+Local qualification passes 36 real HTTP checks and four registered-iframe
+publication checks; a separate 25-check setup creates the browser fixture. The
+actual issuer and real PostgreSQL services exercise missing publication grants,
+inspect-without-publish, whole-revision chart publication, unchanged private report
+pins, stale report CAS, separate exact rebind, recoverable private review, explicit
+report publication and the original private run's unchanged privacy/values. The
+iframe requires each separate confirmation, preserves both saved pages and exact
+published pins, and issues no validation/prepare/preview/execute call during the
+publication flow. Desktop, pending-review and 375-pixel screenshots were inspected.
+Browser evidence is sandboxed Playwright Chromium 148.0.7778.96, not external Chrome.
+
+The two synthetic setup journeys account for exactly six source attempts: two
+preparations, two validations and two private-preview executions. Publication adds
+zero. Fixture model-call delta is zero and live model services are disabled. The
+real-PostgreSQL harness passes in 335.324s including its hold; cleanup confirms zero
+leftover databases/roles. Owned services are stopped and the disposable runtime
+container removed; unrelated containers and primary checkouts are preserved.
+
+Local gates: full App/ConnectedApp race suite 13.978s; focused lifecycle/dependency
+race suite 3.769s; 62 host/client assertions; vet; ESLint; Svelte zero errors/warnings;
+Linux arm64 build; production Console and both bundle gates. Existing Chartworks
+runtime was reused; no new full provider suite is claimed. One direct bounded
+adversarial review inspected optional hints versus actual publish authority,
+exact root/dependency policy, native CAS/custody preservation, scope overflow,
+withdrawal during signing, closed frame DTOs, response bounds and unknown-outcome
+recovery. No unresolved P0/P1 was found in this increment. Initial unit fixture
+errors (admission setup and a non-native root reference) were corrected in tests;
+real HTTP and iframe publication probes passed on their first attempts.
+
+Evidence is recorded in the local `real-services-publication/source-manifest.json`
+and sanitized logs/results/screenshots. Binaries were built before committing this
+stage from the same runtime source content; the manifest records that distinction,
+source hashes and binary digests, without claiming a clean-commit release build.
+No hosted CI, production deployment, paid model, merge or tag was performed.
+Both PRs remain draft/unmerged. Full independent published Consumer projection/run
+acceptance, mapping/copy/governed options, restricted no-chat MCP and activation/
+migration rehearsal remain open; this checkpoint does not close the overall goal.
