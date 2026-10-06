@@ -11,6 +11,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/reporting"
+	"github.com/hurtener/chartworks/internal/semantics/topics"
 )
 
 // TestReportAppLiveFixture is an explicit local-service fixture, excluded from
@@ -27,7 +28,16 @@ func TestReportAppLiveFixture(t *testing.T) {
 	if err := os.Mkdir(dir, 0700); err != nil {
 		t.Fatal("fresh private output directory required", err)
 	}
-	f, _, _, request, publication, _, _ := reportDatasetFixture(t, "fixture-unallocated")
+	var f *phase29ExecutionFixture
+	var request reporting.AuthoringPrepareRequest
+	var publication topics.Published
+	expected := "9007199254740998.625"
+	if os.Getenv("CHARTWORKS_LIVE_FIXTURE_OPTIONS") == "true" {
+		f, _, _, request, publication, _ = filteredDatasetFixture(t)
+		expected = "3.750"
+	} else {
+		f, _, _, request, publication, _, _ = reportDatasetFixture(t, "fixture-unallocated")
+	}
 	base := f.f.f.sourceFixture
 	write := func(name string, value any) {
 		t.Helper()
@@ -55,7 +65,7 @@ func TestReportAppLiveFixture(t *testing.T) {
 	write("public.json", map[string]any{
 		"tenant": base.e.Tenant(), "topic_name": publication.Definition.Name,
 		"request": request, "references": refs,
-		"expected_value": "9007199254740998.625", "model_mode": "disabled during live journey",
+		"expected_value": expected, "model_mode": "disabled during live journey",
 	})
 	before, models := f.attemptCount(t), f.f.model.requests.Load()
 	write("ready.json", map[string]any{"ready": true, "setup_source_attempts": before})

@@ -263,3 +263,9 @@ reads and original-run history. Pengui checks complete original dependencies bef
 returning names or summaries; retained artifacts never execute source/model work.
 See [the contract](docs/contracts/report-dependencies-v1.md#published-consumer-and-original-retained-history-d-102).
 No migration or additional MCP tool is introduced.
+
+D-103 extends the manual App integration with native governed-option dependency
+discovery and original lookup recovery; see docs/contracts/report-dependencies-v1.md.
+It reuses existing option services and adds no source effect or migration. Local
+native checks and real cross-service qualification remain distinct; phase release
+status and both-mode acceptance are not changed by this integration increment.

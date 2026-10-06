@@ -16,6 +16,7 @@ const DependencyDiscoveryPath = "/v1/reporting/authoring/v1/dependencies"
 const WriteDependencyDiscoveryPath = "/v1/reporting/authoring/v1/write-dependencies"
 const EffectDependencyDiscoveryPath = "/v1/reporting/authoring/v1/effect-dependencies"
 const DataDependencyDiscoveryPath = "/v1/reporting/authoring/v1/data-dependencies"
+const OptionDependencyDiscoveryPath = "/v1/reporting/authoring/v1/option-dependencies"
 
 // Discovery is a BFF control-plane call, deliberately absent from the iframe
 // tool inventory and MCP app tools. Both delivery modes share this HTTP seam.
@@ -55,7 +56,14 @@ func dependencyEntries(s *reporting.Authoring) []runtimeEndpoint {
 	runs.definition.MaxBodyBytes = 8 << 10
 	runs.definition.Audit = "read_only_no_domain_audit"
 	runs.definition.ResourceLoader = "exact signed parent read and discovery action; original tenant/actor/session and independent private preview before candidate identities; no names, values or execution"
-	return []runtimeEndpoint{entry, write, data, effect, runs}
+	options := runtimeEntry("POST", OptionDependencyDiscoveryPath, reporting.DependencyDiscoveryAction, "reportAppOptionDependenciesV1", "Discover governed option target or original attempt requirements", func(ctx context.Context, e identity.Envelope, _ string, _ url.Values, in reporting.OptionDependencyRequest) (reporting.OptionDependencyManifest, error) {
+		return s.OptionDependencies(ctx, e, in)
+	})
+	options.definition.Effect = "retained_metadata_read"
+	options.definition.MaxBodyBytes = 8 << 10
+	options.definition.Audit = "read_only_no_domain_audit"
+	options.definition.ResourceLoader = "exact dataset allocation/topic or report read/preview; original tenant/actor/session/target custody for status/control; complete native dependency coordinates only, no search/values/source work"
+	return []runtimeEndpoint{entry, write, data, effect, runs, options}
 }
 
 func DependencyRegistry() (*api.Registry, error) { return registryForEntries(dependencyEntries(nil)) }

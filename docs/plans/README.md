@@ -191,3 +191,9 @@ Full Builder/Consumer and restricted MCP journeys remain required.
 D-100 extends native dependency discovery to reviewed publications and original
 preparation custody. The first consumer is Pengui's bounded manual data projector;
 local qualification and full cross-service acceptance remain distinct.
+
+D-103 extends the manual App integration with native governed-option dependency
+discovery and original lookup recovery; see docs/contracts/report-dependencies-v1.md.
+It reuses existing option services and adds no source effect or migration. Local
+native checks and real cross-service qualification remain distinct; phase release
+status and both-mode acceptance are not changed by this integration increment.

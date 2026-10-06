@@ -25,6 +25,24 @@ func optionKey(number int) string {
 func TestReportAppAuthoringOptions(t *testing.T) {
 	f, s, author, prepare, publication, scopes := filteredDatasetFixture(t)
 	ctx := t.Context()
+	checkReportDiscovery := func(request reporting.AuthoringOptionRequest, actor identity.Envelope, original bool) {
+		t.Helper()
+		r := request.Target.Report
+		seed := []string{"reporting.discover", "cw.report.read:" + r.Report}
+		if r.Policy == "private_preview" {
+			seed = append(seed, "reporting.preview", "cw.report.preview:"+r.Report)
+		}
+		e := phase27Actor(t, f.f, actor.User(), seed)
+		mode := "search"
+		if original {
+			mode = "status"
+		}
+		attempts := f.attemptCount(t)
+		m, err := s.OptionDependencies(ctx, e, reporting.OptionDependencyRequest{Mode: mode, Target: request.Target, Operation: request.Operation})
+		if err != nil || m.Original != original || !reflect.DeepEqual(m.Target, request.Target) || !slices.Contains(m.Actions, "reporting.execute") || slices.Contains(m.Actions, "reporting.write") || f.attemptCount(t) != attempts {
+			t.Fatal("report option discovery", m, err)
+		}
+	}
 	before, models := f.attemptCount(t), f.f.model.requests.Load()
 	in := reporting.AuthoringOptionRequest{Target: reporting.AuthoringOptionTarget{Dataset: &reporting.AuthoringDatasetOptionTarget{NewBlock: prepare.NewBlock, Topic: prepare.Intent.Topic, Dataset: prepare.Intent.Dataset, Dimension: "region"}}, Operation: optionKey(1), Limit: 2, Locale: "en-US"}
 	firstRequest := phase27Copy(t, in)
@@ -219,6 +237,7 @@ func TestReportAppAuthoringOptions(t *testing.T) {
 		t.Fatal("authoring metadata executed source work", capabilities, err)
 	}
 	initialOptionRequest := reporting.AuthoringOptionRequest{Target: reporting.AuthoringOptionTarget{Report: &reporting.AuthoringReportOptionTarget{Report: state.ID, Revision: initialReport.Revision, Digest: initialReport.Digest, Page: "analysis", Filter: "region", Policy: "private_preview"}}, Operation: optionKey(30), Search: "East", Limit: 199, Locale: "en-US"}
+	checkReportDiscovery(initialOptionRequest, author, false)
 	initialOptions, err := s.ReportOptions(ctx, author, initialOptionRequest)
 	if err != nil || !initialOptions.ValuesAvailable || len(initialOptions.Options) != 1 || initialOptions.Options[0].Label != "East" || f.attemptCount(t) != metadataReads+1 {
 		t.Fatal("initial explicit Search requires exactly one governed read", initialOptions, err)
@@ -240,6 +259,8 @@ func TestReportAppAuthoringOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	savedState := phase27Copy(t, state)
+	// Recovery uses original dependencies even after the report draft moves.
+	checkReportDiscovery(initialOptionRequest, author, true)
 	saved, err := s.Read(ctx, author, reporting.AuthoringReadRequest{Report: state.ID})
 	if err != nil || saved.Revision != initialReport.Revision+1 || !reflect.DeepEqual(saved.Definition, saveRequest.Definition) {
 		t.Fatal("saved typed defaults", saved, err)
@@ -405,10 +426,12 @@ func TestReportAppAuthoringOptions(t *testing.T) {
 	reportRequest.Target.Report.Revision = state.PublishedRevision
 	reportRequest.Target.Report.Digest = description.DefinitionDigest
 	publicRequest := phase27Copy(t, reportRequest)
+	checkReportDiscovery(reportRequest, consumer, false)
 	public, err := s.ReportOptions(ctx, consumer, reportRequest)
 	if err != nil || !public.ValuesAvailable || len(public.Options) != 1 || public.Options[0].Label != "East" {
 		t.Fatal("Consumer options continuity", public, err)
 	}
+	checkReportDiscovery(reportRequest, consumer, true)
 	if !reflect.DeepEqual(saved.Definition.ReportPages[0].Filters, published.Definition.ReportPages[0].Filters) {
 		t.Fatal("publication changed canonical filters/defaults")
 	}

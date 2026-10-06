@@ -460,3 +460,70 @@ source; this is not a clean-commit release build. No hosted CI (billing), produc
 paid model, merge or tag was used. Both PRs remain draft/unmerged. Governed option
 lookups, restricted no-chat MCP, full both-mode journeys and migration/activation
 rehearsal remain open; this checkpoint does not complete the overall goal.
+
+## Governed options integration checkpoint — 2026-10-05
+
+D-103 / PD-248 add metadata-only option dependency discovery and wire the four
+existing native option operations through Pengui's registered HTTP host (32 closed
+operations). Original tenant/actor/login/target/key custody takes precedence over
+current definitions. Status/control never fall back to a new query; fresh searches
+reuse the existing complete publication/report discovery cores. Every action,
+source, dataset and context requires current independent canonical policy. Dataset
+targets require same-actor/org/App creation allocation; report options do not
+acquire report write. Existing scope limits and final policy fences remain intact.
+
+Local qualification passes 25 Builder setup HTTP checks, ten governed-option HTTP
+checks and three real iframe checks. Dataset Search returns actual bounded native
+choices and opaque keyset continuation. Changed-input replay, guessed allocation,
+retry control and withdrawn source-query policy reject. Replay/status/reconcile
+return no reconstructed choices. Original report status/control survive a newer
+saved draft and fresh App admission within the original canonical login.
+The native retained value remains exactly 3.750. The real iframe performs one
+explicit Search for East, stages and saves a default, changes pages and reopens
+with that choice; opening, typing, selecting, save and navigation do not repeat
+Search or execute a report. Sandboxed Chromium 148.0.7778.96 desktop and 375-pixel
+screenshots were visually inspected; the final run has zero page/capture errors.
+
+The live native fixture passes in 344.277s including the hold and records ten
+source attempts: six setup attempts (two preparation/validation/private-preview
+journeys) plus four explicit option reads (two HTTP dataset pages, one HTTP report
+search, one iframe report search). Replay, denied requests, metadata, status,
+control, saves and retained navigation add none. Live model-call delta is zero;
+runtime models remain disabled. Cleanup leaves zero residual databases/roles,
+stops owned containers and removes the disposable runtime, preserving unrelated
+containers and checkouts.
+
+Native final-source race gates pass in the reference Linux container: focused
+real-PostgreSQL acceptance 86.141s, reporting 25.046s, reportingapi 128.081s and SDK
+76.574s. The native tests include original recovery after draft advancement and
+independent published-reader discovery. Pengui passes the full App/ConnectedApp
+race suite (14.486s), the final 144-case option policy/bounds matrix (6.388s), vet,
+Linux arm64 build, 73 host/client assertions, ESLint, Svelte zero errors/warnings,
+production Console and both bundle gates. Planning, rule mirrors and diff checks
+pass. Chartworks UI assets are unchanged from the preceding visually qualified
+checkpoint; the same registered HTML digest is used. No new synthetic-browser
+suite run is claimed for unchanged assets.
+
+Direct bounded review covered exact root guards before metadata, source/context
+permissions, original custody selection, no status fallback, conservative initial
+report closure, output bounds, closed frame targets, final withdrawal fences and
+unknown-outcome handling. No unresolved P0/P1 remains in this increment.
+Development failures were recorded: the host macOS linker lacks the native
+libraries, so native gates ran in the configured Linux container; a test reused
+already allocated grant rows with generation zero and was corrected; the expected
+frontend inventory needed the four new operations. The live setup initially
+assumed that denying one dataset emptied a catalog containing another eligible
+topic; its check now targets only the selected topic. The initial fixture expected
+3.75 instead of the native exact decimal 3.750, causing the first completed setup
+journey to fail its assertion. The expected fixture scale was corrected, a second
+explicit setup passed, and both journeys remain included in the source count.
+Neither failure weakened runtime policy or changed stored values.
+
+Evidence is in real-services-options/source-manifest.json with sanitized results,
+logs and screenshots. Runtime binaries were built before commits from matching
+source, not from a clean release commit. The opt-in fixture's expected decimal
+scale was corrected after startup; that descriptor change is test-only.
+No hosted CI (billing), production change, paid model, merge or tag was used.
+Both PRs remain draft/unmerged. Remaining work is restricted no-chat MCP admission
+through the existing framework, complete both-mode journeys, and the explicit
+migration/activation rehearsal. This checkpoint does not complete the goal.

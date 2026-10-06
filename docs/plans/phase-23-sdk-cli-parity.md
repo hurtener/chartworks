@@ -85,3 +85,9 @@ and Phase 33 onboarding operations without adding a standalone authoring UI.
 The [adversarial record](../reviews/phase-23-adversarial.md) identifies corrections,
 verification commands and exact-source evidence boundaries. All six named tests
 must pass; the registry does not excuse missing runtime assertions.
+
+D-103 extends the manual App integration with native governed-option dependency
+discovery and original lookup recovery; see docs/contracts/report-dependencies-v1.md.
+It reuses existing option services and adds no source effect or migration. Local
+native checks and real cross-service qualification remain distinct; phase release
+status and both-mode acceptance are not changed by this integration increment.

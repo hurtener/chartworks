@@ -157,3 +157,9 @@ There are no new endpoints, action scopes or persistence tables in this extensio
 `TestPhase21` continues to test every registered route. Phase 23 adds real
 prefixed HTTP/MCP/SDK/CLI and output-ceiling parity, authority denial and
 post-commit lost-response retry tests. Input schemas stay closed and bounded.
+
+D-103 extends the manual App integration with native governed-option dependency
+discovery and original lookup recovery; see docs/contracts/report-dependencies-v1.md.
+It reuses existing option services and adds no source effect or migration. Local
+native checks and real cross-service qualification remain distinct; phase release
+status and both-mode acceptance are not changed by this integration increment.

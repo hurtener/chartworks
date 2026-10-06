@@ -201,3 +201,44 @@ roots, full native published dependencies, and bounded exact-root name lookup.
 covers actual publication, explicit execution, independent-reader retained values,
 original context denial, private-custody preservation and no query/model work on
 reads. Local native evidence does not substitute for actual issuer/browser proof.
+
+## Governed option dependency discovery (D-103)
+
+`POST /v1/reporting/authoring/v1/option-dependencies` is a BFF-only metadata
+operation (`reportAppOptionDependenciesV1`, SDK `ReportOptionDependencies`).
+Its closed 8 KiB request contains mode (`search`, `status`, `control`), the
+existing exact authoring option target and timestamped operation key. The 128 KiB
+response contains version `report-option-dependencies-v1`, the unchanged target/
+operation, an explicit `original` flag and bounded action/resource requirements.
+It returns no definition, search, cursor, source-operation ID or option values.
+
+The discovery seed requires reporting.discover and exact root reach. Dataset
+targets require allocated block read/write/preview, reporting.preview and exact
+topic read. Report targets require exact report read; private_preview also
+requires independent report preview. Pengui independently checks current policy
+before requesting metadata and before exposing final operation authority.
+
+Original lookup records are selected by tenant, actor, canonical login, operation
+and complete target digest before projecting their persisted references and bound
+blocks. Status/control never fall back to a current definition when custody is
+missing. Search also prefers original custody; only a new search discovers the
+current immutable publication or report closure using the existing discovery
+cores. That initial report projection conservatively covers the complete report
+and private-preview block reach; native execution still validates the specific
+saved page/filter, reviewed dimension and current source fences. Report write is
+not implied by option authority. Dataset targets retain independent write/preview/
+validate, parent write and exact source/dataset/context query requirements.
+
+Status is metadata-only but native custody intentionally requires the original
+operation's current permissions, including query/execute or validate as applicable.
+Control can only cancel or reconcile its original attempt. Neither reconstructs
+lost choices nor starts another query. Changed drafts/publication heads do not
+replace original recovery dependencies. Current policy withdrawal still denies
+access, and unresolved source liability remains protected by the existing native
+ledger across sessions. No new credential, policy store, queue or migration exists.
+
+TestReportAppOptionDependencyDiscovery covers real PostgreSQL metadata-only reads,
+wire closure, absent custody and tenant/actor/session/target negatives.
+TestReportAppAuthoringOptions additionally checks private/published report
+discovery and recovery after the draft changes. Real Pengui/iframe qualification
+is tracked separately in the integration review.

@@ -820,3 +820,5 @@ Manual data authority discovery: [D-100 reviewed publications and original prepa
 Manual effect authority: [D-101 saved validation, preview and retained-run requirements](decisions/2026-10-05-report-effect-dependency-discovery.md).
 
 Published Consumer authority: [D-102 native published execution and original-run history](decisions/2026-10-05-published-consumer-dependencies.md).
+
+Governed option authority: [D-103 original lookup custody and target discovery](decisions/2026-10-05-option-dependency-discovery.md).

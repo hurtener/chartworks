@@ -341,3 +341,9 @@ CAS and editable output before reserving a target. The later native copy/edit
 still owns schema, custody, CAS and evidence invalidation. No Chartworks runtime
 or schema change is needed. Current real-service qualification is recorded in
 the integration review; governed options and restricted MCP remain separate work.
+
+D-103 extends the manual App integration with native governed-option dependency
+discovery and original lookup recovery; see docs/contracts/report-dependencies-v1.md.
+It reuses existing option services and adds no source effect or migration. Local
+native checks and real cross-service qualification remain distinct; phase release
+status and both-mode acceptance are not changed by this integration increment.

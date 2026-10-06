@@ -53,3 +53,12 @@ func (c *Client) ReportRunCandidates(ctx context.Context, in ReportRunCandidateR
 	err = c.callLimit(ctx, "POST", reportingapi.RunCandidateDiscoveryPath, "", in, &out, 128<<10)
 	return
 }
+
+type ReportOptionDependencyRequest = reporting.OptionDependencyRequest
+type ReportOptionDependencyManifest = reporting.OptionDependencyManifest
+
+// ReportOptionDependencies reads target/original custody metadata without source work.
+func (c *Client) ReportOptionDependencies(ctx context.Context, in ReportOptionDependencyRequest) (out ReportOptionDependencyManifest, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.OptionDependencyDiscoveryPath, "", in, &out, 128<<10)
+	return
+}
