@@ -82,3 +82,12 @@ entries, not the whole phase, other reporting work, or full migration/release.
 ## Visual authoring continuation
 
 [D-097](../decisions/2026-10-03-visual-chart-authoring.md) requires direct-grid, chart/field and genuine private-page authoring beyond D-096. Preserve existing criteria and historical evidence; qualify new domain, HTTP/MCP/SDK and browser paths separately. Scope approval does not change phase status or make unsupported controls available.
+
+The manual App upgrade continuation adds
+`TestReportAppPopulatedMigration087088` to AC01/AC06 evidence: populate the real
+086 schema, preserve legacy custody and chart JSON, refuse old preparation
+admission, keep unresolved liability, and roll back the entire pending migration
+on an invalid presentation. The
+[activation runbook](../runbooks/manual-report-app-activation.md) requires writer
+quiescence and separates local synthetic upgrade proof from production rollout
+and the still-open restricted MCP integration. This does not change phase status.

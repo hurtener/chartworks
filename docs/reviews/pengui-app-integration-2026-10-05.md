@@ -1,13 +1,18 @@
 # Pengui manual application integration checkpoint
 
-Status: incomplete. Chartworks's manual application already implements the
-native Builder and Consumer operations; the remaining product gap is trusted
-host admission and central interactive policy. No new local issuer, grant store
-or renderer implementation is required by this checkpoint.
+Status: incomplete overall. The registered HTTP lane now implements and locally
+qualifies 32 operations: named data selection, creation, save/reopen, preparation,
+validation, private preview, publication, independent Consumer reads, chart
+copy/presentation and governed options. Restricted no-chat MCP and final activation
+remain open. Later dated checkpoint sections below contain the detailed evidence.
 
-## Verified baseline and boundaries
+Current implementation checkpoints before migration rehearsal: Chartworks
+`840830fc52b2f8f4caa0cdbb65e42f96eb30373b`, Pengui
+`47d314272a87b3af9e1dbdc7b7eafe3587d8362b`. Both PRs remain draft/unmerged.
 
-Draft PR76 remains open at `8bfe9a196dc11df8a20104f68c5c7c34875824c6` against
+## Historical starting baseline and boundaries
+
+At the start of this continuation, draft PR76 was at `8bfe9a196dc11df8a20104f68c5c7c34875824c6` against
 remote main `650356f2f37e67910922febc43bdcec5835cf5eb`. The ordinary reporting
 recovery run 37239733242 failed renderer kernel tests and Phase32 AC03–AC05.
 The later protected [run 37263329639](https://github.com/hurtener/chartworks/actions/runs/37263329639)
@@ -25,32 +30,25 @@ were inspected. This proves neither a real provider connection nor Builder
 authority. The narrow layout uses horizontal workspace scrolling, including
 keyboard navigation; it is not a responsive reflow of the saved report layout.
 
-## Cross-repository gap checklist
+## Current cross-repository gap checklist
 
-- [x] Shared native report application, named resource selection and existing
-  HTTP/MCP operations for manual editing, pages, filters, preparation, validation,
-  private preview, lifecycle and presentation.
-- [x] Negotiated `app/allocate-target`, `report-app-allocation-v1` request and
-  supported-operation presentation hints; neither is permission to create.
-- [x] Pengui central App/reference grants, five-operation HTTP Consumer host,
-  document digest binding and expiry/navigation teardown.
-- [x] Source report/chart ID allocation under explicit central creation permission,
-  with atomic server-owned idempotent targets and creator grants in all three
-  Pengui stores (PD-237, migration 0107; companion draft PR367).
-- [ ] Native pinned-source validation for copy allocation and real host negotiation
-  of all three creation intents. Allocation alone does not create a provider draft.
-- [x] Authenticated native report/block dependency discovery and the first exact
-  block-read and report-reopen authority consumers (D-098 / Pengui PD-238–239).
-- [ ] Complete run discovery and remaining projections for every Builder
-  operation. Operator-maintained references and browser definitions are not
-  substitutes for this contract.
-- [ ] Exact interactive read/edit/query/execute/preview/publish authority through
-  Pengui's existing session, Team, ShareGrant, allowance and issuer machinery.
-- [ ] Fresh exact-run authority after preview, without rerunning a denied read.
-- [ ] Restricted no-chat MCP admission through the existing framework and the
-  same central policy as HTTP. No borrowed conversation/full-agent bearer.
-- [ ] Real dev Builder create/edit/save/reopen/preview/publish to independent
-  Consumer read on both delivery modes, with negative/interruption checks.
+- [x] Shared native Builder/Consumer application and bounded HTTP host with exact
+  document binding, operation hints, host theme and keyboard/narrow-screen checks.
+- [x] Central create-report/create-chart/copy-chart policy, server-owned idempotent
+  allocation, atomic creator grants and provider-native pinned-source copy checks.
+- [x] Native dependency discovery and independent read/write/query/validate/
+  execute/preview/publish grants for the 32-operation HTTP lane.
+- [x] Fresh authority for the exact private run; original custody and retained
+  output survive later draft changes without query replay.
+- [x] Real local registered HTTP Builder preparation/save/reopen/preview/publish
+  and ordinary-user Consumer journeys, plus chart editing and governed searches.
+- [x] HTTP negative/interruption cases, exact values/provenance, and source/model
+  counters are recorded in the checkpoint sections; no paid model validation.
+- [ ] Restricted no-chat MCP through the existing runtime/host framework and the
+  same central policy. Current runtime broker/cache lacks an App operation binding.
+- [ ] Full both-mode end-to-end acceptance against the final combined release head.
+- [x] Populated synthetic 087/088 and 0103/0104/0106/0107 upgrade rehearsal; explicit cutover and recovery runbook.
+- [ ] Restricted MCP activation and final combined-head both-mode verification.
 
 On 2026-10-05 the owner clarified that no rejection/review text is known and
 authorized dev administration or an isolated local Docker environment. No platform
@@ -527,3 +525,64 @@ No hosted CI (billing), production change, paid model, merge or tag was used.
 Both PRs remain draft/unmerged. Remaining work is restricted no-chat MCP admission
 through the existing framework, complete both-mode journeys, and the explicit
 migration/activation rehearsal. This checkpoint does not complete the goal.
+
+
+## Populated migration rehearsal and restricted MCP boundary
+
+This checkpoint changes tests and documentation only. It preserves the qualified
+HTTP runtime and UI. No new browser qualification, binary release, hosted CI,
+production deployment or MCP capability is claimed.
+
+`TestReportAppPopulatedMigration087088` now creates an actual populated schema
+through migration 086, using synthetic native parent metadata and an archived
+historical topic. It keeps an expired, unsettled legacy preparation and a retained
+chart definition. It proves current check-only startup refuses the old schema,
+normal 087/088 upgrade preserves exact JSON/hashes/custody, the current reader
+recovers that custody, legacy liability remains charged, old inserts fail with
+`CW001`, expired new keys fail with `CW002`, and current admission is guarded.
+A malformed preexisting presentation makes the whole pending upgrade roll back
+to 086 without partial columns or changed evidence. Same-version reopen passes;
+the migration adds no source attempts. This is a synthetic store upgrade proof,
+not a production backup/restore or mixed-writer endorsement.
+
+Final-source local gates:
+
+- Reference Linux, real PostgreSQL, `-race -p 1 -count=1`: the populated migration
+  test, preparation liability/native guard, bounded retention/quota, consumed
+  replay after cleanup and presentation authoring all pass; package 32.249 s.
+- Pengui populated 0103/0104/0106/0107 migrations pass on PostgreSQL (4.426 s) and
+  SQLite (32.842 s), with no skips. Existing grants/contexts/generations survive;
+  stale read admissions expire and unpinned documents remain unavailable.
+- Six Pengui governance/withdrawal test groups pass under `-race -count=1`
+  (2.514 s), including disabled-host governance after successful generic OAuth,
+  derived/receiver credential denial, post-mint withdrawal, close and recipient
+  changes. Generic MCP authority stays denied.
+- Planning passes with `TMPDIR=/private/tmp`; mirrored instructions and diff
+  checks pass. The first planning run hit the macOS `/var` versus `/private/var`
+  test-fixture path mismatch, resolved by the environment override. The first
+  migration run failed on incomplete synthetic topic/facet state; the fixture
+  now represents an archived historical topic and leaves all constraints active.
+
+Direct bounded self-review covered the final fixture, full pending-transaction
+rollback, old-writer rejection, evidence preservation and activation instructions.
+No unresolved P0/P1 was found in this increment. New work has no UI/runtime change,
+so the earlier inspected screenshots remain time-bound evidence rather than a
+new browser pass. Test cleanup reports zero disposable databases and roles.
+
+Harbor's fetched `origin/main` is
+`6305c88fce1fcacc6ff2fa34440ac037c5de63f3`. The existing resource/tool requests and
+broker exchange lack an App operation binding, and signed-capability credentials
+are cached per identity session/source/binding rather than per App operation.
+The current MCP host and fresh render admission are reusable; they do not fill
+that missing credential-policy contract. Pengui records the exact inspected code
+and required joint extension in `docs/contracts/connected-app-mcp-runtime-gap.md`.
+No alternative broker endpoint, broad credential fallback or second MCP host was
+introduced. MCP remains disabled and the overall goal remains active.
+
+The Chartworks `docs/runbooks/manual-report-app-activation.md` now specifies the
+upgrade order, writer drain, snapshot/restore rehearsal, 087/088 failure handling,
+Pengui admission expiry, exact document/audience binding, Consumer verification,
+withdrawal window and forward recovery. Local synthetic migration qualification
+is complete; actual MCP activation and final both-mode journeys are still open.
+Evidence is retained under `chartworks-pengui-evidence/migration-runtime-boundary`
+in the task artifacts; the manifest records source hashes and initial failures.

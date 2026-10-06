@@ -3,7 +3,9 @@
 Status: implemented subsets under D-096/D-097, with exact-source qualification in
 [the evidence record](../reviews/report-app-v1-evidence.md). The complete manual
 journey and production host activation remain open. This continuation belongs to
-phases 29/31. The previous read viewer URI and delivery contract remain supported
+phases 29/31. The [upgrade and activation runbook](../runbooks/manual-report-app-activation.md)
+records quiescence, schema compatibility and the remaining MCP gate. The previous
+read viewer URI and delivery contract remain supported
 independently.
 
 ## One application, two adapters
