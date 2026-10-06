@@ -104,3 +104,16 @@ test('shared error spellings preserve the wire contract and unknown-outcome flag
   }
   assert.equal(appError('unregistered_error').code, 'unavailable');
 });
+
+test('typing commits before blur and duplicate change cannot replace the clicked action', t => {
+  installDOM(t);
+  const values = [], input = textField('Chart title', 'Before', value => values.push(value)).children[0];
+  input.value = 'Typed';
+  input.listeners.input();
+  assert.deepEqual(values, ['Typed']);
+  input.listeners.change();
+  assert.deepEqual(values, ['Typed']);
+  input.value = 'Changed programmatically';
+  input.listeners.change();
+  assert.deepEqual(values, ['Typed', 'Changed programmatically']);
+});

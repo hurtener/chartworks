@@ -333,3 +333,11 @@ original report/block history, plus a separate ordinary Consumer's real issuer/
 PostgreSQL iframe journey. See [the integration review](../reviews/pengui-app-integration-2026-10-05.md)
 for final-source checks and remaining mapping/options, restricted MCP and rollout
 work. Synthetic MCP browser checks do not qualify real no-chat MCP admission.
+
+Pengui PD-247 consumes the existing native chart catalog, block mapping/presentation
+and copy operations. Complete exact source dependencies and parent-topic write
+are authorized centrally; session-bound copy allocation validates native source
+CAS and editable output before reserving a target. The later native copy/edit
+still owns schema, custody, CAS and evidence invalidation. No Chartworks runtime
+or schema change is needed. Current real-service qualification is recorded in
+the integration review; governed options and restricted MCP remain separate work.

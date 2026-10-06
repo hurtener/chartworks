@@ -407,3 +407,56 @@ Remaining integration: mapping/catalog/copy and governed options, restricted
 no-chat MCP using the existing framework, both-mode full journeys, and migration/
 activation rehearsal for Chartworks 087/088 with Pengui 0107. The locally verified
 HTTP Consumer increment does not close the overall goal.
+
+## Chart catalog, copying and formatting checkpoint — 2026-10-05
+
+PD-247 admits three existing native operations, bringing the registered HTTP host
+to 28 closed operations. Catalog reads are metadata-only. Mapping and formatting
+require independent read/write/preview, exact native dependencies and parent-topic
+write; copying additionally requires canonical copy permission and an allocated
+target, without source-block write. Allocation verifies current native source CAS
+and editable output before reserving the identity and creator grants atomically.
+Fresh copy authority and native CAS remain required after allocation.
+
+Local qualification passes 25 Builder setup HTTP checks, ten chart HTTP checks and
+three real iframe chart checks. The iframe selects a named published KPI, explicitly
+copies it to a private table, saves the report, changes the header/precision in one
+private amendment, and saves again. Both pages, exact private revision pins and
+formatting survive fresh admission/reload. Narrow 375-pixel and desktop screenshots
+were inspected. The iframe issues one allocation, one copy and one amendment, with
+no preparation, validation, preview or execution. The original published metadata
+and retained exact decimal remain unchanged in the HTTP proof.
+
+A real click-after-typing failure revealed that text-field blur rerendered and
+removed the clicked Save button. Shared text inputs now commit on input and ignore
+a duplicate change event. A focused regression and the actual single-click iframe
+journey pass; no Tab/double-click workaround is used. Equivalent transparent CSS
+values and an empty rule were compacted to preserve the existing resource limit.
+The 16-parent resource is 262052 bytes, 92 bytes below 256 KiB; no cap was raised.
+Synthetic browser suites pass 359 assertions per adapter after this fix.
+
+Pengui local gates pass: full App/ConnectedApp race suite (13.715s), focused chart
+policy/CAS/copy tests, vet, Linux arm64 build, 69 host/client assertions, ESLint,
+Svelte zero errors/warnings, production Console and both bundle gates. Chartworks
+resource/viewer tests, planning and rule mirrors pass. Native fixture acceptance
+passes in 1114.797s including its hold: exactly three source attempts from setup
+(preparation, validation, private preview) and zero model calls. Chart editing,
+publication/rebind setup, retained reads and failed/repeated operations add none.
+Cleanup leaves zero test databases/roles; owned containers are stopped and the
+disposable runtime removed. Unrelated containers/checkouts are preserved.
+
+Direct bounded review checked independent policy before metadata, native source
+and parent identity, final policy fences, allocation input replay, source-write
+exclusion on copies, closed frame arguments, exact destinations and unknown-outcome
+handling. The source-preview guard was tightened before metadata during this
+review. No unresolved P0/P1 remains in this increment. An early probe attempted
+unsupported formatting on a legacy KPI and correctly failed; the final probe uses
+a catalog-supported table. Local setup also corrected an obsolete CA path and
+reused the existing isolated App registration. None required weaker authority.
+
+Evidence is in real-services-chart/source-manifest.json and sanitized results,
+logs and screenshots. Binaries were built before committing from matching runtime
+source; this is not a clean-commit release build. No hosted CI (billing), production,
+paid model, merge or tag was used. Both PRs remain draft/unmerged. Governed option
+lookups, restricted no-chat MCP, full both-mode journeys and migration/activation
+rehearsal remain open; this checkpoint does not complete the overall goal.

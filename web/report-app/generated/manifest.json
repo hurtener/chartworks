@@ -92,10 +92,10 @@
     },
     {
       "path": "web/report-app/dom.js",
-      "bytes": 1786,
-      "sha256": "17a1f11829ce219a7730ec260382026cf8691382b5a1a0da308ebfd64731d014",
+      "bytes": 1989,
+      "sha256": "57ea41c9ce709f4a290c044cc4ed1ed9f0c769e40cac1eec4959a2edce267425",
       "imports": [],
-      "bytesInOutput": 879
+      "bytesInOutput": 938
     },
     {
       "path": "web/report-app/error-codes.js",
@@ -291,13 +291,13 @@
     },
     {
       "path": "web/report-app/styles.css",
-      "bytes": 22273,
-      "sha256": "3b43cf1c1c6b2f64ea1c08dc2fdd6e417923898cd0975a67a0fc81bbc9f674e2"
+      "bytes": 22125,
+      "sha256": "3755edc437f55815583a9d9de4e7582f5b851d3387e98265a7aff7aa4660866f"
     }
   ],
   "output": {
     "path": "web/report-app/generated/report-app.js",
-    "bytes": 233118,
-    "sha256": "ee6ed475bfc7d95c64b8478034a9f79180df003a01f21024b65128a9b82e17e6"
+    "bytes": 233177,
+    "sha256": "021a622e6837b52debdd2b8fc448eca53f0f8fa132be7158ce4ffdaa9ca5d915"
   }
 }

@@ -43,7 +43,11 @@ export function textField(label, value, onChange, {
   if (min !== undefined) input.min = min;
   if (max !== undefined) input.max = max;
   input.setAttribute('aria-label', label);
-  input.addEventListener('change', () => onChange(input.value));
+  // Commit before blur can replace the button receiving the next click.
+  let current = input.value;
+  for (const event of ['input', 'change']) input.addEventListener(event, () => {
+    if (input.value !== current) { current = input.value; onChange(current); }
+  });
   field.append(input);
   return field;
 }
