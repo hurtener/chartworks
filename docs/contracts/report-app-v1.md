@@ -327,3 +327,9 @@ use D-101's native [effect dependency projection](report-dependencies-v1.md).
 Pengui checks independent canonical operation/resource policy; Chartworks retains
 private actor/session and effect fences. This introduces no local authority store
 or model permission and does not establish full MCP/Consumer acceptance.
+
+Current HTTP qualification now includes native D-102 published execution and
+original report/block history, plus a separate ordinary Consumer's real issuer/
+PostgreSQL iframe journey. See [the integration review](../reviews/pengui-app-integration-2026-10-05.md)
+for final-source checks and remaining mapping/options, restricted MCP and rollout
+work. Synthetic MCP browser checks do not qualify real no-chat MCP admission.

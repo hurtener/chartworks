@@ -135,3 +135,8 @@ dependencies, including the independent-reader subtest of
 `TestReportAppEffectDependencyDiscovery`. Exact summary selection and bounded
 BFF-only candidate discovery preserve private custody and source/model counters.
 Real-service Consumer and restricted MCP qualification remain separate gates.
+
+The local real-service HTTP Consumer gate now has separate-reader evidence in
+[the integration review](../reviews/pengui-app-integration-2026-10-05.md): canonical
+issuer, actual PostgreSQL, original context withdrawal and retained iframe reads.
+Restricted no-chat MCP and the overall phase/integration gates remain open.

@@ -341,3 +341,69 @@ No hosted CI, production deployment, paid model, merge or tag was performed.
 Both PRs remain draft/unmerged. Full independent published Consumer projection/run
 acceptance, mapping/copy/governed options, restricted no-chat MCP and activation/
 migration rehearsal remain open; this checkpoint does not close the overall goal.
+
+## Published Consumer integration checkpoint — 2026-10-05
+
+D-102 / PD-246 complete native published report/block dependencies, explicit
+published execution, original retained reads and metadata-only history projection.
+Pengui's 25 closed operations use canonical independent policy checks; published
+search resolves full native dependencies before returning names. Hidden run
+candidates/cursors stay in the BFF. Exact summaries use retained read eligibility,
+not execution authority. Ordinary readers need no write, preview or source-query
+grant. Private previews keep their original custody after publication.
+
+Local real-service qualification passes 36 Builder/publication HTTP checks,
+13 independent Consumer HTTP checks and four Consumer iframe checks. A separate
+ordinary user opens the named report, reads the exact decimal
+9007199254740998.625 and native provenance, changes saved pages, and reopens through
+reload and Back/Forward. Edit, execute, lifecycle and guessed-run attempts reject.
+Revoking original context access removes names/history/values; restoring it allows
+the same retained values without execution. Final sandboxed Chromium 148.0.7778.96
+desktop and 375-pixel screenshots were inspected. The catalog button collision and
+narrow reading-canvas overflow were corrected in shared CSS.
+
+The complete fixture campaign records six source attempts: one preparation,
+one validation, one private-preview execution and three explicit published runs
+during probe development. Same-key recovery, denied effects, metadata, retained
+reads and navigation add no attempts. Fixture model-call delta is zero; runtime
+models are disabled. The native hold test passes in 1649.853s; cleanup confirms
+zero residual test databases/roles. Task containers are stopped, the disposable
+runtime container removed, and unrelated containers/checkouts are preserved.
+
+Local gates pass: native real-PostgreSQL effect-dependency acceptance (27.617s),
+focused reporting/API/SDK race checks, planning and rule mirrors; App/ConnectedApp
+race suite (12.560s), focused Consumer policy/run checks, vet and Linux arm64 build;
+66 host/client assertions, ESLint, Svelte zero errors/warnings, production Console
+and both bundle gates. Chartworks resource/viewer tests pass with Node 24.
+The synthetic browser suites pass 359 assertions per adapter (MCP and embedded);
+these are not real no-chat MCP acceptance. Unchanged JavaScript bundle checks
+cover 174 assertions. The 16-parent embedded resource is 262141 bytes, only three
+bytes below the existing 256 KiB limit; further growth requires deliberate size
+work, not a silent limit increase.
+
+Direct bounded review inspected complete published closure, exact run selectors,
+private custody, native metadata-only summaries, independent execution policy,
+candidate/cursor privacy, canonical final fences and no read-triggered effects.
+No unresolved P0/P1 was found within this increment. The initial exact-summary
+implementation incorrectly used execution eligibility and was corrected to native
+retained-read eligibility before passing acceptance. Probe fixes use the original
+canonical Builder session and stable operation key, explicit invited-user
+activation, the native completed state, and the selected exact history row.
+Stale synthetic UI text assertions were updated without weakening effect checks.
+Planning tests require TMPDIR=/private/tmp to avoid macOS temporary-path aliases.
+CDP can discard an already-consumed iframe response body during navigation:
+only that exact capture diagnostic is tolerated, every reopened frame still must
+render the exact value, and native captured output must match. The final run has
+zero page errors and zero capture diagnostics.
+
+Local evidence is in real-services-consumer/source-manifest.json and its sanitized
+results, logs and screenshots. Runtime content was committed as Chartworks
+f997f598 and Pengui 37efe007; binaries were built before those commits from matching
+source, with the subsequent Chartworks CSS correction. This is not a clean-commit
+release build. No hosted CI was used because of billing; no production, paid model,
+merge or tag was performed. Both PRs remain draft/unmerged.
+
+Remaining integration: mapping/catalog/copy and governed options, restricted
+no-chat MCP using the existing framework, both-mode full journeys, and migration/
+activation rehearsal for Chartworks 087/088 with Pengui 0107. The locally verified
+HTTP Consumer increment does not close the overall goal.

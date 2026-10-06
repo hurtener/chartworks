@@ -20,3 +20,7 @@ summary reads and dependency discovery perform no source/model work.
 See [the dependency contract](../contracts/report-dependencies-v1.md). No migration
 or new MCP tool is added. Both delivery modes must reuse this policy boundary;
 restricted no-chat MCP and full real-service Consumer acceptance remain open.
+
+Subsequent local HTTP evidence: the independent ordinary-reader issuer/PostgreSQL
+journey is qualified in [the integration review](../reviews/pengui-app-integration-2026-10-05.md).
+Restricted no-chat MCP remains open; this does not close both-mode acceptance.
