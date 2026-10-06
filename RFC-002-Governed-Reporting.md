@@ -142,3 +142,9 @@ original preparation custody, including consumed receipts. Pengui resolves the
 returned requirements independently; metadata does not authorize source execution
 or return definitions, names, schemas or values. The embedded topic catalog can
 consume explicit bounded host cursors without dropping dependency-filtered pages.
+
+Manual host validation, preview/execution and fresh retained report-run authority
+use D-101's native [effect dependency projection](docs/contracts/report-dependencies-v1.md).
+Pengui checks independent canonical operation/resource policy; Chartworks retains
+private actor/session and effect fences. This introduces no local authority store
+or model permission and does not establish full MCP/Consumer acceptance.

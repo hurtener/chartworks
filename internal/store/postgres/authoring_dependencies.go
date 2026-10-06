@@ -31,9 +31,20 @@ func (d *DB) discoverReportDependencies(ctx context.Context, e identity.Envelope
 		return out, err
 	}
 	defer cancel()
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		out, err = reportDependenciesTx(ctx, tx, e, in, write)
+		return err
+	})
+	if err != nil {
+		return reporting.DependencyManifest{}, err
+	}
+	return out, nil
+}
+
+func reportDependenciesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, in reporting.DependencyRequest, write bool) (out reporting.DependencyManifest, err error) {
 	out = reporting.DependencyManifest{Version: "report-dependencies-v1", Kind: in.Kind, ID: in.ID, References: []reporting.ResourceReference{}, Blocks: []reporting.DependencyBlock{}}
 	preview := write || access.Require(e, "reporting.preview", access.Resource{Tenant: e.Tenant(), Kind: in.Kind, ID: in.ID, Permission: "preview"}) == nil
-	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = func() error {
 		if in.Kind == "block" {
 			var b reporting.DependencyBlock
 			err := tx.QueryRow(ctx, `SELECT h.block_id,h.topic_id,r.revision,r.digest,p.revision IS NULL
@@ -127,7 +138,7 @@ func (d *DB) discoverReportDependencies(ctx context.Context, e identity.Envelope
 			return access.ErrUnauthenticated
 		}
 		return ctx.Err()
-	})
+	}()
 	if err != nil {
 		return reporting.DependencyManifest{}, err
 	}

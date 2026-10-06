@@ -816,3 +816,5 @@ Native authority discovery: [D-098 exact-target dependency metadata for Pengui](
 Manual write authority discovery: [D-099 proposed definitions and native save baselines](decisions/2026-10-05-report-write-dependency-discovery.md).
 
 Manual data authority discovery: [D-100 reviewed publications and original preparation custody](decisions/2026-10-05-report-data-dependency-discovery.md).
+
+Manual effect authority: [D-101 saved validation, preview and retained-run requirements](decisions/2026-10-05-report-effect-dependency-discovery.md).

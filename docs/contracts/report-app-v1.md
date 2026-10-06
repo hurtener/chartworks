@@ -321,3 +321,9 @@ with a continuation cursor; the existing UI's More drafts action follows it.
 Existing report editors can receive Builder hints without a create-report grant.
 This is named reopening through HTTP; chart preparation, publication/Consumer and
 restricted no-chat MCP qualification remain separate integration requirements.
+
+Manual host validation, preview/execution and fresh retained report-run authority
+use D-101's native [effect dependency projection](report-dependencies-v1.md).
+Pengui checks independent canonical operation/resource policy; Chartworks retains
+private actor/session and effect fences. This introduces no local authority store
+or model permission and does not establish full MCP/Consumer acceptance.

@@ -13,6 +13,7 @@ import (
 
 const DependencyDiscoveryPath = "/v1/reporting/authoring/v1/dependencies"
 const WriteDependencyDiscoveryPath = "/v1/reporting/authoring/v1/write-dependencies"
+const EffectDependencyDiscoveryPath = "/v1/reporting/authoring/v1/effect-dependencies"
 const DataDependencyDiscoveryPath = "/v1/reporting/authoring/v1/data-dependencies"
 
 // Discovery is a BFF control-plane call, deliberately absent from the iframe
@@ -39,7 +40,14 @@ func dependencyEntries(s *reporting.Authoring) []runtimeEndpoint {
 	data.definition.MaxBodyBytes = 8 << 10
 	data.definition.Audit = "read_only_no_domain_audit"
 	data.definition.ResourceLoader = "exact topic read or block read/write/preview; original preparation tenant/actor/session/target custody; no definitions, values or source work"
-	return []runtimeEndpoint{entry, write, data}
+	effect := runtimeEntry("POST", EffectDependencyDiscoveryPath, reporting.DependencyDiscoveryAction, "reportAppEffectDependenciesV1", "Discover saved validation, preview and retained-run requirements", func(ctx context.Context, e identity.Envelope, _ string, _ url.Values, in reporting.EffectDependencyRequest) (reporting.EffectDependencyManifest, error) {
+		return s.EffectDependencies(ctx, e, in)
+	})
+	effect.definition.Effect = "retained_metadata_read"
+	effect.definition.MaxBodyBytes = 8 << 10
+	effect.definition.Audit = "read_only_no_domain_audit"
+	effect.definition.ResourceLoader = "exact block/report read and preview or exact run discovery; private run actor/session custody before native metadata; no definitions, SQL, results or source work"
+	return []runtimeEndpoint{entry, write, data, effect}
 }
 
 func DependencyRegistry() (*api.Registry, error) { return registryForEntries(dependencyEntries(nil)) }

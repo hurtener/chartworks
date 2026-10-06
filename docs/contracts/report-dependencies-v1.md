@@ -52,7 +52,7 @@ sent to the frame. Deployment does not add any policy grants automatically.
 
 Current Pengui projections consume this contract for exact SQL-free block read
 and manual report reopening, with independent report read/write and App editor
-admission. Private roots and pins additionally require preview. Proposed report writes use the extension below. Topic/preparation discovery uses D-100 below; retained private-run discovery,
+admission. Private roots and pins additionally require preview. Proposed report writes use the extension below. Topic/preparation discovery uses D-100 below; D-101 below covers retained report-run discovery;
 restricted MCP admission and the complete Builder journey remain separate work.
 `TestReportAppDependencyDiscovery` and
 `TestReportAppDependenciesResolveCurrentPublishedPin` exercise the real PostgreSQL
@@ -127,3 +127,43 @@ At most 128 distinct references are returned; overflow rejects. Body limit is
 complete publication dependencies, missing roots, cross-tenant/user/session,
 original operation replay and zero extra source/model work. Local results and
 real-service acceptance must be reported separately.
+
+## Saved effects and exact retained report runs (D-101)
+
+`POST /v1/reporting/authoring/v1/effect-dependencies` accepts exactly `operation`,
+`id`, `revision`. Operations are `block_validate`, `preview`, `execute`, `view`.
+The first two select an exact block/report revision (1–256); the last two select
+an exact run with revision zero. Discovery requires reporting.discover and exact
+root read reach. Block/report roots also require explicit root preview. A run
+seed carries no artifact-read action: private runs must match the original
+signed tenant, actor and session before the metadata query returns any parent.
+Execute accepts private report compositions only. View also accepts public
+retained reports. Dynamic query groups are excluded from this manual lane.
+
+The `report-effect-dependencies-v1` response contains operation, root kind/ID,
+revision/digest, run (empty for block/report selectors), privacy, required actions
+and at most 128 resource references. It contains no SQL, definitions, payloads,
+rows, source credentials or bearer. Root and dependency queries share a read-only
+repeatable-read transaction. Validation includes source query only for the
+block's saved execution source; other reviewed datasets retain their read/query
+entitlements. Preview requires independent report write/execute/preview and
+block execute/preview, including published blocks used in a private composition.
+Execute includes the frozen run's requirements and the native original report
+read requirements. Manual execution rejects narrative outputs rather than
+inferring model permission.
+
+View uses the immutable run reference index, never a current report definition.
+It maps execution targets to read, sources to read and preserves all dataset and
+context reach. Private preview requirements stay private after later publication.
+Pengui checks every returned reference against its canonical policy, including
+the original report read and preview. It derives fresh `cw.run.read:<exact-run>`
+only for that operation. Retained reads receive no source query, validate, write,
+execute or model action. The iframe never receives a bearer or metadata seed.
+
+Request limit is 8 KiB; response limit is 128 KiB. Registration is
+`reportAppEffectDependenciesV1`, SDK `ReportEffectDependencies`. Source/model
+work remains absent from discovery. `TestReportAppEffectDependencyDiscovery`
+exercises native validation, preview, execute and retained values using only the
+returned exact projection, missing-scope and cross-tenant/actor/session denials,
+registered wire closure and query/model counters. This is local native evidence;
+real issuer and browser acceptance are recorded separately.

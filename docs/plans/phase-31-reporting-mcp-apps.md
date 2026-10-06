@@ -122,3 +122,10 @@ AC02/AC07/AC08 also cover D-100's native publication/preparation requirement
 projection via `TestReportAppDataDependencyDiscovery`, preserving exact original
 custody, full unselected-dataset dependencies and zero source/model metadata work.
 This HTTP control-plane consumer changes no MCP tool inventory or framework gate.
+
+AC02/AC07/AC08 additionally cover D-101: saved validation/preview dependencies,
+original private run custody, and fresh retained read projection. The named
+`TestReportAppEffectDependencyDiscovery` is required for this implementation.
+Discovery is metadata only; existing native effects retain all safety/CAS checks.
+No migration is required. Restricted no-chat MCP and full published Consumer
+acceptance remain open; local source evidence does not close those gates.

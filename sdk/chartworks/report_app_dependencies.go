@@ -35,3 +35,12 @@ func (c *Client) ReportDataDependencies(ctx context.Context, in ReportDataDepend
 	err = c.callLimit(ctx, "POST", reportingapi.DataDependencyDiscoveryPath, "", in, &out, 128<<10)
 	return
 }
+
+// ReportEffectDependencies discovers saved validation, preview and run requirements.
+type ReportEffectDependencyRequest = reporting.EffectDependencyRequest
+type ReportEffectDependencyManifest = reporting.EffectDependencyManifest
+
+func (c *Client) ReportEffectDependencies(ctx context.Context, in ReportEffectDependencyRequest) (out ReportEffectDependencyManifest, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.EffectDependencyDiscoveryPath, "", in, &out, 128<<10)
+	return
+}
