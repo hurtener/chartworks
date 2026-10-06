@@ -129,3 +129,9 @@ original private run custody, and fresh retained read projection. The named
 Discovery is metadata only; existing native effects retain all safety/CAS checks.
 No migration is required. Restricted no-chat MCP and full published Consumer
 acceptance remain open; local source evidence does not close those gates.
+
+AC02/AC07/AC08 also cover D-102 published execution and original block/report run
+dependencies, including the independent-reader subtest of
+`TestReportAppEffectDependencyDiscovery`. Exact summary selection and bounded
+BFF-only candidate discovery preserve private custody and source/model counters.
+Real-service Consumer and restricted MCP qualification remain separate gates.

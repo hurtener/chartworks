@@ -85,3 +85,50 @@ func (d *DB) ListCompositionArtifacts(ctx context.Context, e identity.Envelope, 
 	}
 	return out, nil
 }
+
+// ReadArtifactSummary selects one original artifact through the same retained
+// eligibility as catalog reads. It never enters actor-private execution Inspect
+// or loads manifests, SQL, result rows or narrative payloads.
+func (d *DB) ReadArtifactSummary(ctx context.Context, e identity.Envelope, kind, resource, run string) (out reporting.DeliveryRunSummary, err error) {
+	if (kind != "block" && kind != "report" && kind != "dashboard") || !identity.Identifier(resource) || !identity.Identifier(run) {
+		return out, store.ErrInvalid
+	}
+	ctx, cancel, err := requestContext(ctx, e)
+	if err != nil {
+		return out, err
+	}
+	defer cancel()
+	if err = access.Require(e, "reporting.read", access.Resource{Tenant: e.Tenant(), Kind: "run", ID: run, Permission: "read"}); err != nil {
+		return out, err
+	}
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if kind == "block" {
+			record, err := frozenReadTx(ctx, tx, e, run, false, false)
+			if err != nil {
+				return err
+			}
+			out = reporting.BlockRunSummary(record.View)
+		} else {
+			head, err := compositionHeadTx(ctx, tx, e, run, false, false)
+			if err != nil {
+				return err
+			}
+			view, err := compositionViewTx(ctx, tx, e, head)
+			if err != nil {
+				return err
+			}
+			out = reporting.CompositionRunSummary(view)
+		}
+		if out.Kind != kind || out.Target.ID != resource {
+			return access.ErrNotFound
+		}
+		if !e.Valid() {
+			return access.ErrUnauthenticated
+		}
+		return ctx.Err()
+	})
+	if err != nil {
+		return reporting.DeliveryRunSummary{}, err
+	}
+	return out, nil
+}

@@ -11,6 +11,7 @@ import (
 	"github.com/hurtener/chartworks/internal/reporting"
 )
 
+const RunCandidateDiscoveryPath = "/v1/reporting/authoring/v1/run-candidates"
 const DependencyDiscoveryPath = "/v1/reporting/authoring/v1/dependencies"
 const WriteDependencyDiscoveryPath = "/v1/reporting/authoring/v1/write-dependencies"
 const EffectDependencyDiscoveryPath = "/v1/reporting/authoring/v1/effect-dependencies"
@@ -47,7 +48,14 @@ func dependencyEntries(s *reporting.Authoring) []runtimeEndpoint {
 	effect.definition.MaxBodyBytes = 8 << 10
 	effect.definition.Audit = "read_only_no_domain_audit"
 	effect.definition.ResourceLoader = "exact block/report read and preview or exact run discovery; private run actor/session custody before native metadata; no definitions, SQL, results or source work"
-	return []runtimeEndpoint{entry, write, data, effect}
+	runs := runtimeEntry("POST", RunCandidateDiscoveryPath, reporting.DependencyDiscoveryAction, "reportAppRunCandidatesV1", "Discover original retained run coordinates for one exact parent", func(ctx context.Context, e identity.Envelope, _ string, _ url.Values, in reporting.RunCandidateRequest) (reporting.RunCandidatePage, error) {
+		return s.RunCandidates(ctx, e, in)
+	})
+	runs.definition.Effect = "retained_metadata_read"
+	runs.definition.MaxBodyBytes = 8 << 10
+	runs.definition.Audit = "read_only_no_domain_audit"
+	runs.definition.ResourceLoader = "exact signed parent read and discovery action; original tenant/actor/session and independent private preview before candidate identities; no names, values or execution"
+	return []runtimeEndpoint{entry, write, data, effect, runs}
 }
 
 func DependencyRegistry() (*api.Registry, error) { return registryForEntries(dependencyEntries(nil)) }

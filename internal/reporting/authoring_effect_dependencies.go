@@ -41,11 +41,11 @@ func RequireEffectDependencyDiscovery(e identity.Envelope, in EffectDependencyRe
 	}
 	kind := ""
 	switch in.Operation {
-	case "block_validate":
+	case "block_validate", "block_run":
 		kind = "block"
-	case "preview":
+	case "preview", "report_run":
 		kind = "report"
-	case "execute", "view":
+	case "execute", "view", "block_view":
 		kind = "run"
 	default:
 		return ErrInvalid
@@ -59,7 +59,7 @@ func RequireEffectDependencyDiscovery(e identity.Envelope, in EffectDependencyRe
 	if err := access.Require(e, DependencyDiscoveryAction, access.Resource{Tenant: e.Tenant(), Kind: kind, Permission: "read", ID: in.ID}); err != nil {
 		return err
 	}
-	if kind != "run" {
+	if in.Operation == "block_validate" || in.Operation == "preview" {
 		return access.Require(e, "reporting.preview", access.Resource{Tenant: e.Tenant(), Kind: kind, Permission: "preview", ID: in.ID})
 	}
 	return nil

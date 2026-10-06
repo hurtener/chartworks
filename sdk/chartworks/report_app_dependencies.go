@@ -44,3 +44,12 @@ func (c *Client) ReportEffectDependencies(ctx context.Context, in ReportEffectDe
 	err = c.callLimit(ctx, "POST", reportingapi.EffectDependencyDiscoveryPath, "", in, &out, 128<<10)
 	return
 }
+
+// ReportRunCandidates returns BFF-only coordinates, never content authority.
+type ReportRunCandidateRequest = reporting.RunCandidateRequest
+type ReportRunCandidatePage = reporting.RunCandidatePage
+
+func (c *Client) ReportRunCandidates(ctx context.Context, in ReportRunCandidateRequest) (out ReportRunCandidatePage, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.RunCandidateDiscoveryPath, "", in, &out, 128<<10)
+	return
+}

@@ -132,6 +132,7 @@ type DeliveryRunResult struct {
 
 // DeliveryRunsRequest never triggers an occurrence or grants recipient access.
 type DeliveryRunsRequest struct {
+	Run      string `json:"run,omitempty"`
 	Kind     string `json:"kind" jsonschema:"enum=block,enum=report,enum=dashboard"`
 	Resource string `json:"resource"`
 	After    string `json:"after"`
@@ -159,9 +160,10 @@ type DeliveryRunsResult struct {
 	Next    string               `json:"next"`
 }
 
-// CompositionCatalog lists only currently authorized retained metadata.
+// CompositionCatalog reads only currently authorized retained metadata.
 // It deliberately has no query/model/worker method.
 type CompositionCatalog interface {
+	ReadArtifactSummary(context.Context, identity.Envelope, string, string, string) (DeliveryRunSummary, error)
 	ListCompositionArtifacts(context.Context, identity.Envelope, string, string, string, int) (DeliveryRunsResult, error)
 }
 

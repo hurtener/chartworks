@@ -818,3 +818,5 @@ Manual write authority discovery: [D-099 proposed definitions and native save ba
 Manual data authority discovery: [D-100 reviewed publications and original preparation custody](decisions/2026-10-05-report-data-dependency-discovery.md).
 
 Manual effect authority: [D-101 saved validation, preview and retained-run requirements](decisions/2026-10-05-report-effect-dependency-discovery.md).
+
+Published Consumer authority: [D-102 native published execution and original-run history](decisions/2026-10-05-published-consumer-dependencies.md).

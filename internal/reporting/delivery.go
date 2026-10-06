@@ -389,8 +389,27 @@ func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in DeliveryRun
 		return out, err
 	}
 	defer cancel()
-	if !deliveryKind(in.Kind) || in.Resource != "" && !identity.Identifier(in.Resource) || in.After != "" && !identity.Identifier(in.After) || in.Limit < 1 || in.Limit > 100 {
+	if in.Run != "" && !identity.Identifier(in.Run) || !deliveryKind(in.Kind) || in.Resource != "" && !identity.Identifier(in.Resource) || in.After != "" && !identity.Identifier(in.After) || in.Limit < 1 || in.Limit > 100 {
 		return out, ErrInvalid
+	}
+	// The exact selector is used by the BFF after original-run dependency
+	// discovery. It cannot accidentally enumerate sibling runs with parent reach.
+	if in.Run != "" {
+		if in.After != "" || in.Limit != 1 || in.Resource == "" {
+			return out, ErrInvalid
+		}
+		summary, err := s.catalog.ReadArtifactSummary(ctx, e, in.Kind, in.Resource, in.Run)
+		if err != nil {
+			return out, err
+		}
+		if summary.Kind != in.Kind || summary.Target.ID != in.Resource {
+			return out, access.ErrNotFound
+		}
+		out.Items = append(out.Items, summary)
+		if err := s.bound(out); err != nil {
+			return DeliveryRunsResult{}, err
+		}
+		return out, ctx.Err()
 	}
 	if in.Kind != "block" {
 		result, err := s.catalog.ListCompositionArtifacts(ctx, e, in.Kind, in.Resource, in.After, in.Limit)
@@ -409,7 +428,7 @@ func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in DeliveryRun
 	out.Next = page.Next
 	for _, v := range page.Items {
 		if in.Resource == "" || v.Block == in.Resource {
-			out.Items = append(out.Items, blockRunSummary(v))
+			out.Items = append(out.Items, BlockRunSummary(v))
 		}
 	}
 	if err := s.bound(out); err != nil {
@@ -418,7 +437,8 @@ func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in DeliveryRun
 	return out, ctx.Err()
 }
 
-func blockRunSummary(v RunView) DeliveryRunSummary {
+// BlockRunSummary projects an already authorized retained metadata head.
+func BlockRunSummary(v RunView) DeliveryRunSummary {
 	return DeliveryRunSummary{Kind: "block", Run: v.ID, Target: DeliveryTarget{"block", v.Block, v.Revision}, State: v.State, Code: v.Code, Private: v.Private, Created: v.Created, Expires: v.Expires, Scheduled: clone(v.Scheduled)}
 }
 

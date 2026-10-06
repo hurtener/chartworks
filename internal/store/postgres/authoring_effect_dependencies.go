@@ -25,10 +25,13 @@ func (d *DB) DiscoverAuthoringEffectDependencies(ctx context.Context, e identity
 	}
 	defer cancel()
 	out = reporting.EffectDependencyManifest{Version: "report-effect-dependencies-v1", Operation: in.Operation, Kind: "report", ID: in.ID, Revision: in.Revision, Actions: []string{"reporting.read"}, References: []reporting.ResourceReference{}}
-	if in.Operation == "block_validate" {
+	if in.Operation == "block_validate" || in.Operation == "block_run" || in.Operation == "block_view" {
 		out.Kind = "block"
 	}
 	err = d.transactionOptions(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(ctx context.Context, tx pgx.Tx) error {
+		if in.Operation == "block_view" {
+			return blockRunDependenciesTx(ctx, tx, e, in.ID, &out)
+		}
 		if in.Operation == "execute" || in.Operation == "view" {
 			out.Run = in.ID
 			// Execution/private artifacts belong to the original canonical login.
@@ -89,13 +92,28 @@ func (d *DB) DiscoverAuthoringEffectDependencies(ctx context.Context, e identity
 		if out.Run == "" {
 			out.Digest, out.Private = base.Digest, base.Private
 		}
+		publicRun := in.Operation == "block_run" || in.Operation == "report_run"
+		if publicRun && base.Private {
+			return access.ErrNotFound
+		}
+		for _, b := range base.Blocks {
+			if publicRun && b.Private {
+				return access.ErrNotFound
+			}
+		}
 		out.References = append(out.References, base.References...)
-		out.References = append(out.References, reporting.ResourceReference{Kind: out.Kind, Permission: "read", ID: out.ID}, reporting.ResourceReference{Kind: out.Kind, Permission: "write", ID: out.ID})
+		out.References = append(out.References, reporting.ResourceReference{Kind: out.Kind, Permission: "read", ID: out.ID})
+		if !publicRun {
+			out.References = append(out.References, reporting.ResourceReference{Kind: out.Kind, Permission: "write", ID: out.ID})
+		}
 		if out.Private {
 			out.Actions = append(out.Actions, "reporting.preview")
 			out.References = append(out.References, reporting.ResourceReference{Kind: out.Kind, Permission: "preview", ID: out.ID})
 		}
-		if in.Operation == "block_validate" {
+		if publicRun {
+			out.Actions = append(out.Actions, "reporting.execute")
+			out.References = append(out.References, reporting.ResourceReference{Kind: out.Kind, Permission: "execute", ID: out.ID})
+		} else if in.Operation == "block_validate" {
 			out.Actions = append(out.Actions, "reporting.validate")
 		} else {
 			out.Actions = append(out.Actions, "reporting.write", "reporting.execute", "reporting.preview")
@@ -123,7 +141,9 @@ func (d *DB) DiscoverAuthoringEffectDependencies(ctx context.Context, e identity
 				out.References = append(out.References, reporting.ResourceReference{Kind: "block", Permission: "execute", ID: b.ID})
 				// A private composition's child runs retain preview privacy even
 				// when their block definition has already been published.
-				out.References = append(out.References, reporting.ResourceReference{Kind: "block", Permission: "preview", ID: b.ID})
+				if !publicRun {
+					out.References = append(out.References, reporting.ResourceReference{Kind: "block", Permission: "preview", ID: b.ID})
+				}
 			}
 		}
 		return nil
@@ -144,4 +164,32 @@ func (d *DB) DiscoverAuthoringEffectDependencies(ctx context.Context, e identity
 		return reporting.EffectDependencyManifest{}, access.ErrUnauthenticated
 	}
 	return out, ctx.Err()
+}
+
+// A frozen block run retains its exact original partition and immutable block
+// revision requirements. No current publication or payload is used for discovery.
+func blockRunDependenciesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, run string, out *reporting.EffectDependencyManifest) error {
+	var source, partition string
+	err := tx.QueryRow(ctx, `SELECT block_id,revision,revision_digest,private,source_id,context_id FROM chartworks.frozen_runs WHERE tenant_id=$1 AND operation_id=$2 AND (NOT private OR (actor_id=$3 AND session_id=$4))`, e.Tenant(), run, e.User(), e.Session()).Scan(&out.ID, &out.Revision, &out.Digest, &out.Private, &source, &partition)
+	if err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, `SELECT kind,permission,resource_id FROM chartworks.block_revision_references WHERE tenant_id=$1 AND block_id=$2 AND revision=$3 ORDER BY kind,permission,resource_id LIMIT 129`, e.Tenant(), out.ID, out.Revision)
+	if err != nil {
+		return err
+	}
+	refs, err := dependencyReferences(rows)
+	if err != nil {
+		return err
+	}
+	if len(refs) == 0 || !identity.Identifier(source) || !identity.Identifier(partition) {
+		return store.ErrInvalid
+	}
+	out.Run = run
+	out.References = append(refs, reporting.ResourceReference{Kind: "block", Permission: "read", ID: out.ID}, reporting.ResourceReference{Kind: "source", Permission: "read", ID: source}, reporting.ResourceReference{Kind: "execution_context", Permission: "use", ID: partition})
+	if out.Private {
+		out.Actions = append(out.Actions, "reporting.preview")
+		out.References = append(out.References, reporting.ResourceReference{Kind: "block", Permission: "preview", ID: out.ID})
+	}
+	return nil
 }

@@ -167,3 +167,37 @@ exercises native validation, preview, execute and retained values using only the
 returned exact projection, missing-scope and cross-tenant/actor/session denials,
 registered wire closure and query/model counters. This is local native evidence;
 real issuer and browser acceptance are recorded separately.
+
+## Published Consumer and original retained history (D-102)
+
+Effect discovery additionally accepts `report_run`, `block_run` (exact published
+revision) and `block_view` (exact retained run, revision zero). Published run
+seeds require `reporting.discover` and exact root read, without preview; private
+root or block pins are rejected. The resulting manifest requires independent
+execute, source query and complete read/query/use dependencies. No write, preview,
+publish or model action is inferred. Block retained reads use the original frozen
+source/context and immutable block revision references, never the current head.
+Existing report retained reads continue to use their original run reference index.
+
+`POST /v1/reporting/authoring/v1/run-candidates` accepts `kind` (`report` or `block`),
+`resource`, `after`, `limit` (1–32). Exact parent read plus `reporting.discover` is
+required. `version: report-run-candidates-v1` returns kind, resource, ordered run
+IDs and a continuation cursor, with no names, timing, values or definitions.
+Private IDs additionally require exact parent preview, `reporting.preview` and
+original actor/session custody. This is trusted BFF metadata, not browser content.
+Registration `reportAppRunCandidatesV1` has an 8 KiB input; SDK method is
+`ReportRunCandidates`. Ordinary metadata transaction/deadline bounds apply.
+
+After original-run dependency authorization, `reporting_runs` accepts an optional
+exact `run` selector together with its parent resource, empty after and limit 1.
+It uses the existing retained catalog eligibility and returns one summary. This adds
+no authorization shortcut. BFF history scans at most 256 candidates within its
+30-second deadline and only returns an authorized run ID as the external cursor;
+budget exhaustion returns no partial page or hidden coordinate. A full page can
+be followed by an empty terminal page. Search uses canonical independently granted
+roots, full native published dependencies, and bounded exact-root name lookup.
+
+`TestReportAppEffectDependencyDiscovery/published_consumer_and_original_run_dependencies`
+covers actual publication, explicit execution, independent-reader retained values,
+original context denial, private-custody preservation and no query/model work on
+reads. Local native evidence does not substitute for actual issuer/browser proof.

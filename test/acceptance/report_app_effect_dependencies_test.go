@@ -169,4 +169,124 @@ func TestReportAppEffectDependencyDiscovery(t *testing.T) {
 	if f.attemptCount(t) != before+2 || f.f.model.requests.Load() != models {
 		t.Fatal("retained read/discovery reran source/model")
 	}
+	t.Run("published_consumer_and_original_run_dependencies", func(t *testing.T) {
+		publicationScopes := append(slices.Clone(createScopes), "reporting.publish", "cw.block.publish:"+prepare.NewBlock, "cw.report.publish:"+report)
+		publisher := scoped(publicationScopes)
+		inspected, err := s.InspectLifecycle(ctx, publisher, reporting.AuthoringLifecycleRequest{Report: report, Revision: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := inspected.Blocks[0].Block
+		if _, err := s.PublishBlock(ctx, publisher, reporting.AuthoringBlockPublishRequest{Block: prepare.NewBlock, ExpectedVersion: b.State.Version, Revision: 1, Digest: b.Digest, Evidence: b.Evidence.ID}); err != nil {
+			t.Fatal(err)
+		}
+		state, err := s.RebindPublished(ctx, publisher, reporting.AuthoringRebindPublishedRequest{Report: report, ExpectedVersion: inspected.Report.State.Version, Revision: 1, Digest: inspected.Report.Digest, Widgets: []reporting.AuthoringPublishedWidget{{Widget: "amount", Block: prepare.NewBlock, Revision: 1, Digest: b.Digest}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		state, err = s.TransitionReport(ctx, publisher, reporting.AuthoringReportTransitionRequest{Report: report, ExpectedVersion: state.Version, Revision: state.DraftRevision, Operation: "review"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		state, err = s.TransitionReport(ctx, publisher, reporting.AuthoringReportTransitionRequest{Report: report, ExpectedVersion: state.Version, Revision: state.ReviewRevision, Operation: "publish"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, kind := range []string{"report", "block"} {
+			id, revision := report, state.PublishedRevision
+			if kind == "block" {
+				id, revision = prepare.NewBlock, 1
+			}
+			metadataSeed := []string{"reporting.discover", "cw." + kind + ".read:" + id}
+			req := reporting.EffectDependencyRequest{Operation: kind + "_run", ID: id, Revision: revision}
+			m, err := s.EffectDependencies(ctx, scoped(metadataSeed), req)
+			if err != nil {
+				t.Fatal(kind, "public execution discovery", err)
+			}
+			effectScopes := projected(m)
+			for _, scope := range effectScopes {
+				if strings.Contains(scope, "preview") || strings.Contains(scope, "write") || strings.Contains(scope, "publish") {
+					t.Fatal("public execution acquired editing/private authority", scope)
+				}
+			}
+			runInput := reporting.DeliveryRunRequest{Target: reporting.DeliveryTarget{Kind: kind, ID: id, Revision: revision}, Key: "published-" + kind, Timezone: "UTC", Locale: "en-US", PartialFailure: "fail_closed"}
+			if kind == "block" {
+				runInput.Policy = "published"
+				runInput.PartialFailure = "fail"
+				runInput.Outputs = []string{"chart"}
+			}
+			queries := f.attemptCount(t)
+			denied := slices.DeleteFunc(slices.Clone(effectScopes), func(scope string) bool { return scope == "cw.execution_context.use:"+chart.Block.Context })
+			if _, err := delivery.Run(ctx, scoped(denied), runInput); err == nil {
+				t.Fatal("public run missing original context admitted")
+			}
+			if f.attemptCount(t) != queries {
+				t.Fatal("denied public run queried source")
+			}
+			execution, err := delivery.Run(ctx, scoped(effectScopes), runInput)
+			if err != nil {
+				t.Fatal(kind, "public execution", err)
+			}
+			viewOp := "view"
+			if kind == "block" {
+				viewOp = "block_view"
+			}
+			readerSeed := []string{"reporting.discover", "cw.run.read:" + execution.Run}
+			reader := func(scopes []string) identity.Envelope {
+				return actor(author.Tenant(), "independent-reader", "independent-login", scopes)
+			}
+			retained, err := s.EffectDependencies(ctx, reader(readerSeed), reporting.EffectDependencyRequest{Operation: viewOp, ID: execution.Run})
+			if err != nil || retained.Private {
+				t.Fatal(kind, "public retained dependencies", err)
+			}
+			readScopes := projected(retained)
+			if kind == "block" {
+				readScopes = append(readScopes, "cw.run.read:"+execution.Run)
+			}
+			for _, scope := range readScopes {
+				if scope == "sources.query" || strings.Contains(scope, "execute") || strings.Contains(scope, "preview") || strings.Contains(scope, "write") {
+					t.Fatal("reader gained effect", scope)
+				}
+			}
+			beforeRead := f.attemptCount(t)
+			candidates, err := s.RunCandidates(ctx, reader(metadataSeed), reporting.RunCandidateRequest{Kind: kind, Resource: id, Limit: 32})
+			if err != nil || !slices.Contains(candidates.Runs, execution.Run) || slices.Contains(candidates.Runs, run.ID) {
+				t.Fatal("public candidates exposed private or omitted public", candidates, err)
+			}
+			exact, err := delivery.Runs(ctx, reader(readScopes), reporting.DeliveryRunsRequest{Kind: kind, Resource: id, Run: execution.Run, Limit: 1})
+			if err != nil || len(exact.Items) != 1 || exact.Items[0].Private || exact.Items[0].Run != execution.Run {
+				t.Fatal("exact run summary", exact, err)
+			}
+			read := reporting.DeliveryViewRequest{Kind: kind, Run: execution.Run, Output: "chart", Limit: 100}
+			if kind == "report" {
+				read.Page, read.Widget = "analysis", "amount"
+			}
+			output, err := delivery.View(ctx, reader(readScopes), read)
+			if err != nil || output.Output == nil || output.Output.Chart == nil || output.Output.Chart.Points[0].Value.Exact != "9007199254740998.625" {
+				t.Fatal(kind, "consumer exact values", err)
+			}
+			if kind == "report" {
+				read.Page, read.Widget, read.Output = "notes", "note", ""
+				notes, err := delivery.View(ctx, reader(readScopes), read)
+				if err != nil || notes.Text == nil || notes.Text.Text != "Retained notes" {
+					t.Fatal("consumer sibling page", err)
+				}
+			}
+			missing := slices.DeleteFunc(slices.Clone(readScopes), func(scope string) bool { return scope == "cw.execution_context.use:"+chart.Block.Context })
+			read.Output = "chart"
+			if kind == "report" {
+				read.Page, read.Widget = "analysis", "amount"
+			}
+			if got, err := delivery.View(ctx, reader(missing), read); err == nil && got.Output != nil {
+				t.Fatal("withdrawn context returned values")
+			}
+			if _, err := s.EffectDependencies(ctx, reader([]string{"reporting.discover", "cw.run.read:" + run.ID}), reporting.EffectDependencyRequest{Operation: "view", ID: run.ID}); err == nil {
+				t.Fatal("publication declassified prior private run")
+			}
+			if f.attemptCount(t) != beforeRead || f.f.model.requests.Load() != models {
+				t.Fatal("consumer/discovery queried source or model")
+			}
+		}
+	})
+
 }

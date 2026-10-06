@@ -148,3 +148,9 @@ use D-101's native [effect dependency projection](docs/contracts/report-dependen
 Pengui checks independent canonical operation/resource policy; Chartworks retains
 private actor/session and effect fences. This introduces no local authority store
 or model permission and does not establish full MCP/Consumer acceptance.
+
+D-102 extends the native metadata boundary to published execution, block retained
+reads and original-run history. Pengui checks complete original dependencies before
+returning names or summaries; retained artifacts never execute source/model work.
+See [the contract](docs/contracts/report-dependencies-v1.md#published-consumer-and-original-retained-history-d-102).
+No migration or additional MCP tool is introduced.
