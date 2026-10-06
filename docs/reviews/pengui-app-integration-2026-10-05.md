@@ -238,3 +238,58 @@ CI was not requested. Private preview/run authority, validation/mapping/copy and
 publication projections, independent Consumer and restricted MCP journeys, and
 the migration/activation rehearsal remain open; this is not completion of the
 cross-repository goal.
+
+## Private preview integration checkpoint — 2026-10-05
+
+Runtime Chartworks `4e551e94b26e8e20e61a2d9133c8c1365d11ec2e` and Pengui
+`11963d644040c38f3c1faf63ef927e75e4a7e237` pass 25 real HTTP checks and four
+registered-iframe checks using the actual local issuer/services. Twenty closed
+HTTP host operations now include explicit block validation, saved report preview
+admission/execution and fresh exact retained report-run reads. Public-viewer
+projection has a focused policy test; full published Consumer acceptance remains
+open. Provider metadata and each effect retain independent canonical policy.
+
+The exact synthetic decimal `9007199254740998.625` survives native preparation,
+validation, private execution and retained reads. The browser verifies its visible
+unrounded disclosure, configured rounded headline, provenance, saved sibling page,
+375-pixel redraw and fresh iframe reopening. Final desktop/narrow/widget screenshots
+were inspected. Narrow canvases and widget contents retain horizontal/vertical
+scrolling. Browser proof uses sandboxed Playwright Chromium 148.0.7778.96; external
+Chrome 154 remains unqualified. No screenshot is treated as an authority test.
+
+Local source gates: Pengui App/ConnectedApp race tests 7.923s, additional public
+viewer case 2.625s, vet and Linux arm64 build; 57 host/client assertions, ESLint,
+Svelte zero errors/warnings, production Console and both bundle gates. Chartworks
+reporting 24.463s, HTTP 59.372s, PostgreSQL 18.241s and SDK 81.084s full package race
+checks pass. Real PostgreSQL `TestReportAppEffectDependencyDiscovery` passes in
+25.165s using only returned exact projections for validation, preview, execute and
+retained values; missing scopes and foreign tenant/actor/session reject. Planning
+and mirrored contributor rules pass. Hosted CI was not used because of billing.
+
+Direct bounded adversarial review checked metadata-only seeds, original private
+run custody, frozen dependencies, independent source/execute/preview grants, scope
+limits, closed selectors, canonical final fences and no read-triggered source work.
+No P0/P1 issue remains in this increment. Subsequent changes correct probes and
+add evidence/test coverage; runtime source stayed unchanged throughout live runs.
+
+The full live campaign records 17 source attempts: three explicit preparations,
+eight validations and six preview executions, including early probe failures.
+Retries, stale validation rejection, admission, inspection, denied reads, retained
+reads, page changes and reopening add no source attempts. Fixture model delta is
+zero and runtime models are disabled. Probe corrections reused allocation-created
+grants, supplied the required narrative:false DTO field, limited response capture
+to successful POSTs, and selected the visible raw KPI disclosure rather than a
+closed nested Precision disclosure. Earlier failed evidence is retained. The
+final assertion compares the retained decimal against the fixture's expected value.
+
+The local `real-services-private-preview/source-manifest.json` records binary,
+image/document identities, results and screenshots. Fixture cleanup passes
+(481.592s including service hold), with zero residual test databases/roles.
+This task's services/containers are stopped; unrelated running work is preserved.
+Both PRs remain draft/unmerged, with no production change or live model call.
+
+Remaining product work: chart mapping/catalog/copy, governed options and lifecycle
+publication/rebinding, native projections replacing legacy non-report Consumer
+selectors, independent published Consumer acceptance and restricted no-chat MCP
+through the existing framework. Migration 087/088 plus Pengui 0107 still require
+quiescence/compatibility and activation rehearsal; D-101/PD-244 add no migration.
