@@ -1,5 +1,9 @@
 # Chartworks — actionable implementation plan
 
+The [manual report product-quality continuation](manual-report-product-quality.md)
+qualifies the existing phases 29/31 application and its real Builder/Consumer journey.
+It does not close the whole-product release gate.
+
 ## SQL recovery status — 2026-09-30
 
 The [AP-00–AP-08 completion tracker](../reviews/sql-recovery-completion.md) records the current

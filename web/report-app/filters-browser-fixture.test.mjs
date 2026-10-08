@@ -51,9 +51,9 @@ test('native private preview and public run match exact temporary arguments and 
 
 test('real native typed defaults survive staged cancel, page fences, temporary override and clear',async()=>{
   const f=await load(),definition=structuredClone(f.data.private_report.definition),page=definition.report_pages[0],day=page.filters.find(v=>v.parameter.name==='day'),region=page.filters.find(v=>v.parameter.name==='region');
-  const app={closed:false,epoch:1,pageGeneration:1,activePageID:'analysis',session:{definition},render(){},editPage(change,id){change(definition.report_pages.find(v=>v.id===id));}};
+  const app={closed:false,epoch:1,_uiPageGeneration:1,activePageID:'analysis',session:{definition},render(){},editPage(change,id){change(definition.report_pages.find(v=>v.id===id));}};
   const controls=new ReportFilterControls(app),before=structuredClone(definition);
-  controls.open(day,'analysis','default');const stale=controls.editor;stale.state.start='2026-01-01';app.pageGeneration++;controls.done(stale,filterInputValue(stale.state));assert.deepEqual(definition,before);
+  controls.open(day,'analysis','default');const stale=controls.editor;stale.state.start='2026-01-01';app._uiPageGeneration++;controls.done(stale,filterInputValue(stale.state));assert.deepEqual(definition,before);
   controls.open(region,'analysis','preview');controls.done(controls.editor,{items:['North']});
   controls.open(day,'analysis','preview');controls.done(controls.editor,{date_range:{start:'2026-01-01',end_exclusive:'2026-01-02'}});
   assert.deepEqual(controls.pageInputs(definition),f.privateRun.preview_request.pages);

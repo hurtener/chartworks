@@ -348,6 +348,7 @@ function renderLines(parent,c,w) {
     }
     flush(); color++;
   }
+  if(groups.size===1){const values=points.filter(p=>coordinate(p.value)!==null);if(values.length>1)for(const [i,p]of [values[0],values.at(-1)].entries()){const label=exact(p.value,array(c.columns).find(col=>col.id===p.measure)||columnFor(c,'value'),w.null);if(label.length<=32){const t=svg('text',{x:x(p),y:Math.max(24,y(coordinate(p.value))-18),'text-anchor':i?'end':'start',class:'chart-value-label'});t.textContent=label;s.append(t);}}}
   categories.forEach((label,i) => { if (i % Math.max(1,Math.ceil(categories.length/10)) === 0) { const t = svg('text',{x:65+i*680/Math.max(1,categories.length-1),y:385,class:'chart-axis-label','text-anchor':i===0?'start':i===categories.length-1?'end':'middle'}); t.textContent = shorten(label,22); t.append(svg('title',{},label)); s.append(t); } });
   const axis=element('div',undefined,'chart-axis');axis.setAttribute('aria-label',columnLabel(columnFor(c,'category'))||w.category);const step=Math.max(1,Math.ceil((categories.length-1)/4));categories.forEach((label,i)=>{if(i===0||i===categories.length-1||i%step===0)axis.append(element('span',label));});parent.append(axis);
   if ((groups.size > 1 || c.version === 2) && c.mapping?.options?.legend?.visible !== false) legend(parent,Array.from(names.values()));
@@ -428,12 +429,12 @@ function renderHierarchy(parent,c,w) {
   draw('',{x:12,y:12,width:776,height:396},0,0);
 }
 
-export function renderChart(parent, chart, language='en', timezone='UTC') {
+export function renderChart(parent, chart, language='en', timezone='UTC', contextTitle='') {
   boundedJSON(chart); const w=words[language==='es'?'es':'en'];
   if(!KINDS.includes(chart.kind)||array(chart.points).length>MAX_POINTS||array(chart.columns).length>256)throw fail('invalid_request');
   validateRetainedChart(chart);
   chart={...chart,columns:array(chart.columns).map(column=>({...column,display_timezone:timezone}))};
-  if(chart.mapping?.options?.title)parent.append(element('h2',chart.mapping.options.title));
+  if(chart.mapping?.options?.title&&chart.mapping.options.title!==contextTitle)parent.append(element('h2',chart.mapping.options.title));
   const ready = chart.state === 'ready';
   if(!ready)parent.append(element('p',`${w.empty} ${text(chart.state)}`,'notice'));
   if(chart.kind==='table'){renderTable(parent,array(chart.columns),array(chart.rows),w,w.values,array(chart.totals),[],timezone);return;}
@@ -510,7 +511,7 @@ export function validateRetainedView(v) {
   return expiry;
 }
 
-export function renderRetainedOutput(content,v,{locale='en',onPage=null}={}) {
+export function renderRetainedOutput(content,v,{locale='en',onPage=null,contextTitle=''}={}) {
   validateRetainedView(v);
   const language=locale.toLowerCase().startsWith('es')?'es':'en',w=words[language];
   if(v.text){content.append(element('p',text(v.text.content??v.text.text),'narrative'));return;}
@@ -525,7 +526,7 @@ export function renderRetainedOutput(content,v,{locale='en',onPage=null}={}) {
     const prev=button(w.previous,()=>onPage?.(Math.max(0,b.offset-b.limit)));prev.disabled=!onPage||b.offset===0;
     const next=button(w.next,()=>onPage?.(b.next));next.disabled=!onPage||!integer(b.next,b.offset+1,b.total);
     pager.append(prev,next);content.append(pager);
-  }else if(v.output.chart)renderChart(content,v.output.chart,language,v.timezone);
+  }else if(v.output.chart)renderChart(content,v.output.chart,language,v.timezone,contextTitle);
   else if(v.output.narrative){
     content.append(element('p',text(v.output.narrative.text),'narrative'));
     for(const caveat of array(v.output.narrative.caveats))content.append(element('p',text(caveat),'notice'));

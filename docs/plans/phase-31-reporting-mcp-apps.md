@@ -158,3 +158,13 @@ App HTML) or invoke tools. Interactive App resource/tool requests still require
 No service name alone authorizes a request; the verifier, configured MCP audience,
 expiry and exact scope profile remain mandatory. No new issuer, credential,
 identity table, domain endpoint or migration is introduced.
+
+## Manual application product-quality continuation
+
+[The bounded quality plan](manual-report-product-quality.md) owns compact host
+composition, retained-result opening, published return/edit/republish, metadata-only
+chart status checks, retained formatting previews and responsive reading. Saved
+column/row/span coordinates remain authoritative. Builder rows stay exactly 80px;
+reading rows use that minimum and expand for content, keeping disclosures and table
+rows visible without nested card scrolling. This is a screen-reading adjustment,
+not a rewrite of saved definitions or portable export geometry.

@@ -136,6 +136,7 @@ try{
     for (let i=0;i<fixtures.rich_cases.length;i++) {
       const c=fixtures.rich_cases[i], out=c.output, tag='rich-'+i;
       await evaluate(`show(makeView(fixture.rich_cases[${i}].output,${JSON.stringify(tag)}))`); await waitTitle(tag);
+      if(c.scenario==='line_two_units')await check(`(()=>{const labels=Array.from(${body}.querySelectorAll('text.chart-value-label'));return labels.length===4&&labels.every(e=>Array.from(e.childNodes).some(n=>n.nodeType===3&&n.textContent.trim()));})()`,'single-series scale endpoints render visible numeric text rather than SVG tooltip children');
       const rows=await evaluate(`Array.from(${body}.querySelectorAll('.retained-values tbody tr'),r=>Array.from(r.querySelectorAll('td'),c=>c.textContent))`);
       assert.equal(rows.length,Math.min(100,c.expected_rows.length),'retained wide rows: '+c.scenario);
       for(let r=0;r<rows.length;r++)for(let k=0;k<c.expected_rows[r].length;k++) {

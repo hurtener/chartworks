@@ -72,6 +72,23 @@ export function checkFormattingResult(before,after,output,patch){
  if(columns.length)mapping.presentation={version:1,columns};else delete mapping.presentation;
  if(before.block.execution_digest!==after.block.execution_digest||before.block.digest===after.block.digest||stable(expected)!==stable(after.block.outputs)||stable(before.block.expected_schema)!==stable(after.block.expected_schema)||stable(before.output_columns)!==stable(after.output_columns))throw appError(INVALID_REQUEST);
 }
+// A disposable visual draft over an already authorized retained result. Only
+// advertised display fields change; rows, amounts, provenance and admission do not.
+export function formattingPreview(view,output,draft){
+ formattingPatch(draft,output);
+ if(view.output?.id!==output.id)throw appError(INVALID_REQUEST);
+ const result=copyData(view),payload=result.output.table||result.output.chart,allowed=formattingColumns(output);
+ if(!Array.isArray(payload?.columns))throw appError(INVALID_REQUEST);
+ for(const column of payload.columns){
+  const entry=allowed.find(item=>item.column.id===column.id);if(!entry)continue;
+  const original=entry.column,row=draft.fields.find(item=>item.column===column.id);
+  if(column.name!==original.name||column.type!==original.type)throw appError(INVALID_REQUEST);
+  for(const field of entry.fields){const value=Object.hasOwn(row,field)?row[field]:base(original,field);
+   if(field==='display_label')column.display_label=value;else column.format={...column.format,fraction_digits:value};
+  }
+ }
+ return result;
+}
 export function renderFormattingFields(parent,session,change){
  const output=session.view.block.outputs.find(o=>o.id===session.output),columns=formattingColumns(output),name=c=>c.display_label||c.name||c.id;
  parent.append(node('p','Edit supported headers and precision. Units, currency, percent scale, physical fields and exact values stay reviewed. Reset inherits the reviewed field.','metadata'));

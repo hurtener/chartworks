@@ -32,7 +32,9 @@ func TestReportAppLiveFixture(t *testing.T) {
 	var request reporting.AuthoringPrepareRequest
 	var publication topics.Published
 	expected := "9007199254740998.625"
-	if os.Getenv("CHARTWORKS_LIVE_FIXTURE_OPTIONS") == "true" {
+	if os.Getenv("CHARTWORKS_LIVE_FIXTURE_BUSINESS") == "true" {
+		f, request, publication, expected = businessDatasetFixture(t)
+	} else if os.Getenv("CHARTWORKS_LIVE_FIXTURE_OPTIONS") == "true" {
 		f, _, _, request, publication, _ = filteredDatasetFixture(t)
 		expected = "3.750"
 	} else {

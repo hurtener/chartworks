@@ -90,3 +90,9 @@ test('filtered Prepare sends exact staged defaults only after every default edit
 test('settled lookup pagination reuses one dimension controller and new dataset selection clears old stages',async()=>{
  const {session,calls}=await opened((name,args)=>reply(args.operation,{complete:false,next:'page-two'}));session.addFilter('region','multi_select');await session.searchFilter('region','private-chart','North');const lookup=session.filterLookups.get('region');session.filterStages.get('region').items=['North'];await assert.rejects(session.searchFilter('region','private-chart','South','page-two'),/stale_validation/);await session.searchFilter('region','private-chart','North','page-two');assert.equal(session.filterLookups.get('region'),lookup);assert.deepEqual(session.filterStages.get('region').items,['North']);assert.notEqual(calls.at(-1).args.operation,calls.at(-2).args.operation);await session.selectDataset('orders');assert.equal(session.filterStages.size,0);assert.equal(session.filterLookups.size,0);assert.equal(Object.hasOwn(session.draft,'filters'),false);assert.equal(lookup.closed,true);
 });
+
+test('switching to KPI clears hidden grouping without a source request',async()=>{
+ const {session,calls}=await opened();let root=render(session),kind=byLabel(root,'New chart type');kind.value='kpi';kind.listeners.change();root=render(session);
+ assert.deepEqual(session.draft.dimensions,[]);assert.equal(byLabel(root,'Dimension: Region'),undefined);assert.equal(calls.length,3);
+ kind=byLabel(root,'New chart type');kind.value='bar';kind.listeners.change();root=render(session);assert.equal(byLabel(root,'Dimension: Region').checked,false);assert.equal(calls.length,3);
+});

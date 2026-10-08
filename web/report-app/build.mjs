@@ -43,6 +43,9 @@ const result = await esbuild.build({
   target: ['es2022'],
   charset: 'utf8',
   minify: true,
+  // Only opted-in disposable UI state names are shortened. Wire, domain and
+  // host-bridge properties keep their original names. The prefix is reserved.
+  mangleProps: /^_ui[A-Z]/,
   treeShaking: true,
   sourcemap: false,
   legalComments: 'none',

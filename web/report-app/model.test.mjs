@@ -49,3 +49,10 @@ test('text-only sessions retain full CAS editing while hiding unavailable narrow
  const before=JSON.stringify(s.definition);for(const change of [d=>{d.filters=[{parameter:{name:'filter'}}];},d=>{d.defaults=[{name:'filter',value:{literal:'x'}}];},d=>{d.widgets[0].bindings=[{parameter:'x',filter:'x'}];},d=>{d.widgets[0]={...d.widgets[0],kind:'block',block:{narrative:false}};}]){assert.throws(()=>s.edit(change),/forbidden/);assert.equal(JSON.stringify(s.definition),before);}
 });
 test('review and published edits require full CAS amendment rather than current-draft widget patch',async()=>{for(const stage of ['review','published']){const calls=[],s=new DraftSession(async(name,args)=>{calls.push({name,args});return {id:'report-a',version:5,draft_revision:4,review_revision:stage==='review'?3:0,published_revision:stage==='published'?3:0};});s.setCapabilities(caps);const v=view();v.state.draft_revision=0;v.state[stage+'_revision']=3;v.private=stage!=='published';s.replace(v);s.edit(d=>{d.widgets[0].text.text='Amendment';});assert.equal(s.canSaveWidget('intro'),false);await assert.rejects(s.saveWidget('intro'));await s.save();assert.equal(calls.length,1);assert.equal(calls[0].name,authoringTool('save'));assert.equal(calls[0].args.revision,3);assert.equal(s.stage,'draft');}});
+
+test('exact publication reads reject an incorrect report or revision before replacing the working copy',async()=>{
+ for(const change of [v=>v.state.id='another-report',v=>v.revision=2]){
+  const value=view();change(value);const session=new DraftSession(async name=>name===authoringTool('capabilities')?caps:value);session.setCapabilities(caps);session.replace(view());const before=JSON.stringify(session.definition);
+  await assert.rejects(session.open('report-a','',3),e=>e.code==='stale_validation');assert.equal(JSON.stringify(session.definition),before);assert.equal(session.revision,3);session.close();
+ }
+});

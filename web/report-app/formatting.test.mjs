@@ -66,3 +66,24 @@ test('forged rich KPI category, comparison and coordinate capabilities never ena
 test('an older save reply cannot clear a newer metadata read pending fence',async()=>{
  let finishSave,finishRead;const s=new MappingSession((name,args)=>name.endsWith('block_read_v1')?(args.block==='source'?Promise.resolve(formatView()):new Promise(resolve=>{finishRead=()=>resolve(formatView('second'));})):new Promise(resolve=>{finishSave=()=>resolve(formatSaved(formatView(),args));}),'presentation');await s.open('source',7,'amount');s.newBlock='private';s.edit(d=>field(d,'amount').fraction_digits=0);const saving=s.save(),opening=s.open('second',7,'amount');finishSave();assert.equal(await saving,null);assert.equal(s.pending,true);finishRead();await opening;assert.equal(s.view.block.state.id,'second');s.close();
 });
+
+test('visual formatting drafts preserve native retained values, units, evidence and stored objects',async()=>{
+ const {readFile}=await import('node:fs/promises'),{formattingPreview}=await import('./formatting.js');
+ const data=JSON.parse(await readFile(new URL('./testdata/presentation-native.json',import.meta.url),'utf8'));
+ for(const widget of ['table','kpi']){
+  const view=data.stages.source.views[widget],output=data.source_block.block.outputs.find(o=>o.id===view.output.id),draft=formattingDraft(output),before=JSON.stringify(view),source=JSON.stringify(output);
+  const column=formattingColumns(output).find(c=>c.fields.includes('fraction_digits'));draft.fields.find(f=>f.column===column.column.id).fraction_digits=1;
+  const result=formattingPreview(view,output,draft),payload=result.output.table||result.output.chart,original=view.output.table||view.output.chart;
+  assert.equal(payload.columns.find(c=>c.id===column.column.id).format.fraction_digits,1);
+  assert.deepEqual(payload.columns.find(c=>c.id===column.column.id).format,{...original.columns.find(c=>c.id===column.column.id).format,fraction_digits:1});
+  assert.deepEqual({...payload,columns:[]},{...original,columns:[]});assert.deepEqual(result.summary,view.summary);assert.deepEqual(result.output.amount_completeness,view.output.amount_completeness);
+  assert.equal(JSON.stringify(view),before);assert.equal(JSON.stringify(output),source);
+ }
+});
+test('visual formatting rejects mismatched output, column identity, invalid precision and unsupported fields',async()=>{
+ const {readFile}=await import('node:fs/promises'),{formattingPreview}=await import('./formatting.js'),data=JSON.parse(await readFile(new URL('./testdata/presentation-native.json',import.meta.url),'utf8'));
+ const view=data.stages.source.views.table,output=data.source_block.block.outputs.find(o=>o.id===view.output.id),draft=formattingDraft(output),numeric=draft.fields.find(c=>c.column==='c1');numeric.fraction_digits=1;
+ for(const mutate of [v=>v.output.id='foreign',v=>v.output.table.columns.find(c=>c.id==='c1').name='different',v=>v.output.table.columns.find(c=>c.id==='c1').type='string']){const altered=mapClone(view);mutate(altered);assert.throws(()=>formattingPreview(altered,output,draft));}
+ for(const value of [null,21,-1]){numeric.fraction_digits=value;assert.throws(()=>formattingPreview(view,output,draft));}
+ numeric.fraction_digits=1;numeric.currency='EUR';assert.throws(()=>formattingPreview(view,output,draft));
+});

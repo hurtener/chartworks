@@ -91,3 +91,13 @@ on an invalid presentation. The
 [activation runbook](../runbooks/manual-report-app-activation.md) requires writer
 quiescence and separates local synthetic upgrade proof from production rollout
 and the still-open restricted MCP integration. This does not change phase status.
+
+## Manual application product-quality continuation
+
+[The bounded quality plan](manual-report-product-quality.md) owns compact host
+composition, retained-result opening, published return/edit/republish, metadata-only
+chart status checks, retained formatting previews and responsive reading. Saved
+column/row/span coordinates remain authoritative. Builder rows stay exactly 80px;
+reading rows use that minimum and expand for content, keeping disclosures and table
+rows visible without nested card scrolling. This is a screen-reading adjustment,
+not a rewrite of saved definitions or portable export geometry.
