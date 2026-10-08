@@ -34,7 +34,11 @@ func Guard(verifier *auth.Verifier, registry *Registry, next http.Handler) http.
 			guardError(w, 401, "unauthenticated")
 			return
 		}
-		if !e.Has(d.Action) {
+		// The MCP transport owns the method-level discovery-only gate. Pengui's
+		// existing service connection scope can reach that gate, but cannot
+		// satisfy any ordinary HTTP operation's action.
+		discovery := d.Surface == auth.MCP && d.Action == "mcp.use" && e.CapabilityConnection()
+		if !e.Has(d.Action) && !discovery {
 			guardError(w, 403, "forbidden")
 			return
 		}

@@ -1,14 +1,13 @@
 # Manual report App upgrade and activation
 
 Status: local synthetic rehearsal; **no production activation authorized or
-performed**. The HTTP lane has real local acceptance. Restricted no-chat MCP
-remains disabled pending the runtime dependency and both-mode journey described
-in the [integration review](../reviews/pengui-app-integration-2026-10-05.md).
-This runbook does not turn that missing capability into a release pass.
+performed**. Both registered HTTP and restricted no-chat MCP have
+[real local acceptance](../reviews/manual-app-two-mode-2026-10-07.md). Production
+release and activation remain separate operator actions.
 
 ## Record the intended release
 
-Pin Chartworks, Pengui and the eventual compatible Harbor commit and image digest.
+Pin Chartworks, Pengui and the compatible Harbor app-operation-v1 commit and image digest.
 Record the registered App, capability, organization, runtime tenant mapping, HTTP
 and MCP audiences, canonical MCP sink, enabled surfaces, exact parent origins,
 document hash and configuration generations. Keep credentials in the protected
@@ -58,6 +57,9 @@ permissions remain separate decisions.
    permission, adds independently granted permission references and target
    allocation receipts, and expires all old App read sessions and their joins.
    This is intentional: users must obtain a new admission after the upgrade.
+   0108 adds bounded single-use App operation intents; 0109 adds explicit MCP
+   mode/agent/document pins. Existing hosts remain MCP-disabled. Intent custody
+   is ephemeral, bounded by its parent session and never a reusable credential.
 6. Start only compatible Chartworks binaries in `store.migration_policy: check`
    mode and compatible Pengui binaries. Verify actual `/readyz` HTTP status and
    readiness body, build/image identity, schema history and required relations.
@@ -73,7 +75,11 @@ Builder only the required create/action/resource/Project/Team reach. Grant an
 ordinary Consumer App visibility and independent published-resource/context reads.
 Do not grant implicit publish, execute, source query or tenant wildcards.
 
-Enable only the qualified HTTP lane. Open a fresh admission, select named data,
+Qualify each enabled mode independently. For MCP, activate the capability on the
+existing intended agent through canonical signed activation; static discovery
+uses the service connection profile and grants no execution. Pin the separate
+MCP HTML digest, agent and host generation. Use MCP-only mode to verify the Apps
+route; when both modes are enabled it selects HTTP. Open a fresh admission, select named data,
 create and edit a chart/report, save, close/reopen, validate, preview, obtain fresh
 authority for the returned private run, explicitly publish, then open the published
 result as the ordinary Consumer. Recheck denied edit/query/publish, missing
@@ -83,9 +89,10 @@ revocation, frame/origin/document/generation and late-response checks. Inspect
 actual desktop and narrow-screen screenshots and use the keyboard. Count physical
 source attempts and model calls; retained redraw/history must add none.
 
-Do not enable MCP until the actual existing runtime/host/broker lane has an exact
+MCP requires the actual existing runtime/host/broker lane to have an exact
 App operation binding, current policy projection and no cross-operation credential
-reuse, plus the same real Builder-to-Consumer journey and denials. An MCP resource
+reuse, plus the same real Builder-to-Consumer journey and denials. The local rehearsal
+records this evidence; repeat it for the intended release/configuration. An MCP resource
 rendered by a synthetic adapter or an HTTP proxy is not this evidence.
 
 ## Withdrawal and recovery

@@ -14,7 +14,7 @@ var requestSchema, requestSchemaError = gateway.NewSchema("mcpRequest", []byte(`
  "properties":{
   "jsonrpc":{"const":"2.0"},
   "id":{"oneOf":[{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9_.:-]+$"},{"type":"integer","minimum":0,"maximum":9007199254740991}]},
-  "method":{"enum":["initialize","notifications/initialized","ping","tools/list","tools/call","resources/list","resources/templates/list","resources/read"]},
+  "method":{"enum":["initialize","notifications/initialized","ping","tools/list","tools/call","resources/list","resources/templates/list","resources/read","prompts/list"]},
   "params":{"type":"object"}
  },
  "allOf":[

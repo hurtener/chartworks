@@ -121,5 +121,14 @@ func AuthoringMCPBindings(service *reporting.Authoring, app ...mcpserver.AppReso
 	if err != nil {
 		return nil, err
 	}
-	return append(out, lifecycle...), nil
+	out = append(out, lifecycle...)
+	if len(app) == 1 {
+		for i := range out {
+			out[i], err = mcpserver.WithAppCallback(out[i])
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return out, nil
 }

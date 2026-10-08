@@ -139,6 +139,13 @@ func DeliveryMCPBindings(service *reporting.Delivery, execution bool, renderer .
 	if err := appendBinding(mcpserver.Bind(registry, "reportingRuns", "reporting_runs", "reporting", "List currently authorized retained reporting artifacts, including private or expired state where authorized. Does not run schedules.", service.Runs, mapper)); err != nil {
 		return nil, err
 	}
+	// Search, describe and retained history are callbacks of the report viewer.
+	for i := range out {
+		out[i], err = mcpserver.WithAppCallback(out[i])
+		if err != nil {
+			return nil, err
+		}
+	}
 	if err := appendBinding(mcpserver.Bind(registry, "prepareCapturedQueryVariant", "prepare_captured_query_variant", "reporting", "Prepare an exact published captured-query variant with reviewed parameter slots. No SQL, source query IDs, execution or publication authority is returned.", service.PrepareQueryVariant, mapper)); err != nil {
 		return nil, err
 	}

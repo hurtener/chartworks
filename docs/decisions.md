@@ -822,3 +822,5 @@ Manual effect authority: [D-101 saved validation, preview and retained-run requi
 Published Consumer authority: [D-102 native published execution and original-run history](decisions/2026-10-05-published-consumer-dependencies.md).
 
 Governed option authority: [D-103 original lookup custody and target discovery](decisions/2026-10-05-option-dependency-discovery.md).
+
+MCP service discovery: [D-104 existing Pengui connection authority with no domain access](decisions/2026-10-07-mcp-connection-discovery.md).

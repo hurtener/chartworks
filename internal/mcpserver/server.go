@@ -131,6 +131,13 @@ func (s *Server) middleware(next mcp.MethodHandler) mcp.MethodHandler {
 		if err != nil {
 			return nil, protocolError(jsonrpc.CodeInvalidRequest, "unauthenticated")
 		}
+		if connectionDiscovery(e) {
+			switch method {
+			case "initialize", "notifications/initialized", "ping", "tools/list", "resources/list", "resources/templates/list", "prompts/list":
+			default:
+				return nil, protocolError(-32000, "forbidden")
+			}
+		}
 		switch method {
 		case "tools/list":
 			p, ok := req.GetParams().(*mcp.ListToolsParams)
@@ -185,7 +192,7 @@ func protocolError(code int64, message string) error {
 func (s *Server) listTools(e identity.Envelope) *mcp.ListToolsResult {
 	out := &mcp.ListToolsResult{Tools: []*mcp.Tool{}}
 	for _, b := range s.registry.bindings {
-		if e.Has(b.definition.Action) {
+		if connectionDiscovery(e) || e.Has(b.definition.Action) {
 			out.Tools = append(out.Tools, b.tool())
 		}
 	}
@@ -194,12 +201,12 @@ func (s *Server) listTools(e identity.Envelope) *mcp.ListToolsResult {
 func (s *Server) listResources(e identity.Envelope) *mcp.ListResourcesResult {
 	out := &mcp.ListResourcesResult{Resources: []*mcp.Resource{}}
 	for _, b := range s.registry.bindings {
-		if b.resource != "" && !strings.Contains(b.resource, "{") && e.Has(b.definition.Action) {
+		if b.resource != "" && !strings.Contains(b.resource, "{") && (connectionDiscovery(e) || e.Has(b.definition.Action)) {
 			out.Resources = append(out.Resources, &mcp.Resource{Name: b.name, URI: b.resource, MIMEType: "application/json", Description: b.description})
 		}
 	}
 	for _, app := range s.registry.apps() {
-		if s.registry.canReadApp(e, app.uri) {
+		if connectionDiscovery(e) || s.registry.canReadApp(e, app.uri) {
 			out.Resources = append(out.Resources, app.resource())
 		}
 	}
@@ -209,7 +216,7 @@ func (s *Server) listResources(e identity.Envelope) *mcp.ListResourcesResult {
 func (s *Server) listTemplates(e identity.Envelope) *mcp.ListResourceTemplatesResult {
 	out := &mcp.ListResourceTemplatesResult{ResourceTemplates: []*mcp.ResourceTemplate{}}
 	for _, b := range s.registry.bindings {
-		if strings.Contains(b.resource, "{") && e.Has(b.definition.Action) {
+		if strings.Contains(b.resource, "{") && (connectionDiscovery(e) || e.Has(b.definition.Action)) {
 			out.ResourceTemplates = append(out.ResourceTemplates, &mcp.ResourceTemplate{Name: b.name, URITemplate: b.resource, MIMEType: "application/json", Description: b.description})
 		}
 	}

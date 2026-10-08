@@ -1,14 +1,9 @@
 # Pengui manual application integration checkpoint
 
-Status: incomplete overall. The registered HTTP lane now implements and locally
-qualifies 32 operations: named data selection, creation, save/reopen, preparation,
-validation, private preview, publication, independent Consumer reads, chart
-copy/presentation and governed options. Restricted no-chat MCP and final activation
-remain open. Later dated checkpoint sections below contain the detailed evidence.
-
-Current implementation checkpoints before migration rehearsal: Chartworks
-`840830fc52b2f8f4caa0cdbb65e42f96eb30373b`, Pengui
-`47d314272a87b3af9e1dbdc7b7eafe3587d8362b`. Both PRs remain draft/unmerged.
+Status: both registered HTTP and restricted no-chat MCP have real local
+Builder-to-Consumer qualification. See the [current evidence and known UI debt](manual-app-two-mode-2026-10-07.md).
+The dated sections below preserve earlier checkpoints; their remaining-work
+statements describe those dates. Draft PRs remain unmerged; production is unchanged.
 
 ## Historical starting baseline and boundaries
 
@@ -44,11 +39,11 @@ keyboard navigation; it is not a responsive reflow of the saved report layout.
   and ordinary-user Consumer journeys, plus chart editing and governed searches.
 - [x] HTTP negative/interruption cases, exact values/provenance, and source/model
   counters are recorded in the checkpoint sections; no paid model validation.
-- [ ] Restricted no-chat MCP through the existing runtime/host framework and the
-  same central policy. Current runtime broker/cache lacks an App operation binding.
-- [ ] Full both-mode end-to-end acceptance against the final combined release head.
+- [x] Restricted no-chat MCP through the existing runtime/host framework, exact
+  operation binding and the same canonical policy.
+- [x] Both-mode end-to-end acceptance against the final local runtime candidate.
 - [x] Populated synthetic 087/088 and 0103/0104/0106/0107 upgrade rehearsal; explicit cutover and recovery runbook.
-- [ ] Restricted MCP activation and final combined-head both-mode verification.
+- [x] Actual signed MCP activation and both-mode local verification; no production activation.
 
 On 2026-10-05 the owner clarified that no rejection/review text is known and
 authorized dev administration or an isolated local Docker environment. No platform

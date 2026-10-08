@@ -85,6 +85,7 @@ func effectFor(effect string) (effects, bool) {
 type Binding struct {
 	documentation                      *staticdocs.Catalog
 	app                                *AppResource
+	appCallback                        bool
 	name, group, description, resource string
 	definition                         api.Definition
 	input, output                      *gateway.Schema
@@ -285,6 +286,9 @@ func (b Binding) tool() *mcp.Tool {
 	out := &mcp.Tool{Name: b.name, Description: b.description, InputSchema: b.input.Document(), OutputSchema: b.output.Document(), Annotations: &mcp.ToolAnnotations{ReadOnlyHint: b.effects.readOnly, IdempotentHint: b.effects.idempotent, DestructiveHint: &destructive, OpenWorldHint: &open}, Meta: mcp.Meta{"chartworks/operation": b.definition.ID, "chartworks/action": b.definition.Action, "chartworks/effect": b.definition.Effect, "chartworks/audit": b.definition.Audit, "chartworks/group": b.group, "chartworks/persists": b.effects.persists, "chartworks/maySpend": b.effects.paid, "chartworks/resourceLoader": b.definition.ResourceLoader, "chartworks/inputSchema": json.RawMessage(b.input.Document()), "chartworks/outputSchema": json.RawMessage(b.output.Document()), "chartworks/requestSchema": requestSchema, "chartworks/resultSchema": json.RawMessage(b.definition.Response.Document()), "chartworks/errorContract": errors}}
 	if b.definition.Interaction != "" {
 		out.Meta["chartworks/interaction"] = b.definition.Interaction
+	}
+	if b.appCallback {
+		out.Meta["ui"] = map[string]any{"visibility": []string{"model", "app"}}
 	}
 	if b.app != nil {
 		out.Meta["ui"] = map[string]any{"resourceUri": b.app.uri, "visibility": []string{"model", "app"}}

@@ -2,6 +2,7 @@ package foundation
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -120,6 +121,21 @@ func TestReportAppFullFactoryInventory(t *testing.T) {
 	for _, name := range []string{"get_query_context", "reporting_search", "reporting_view", "reporting_rendition_create", "reporting_rendition_read", "reporting_authoring_widget_v1", "reporting_authoring_block_read_v1", "reporting_authoring_block_mapping_v1", "reporting_authoring_block_copy_v1", "reporting_authoring_block_validate_v1", "reporting_authoring_dataset_v1", "reporting_authoring_prepare_chart_v1", "reporting_authoring_preparation_v1", "reporting_authoring_create_prepared_v1", "reporting_authoring_preparation_control_v1", "reporting_authoring_dataset_options_v1", "reporting_authoring_report_options_v1", "reporting_authoring_option_status_v1", "reporting_authoring_option_control_v1", "report_app_bootstrap_v1", "reporting_authoring_lifecycle_v1", "reporting_authoring_block_publish_v1", "reporting_authoring_rebind_published_v1", "reporting_authoring_report_transition_v1"} {
 		if !names[name] {
 			t.Fatal("missing actual optional contract", name)
+		}
+	}
+	// Every manual-report operation must reach the host's same-server App
+	// catalog. A tools/list inventory alone misses absent visibility metadata.
+	for _, tool := range registry.Manifest() {
+		callback := strings.HasPrefix(tool.Name, "reporting_authoring_") || tool.Name == "describe_topic" || tool.Name == "chart_catalog" || tool.Name == "reporting_search" || tool.Name == "reporting_describe" || tool.Name == "reporting_runs" || tool.Name == "reporting_view" || tool.Name == "reporting_run" || tool.Name == "reporting_filter_options"
+		if callback {
+			ui, ok := tool.Meta["ui"].(map[string]any)
+			if !ok || !reflect.DeepEqual(ui["visibility"], []string{"model", "app"}) {
+				t.Fatalf("App callback absent from dispatch catalog: %s", tool.Name)
+			}
+		} else if tool.Name == "execute_query" || tool.Name == "prepare_captured_query_variant" {
+			if tool.Meta["ui"] != nil {
+				t.Fatalf("unrelated operation exposed to App: %s", tool.Name)
+			}
 		}
 	}
 	settings := defaults.MCP

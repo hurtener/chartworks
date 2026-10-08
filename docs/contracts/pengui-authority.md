@@ -61,3 +61,15 @@ Apps use the established host bridge; resources/tool arguments contain no shared
 Named phase 03/04 acceptance covers cryptography, key rotation/staleness, claim bounds, immutable scopes, pre-I/O denial, tenant isolation, distinct permissions and current-context partition rules. The compiled-binary test exercises ephemeral trusted TLS verification -> real PostgreSQL -> SDK -> shutdown. These are Chartworks implementation tests with synthetic issuer-shaped fixtures, not a claim that customer credentials or a deployed Pengui session were exercised. Full MCP transport, later reporting data paths and durable renewal stay assigned to their owning phases.
 
 Private topic draft admission additionally requires the exact topic write target and every source read, dataset query and execution-context use dependency. Retained draft operations enforce their own topic read/export action, private actor/session provenance and the complete persisted dependency set before fetching content; creator identity alone grants no access. See [topic draft service](topic-drafts-v1.md).
+
+
+## Service connection discovery — D-104
+
+The existing Pengui-signed service connection bearer with exactly
+`capability:connect` may initialize/ping and list static MCP tool, resource and
+template descriptors for enabled services. It cannot read resources (including
+App HTML) or invoke tools. Interactive App resource/tool requests still require
+`mcp.use`, their exact projected domain scopes and complete native resource reach.
+No service name alone authorizes a request; the verifier, configured MCP audience,
+expiry and exact scope profile remain mandatory. No new issuer, credential,
+identity table, domain endpoint or migration is introduced.

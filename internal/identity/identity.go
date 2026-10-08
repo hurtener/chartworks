@@ -116,6 +116,12 @@ func (e Envelope) Session() string { return e.session }
 // Service reports attribution only; it grants no privilege.
 func (e Envelope) Service() bool { return strings.HasPrefix(e.user, "svc:") }
 
+// CapabilityConnection identifies Pengui's exact discovery-only service scope.
+// Consumers must still restrict it to transport metadata, never domain access.
+func (e Envelope) CapabilityConnection() bool {
+	return e.Valid() && e.Service() && e.Has("capability:connect") && len(e.scopes) == 1
+}
+
 // Deadline bounds use by exp plus the explicitly configured verification skew.
 func (e Envelope) Deadline() time.Time { return e.until }
 

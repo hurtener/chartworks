@@ -16,13 +16,19 @@ MCP to be enabled. There is no stdio authentication mode, second listener, token
 exchange, local API key, cookie identity, or token-in-URL fallback.
 
 Every request requires a **fresh Pengui bearer** verified for the configured MCP
-intended audience and the signed `mcp.use` action. A tool additionally requires its
+intended audience. Interactive requests require the signed `mcp.use` action. A tool additionally requires its
 registered domain action and all resource/session/dependency restrictions enforced
 by the ordinary service. Use distinct `auth.audiences.http` and `.mcp` values to
 prevent cross-surface replay; the pre-existing explicit same-audience shorthand
 continues to mean exactly what the operator configured. The outer phase-21 guard
-uses the mount's MCP audience, not the HTTP audience. There is no special authority
-for initialization, discovery, a transport session ID or an in-process caller.
+uses the mount's MCP audience, not the HTTP audience. The sole discovery-only alternative is the existing Pengui service connection
+bearer: a verified service identity with exactly `capability:connect`. It may
+initialize, ping, and list static tool/resource/template descriptors across enabled
+groups. It cannot call any tool or read any resource, including App HTML. This
+Optional `prompts/list` returns JSON-RPC method-not-found, not an HTTP framing
+failure. This profile grants no domain action or resource reach; user tokens, mixed scope
+profiles and wrong audiences do not qualify. See D-104. A transport session ID
+or in-process caller never confers authority.
 
 `mcp.allowed_hosts` lists exact destination host names/IPs, without ports or
 wildcards. The port in an HTTP Host must be valid, but does not create authority.
@@ -37,7 +43,8 @@ and [Pengui registration guide](pengui-provider-registration.md).
 ## Real tool inventory
 
 Only installed services in enabled groups are registered. `tools/list` filters
-this metadata by the caller's current domain actions. Resource restrictions are
+this metadata by the caller's current domain actions, except that the exact
+service connection profile lists the static inventory for runtime registration. Resource restrictions are
 checked again at invocation, not inferred from tool visibility. A production
 composition with all optional services available has sixty bindings:
 
@@ -163,6 +170,15 @@ silently retry operations. The transport SDK receives only protocol headers;
 the original bearer is not copied into its request extras or stored as a session.
 
 ## Metadata resources
+
+Manual-report callbacks advertise `_meta.ui.visibility: ["model", "app"]`
+through the existing binding metadata. This includes authoring operations, topic
+description, chart catalog and reporting delivery reads/actions required by the
+shared App. Resource attachment is separate: a callback need not attach another
+HTML document. Visibility is not authority; verified actions, dependency/context
+reach and the host's closed operation list still apply. The full actual factory
+inventory regression requires these declarations and excludes unrelated query
+execution from App visibility.
 
 Three resource bindings invoke the same pure service adapters as their tools:
 

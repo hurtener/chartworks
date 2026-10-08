@@ -160,3 +160,15 @@ discovery and original lookup recovery; see docs/contracts/report-dependencies-v
 It reuses existing option services and adds no source effect or migration. Local
 native checks and real cross-service qualification remain distinct; phase release
 status and both-mode acceptance are not changed by this integration increment.
+
+
+## Service connection discovery — D-104
+
+The existing Pengui-signed service connection bearer with exactly
+`capability:connect` may initialize/ping and list static MCP tool, resource and
+template descriptors for enabled services. It cannot read resources (including
+App HTML) or invoke tools. Interactive App resource/tool requests still require
+`mcp.use`, their exact projected domain scopes and complete native resource reach.
+No service name alone authorizes a request; the verifier, configured MCP audience,
+expiry and exact scope profile remain mandatory. No new issuer, credential,
+identity table, domain endpoint or migration is introduced.

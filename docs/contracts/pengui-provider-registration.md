@@ -180,3 +180,15 @@ normal source/topic/reporting/job actions and exact resource/context reaches. A
 migration action is never a wildcard domain grant. The bearer supplied for each
 request must be current; historical bearers, users, roles, certificates and
 calibration metadata in a bundle cannot authorize the request or future reads.
+
+
+## Service connection discovery — D-104
+
+The existing Pengui-signed service connection bearer with exactly
+`capability:connect` may initialize/ping and list static MCP tool, resource and
+template descriptors for enabled services. It cannot read resources (including
+App HTML) or invoke tools. Interactive App resource/tool requests still require
+`mcp.use`, their exact projected domain scopes and complete native resource reach.
+No service name alone authorizes a request; the verifier, configured MCP audience,
+expiry and exact scope profile remain mandatory. No new issuer, credential,
+identity table, domain endpoint or migration is introduced.

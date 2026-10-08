@@ -222,6 +222,20 @@ func TestPhase22(t *testing.T) {
 	dataset := sources.DatasetDescribeRequest{Source: ref.Source, Context: ref.Context, Dataset: ref.Dataset}
 	t.Run("AC01", func(t *testing.T) {
 		beforeModel, beforeSource := f.domain.model.requests.Load(), f.domain.f.lookups.Load()
+		t.Run("ServiceConnectionDiscovery", func(t *testing.T) {
+			connection := f.token(t, f.domain.e.Tenant(), "svc:coordinator", "discovery-session", []string{"capability:connect"}, true)
+			c := f.client(t, connection)
+			listed, err := c.MCP(t.Context(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+			if err != nil || !strings.Contains(string(listed), `"describe_dataset"`) {
+				t.Fatalf("static discovery failed: %v", err)
+			}
+			for _, body := range []string{`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"describe_dataset","arguments":{}}}`, `{"jsonrpc":"2.0","id":3,"method":"resources/read","params":{"uri":"chartworks://topics/commerce"}}`} {
+				out, err := c.MCP(t.Context(), json.RawMessage(body))
+				if err != nil || !strings.Contains(string(out), `"message":"forbidden"`) {
+					t.Fatalf("service connection crossed discovery: %s %v", out, err)
+				}
+			}
+		})
 		bare := f.token(t, f.domain.e.Tenant(), f.domain.e.User(), "phase22-session", []string{"mcp.use"}, true)
 		for _, tool := range f.registry.Manifest() {
 			out := phase22RawTool(t, f.client(t, bare), tool.Name, map[string]any{})

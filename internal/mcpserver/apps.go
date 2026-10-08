@@ -63,6 +63,17 @@ func (a AppResource) resource() *mcp.Resource {
 	return &mcp.Resource{Name: a.name, Description: a.description, URI: a.uri, MIMEType: AppMIME, Meta: a.meta()}
 }
 
+// WithAppCallback declares an existing tool callable from the server's App.
+// It adds no resource attachment and changes no schema, authority or effect.
+// Model visibility is preserved; App hosts still enforce their own closed list.
+func WithAppCallback(b Binding) (Binding, error) {
+	if b.invoke == nil {
+		return Binding{}, ErrRegistration
+	}
+	b.appCallback = true
+	return b, nil
+}
+
 // WithAppResource associates an actual tool with immutable presentation code.
 // The metadata does not change its signed action, schema, effect or error checks.
 func WithAppResource(b Binding, a AppResource) (Binding, error) {

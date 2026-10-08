@@ -23,6 +23,12 @@ No compatibility spike, host transcript requirement or unrelated protocol upgrad
 
 The view tool advertises `_meta.ui.resourceUri`, uses the supported Apps HTML MIME and resource CSP/permission metadata, and receives bounded authorized manifest/result references. UI visibility hints are not authorization. Scheduled provenance appears as ordinary catalog metadata after phase 30; no new viewer-specific schedule engine is introduced.
 
+AC01 also requires `ui.visibility` for the actual manual-report callback set,
+including authoring, topic description and chart catalog. The complete factory
+inventory test covers this dispatch metadata without attaching duplicate HTML or
+exposing unrelated query tools. Real local both-mode evidence is recorded in
+[the 2026-10-07 qualification](../reviews/manual-app-two-mode-2026-10-07.md).
+
 ## Non-goals
 
 No host compatibility project, unrestricted builder, second authorization protocol, token bridge, local inference or general-purpose mutation tool exposed by default. D-096 adds a separately versioned optional manual application and bounded authoring tools; the existing viewer contract stays read-only.
@@ -140,3 +146,15 @@ The local real-service HTTP Consumer gate now has separate-reader evidence in
 [the integration review](../reviews/pengui-app-integration-2026-10-05.md): canonical
 issuer, actual PostgreSQL, original context withdrawal and retained iframe reads.
 Restricted no-chat MCP and the overall phase/integration gates remain open.
+
+
+## Service connection discovery — D-104
+
+The existing Pengui-signed service connection bearer with exactly
+`capability:connect` may initialize/ping and list static MCP tool, resource and
+template descriptors for enabled services. It cannot read resources (including
+App HTML) or invoke tools. Interactive App resource/tool requests still require
+`mcp.use`, their exact projected domain scopes and complete native resource reach.
+No service name alone authorizes a request; the verifier, configured MCP audience,
+expiry and exact scope profile remain mandatory. No new issuer, credential,
+identity table, domain endpoint or migration is introduced.

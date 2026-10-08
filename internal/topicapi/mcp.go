@@ -39,6 +39,10 @@ func MCPBindings(service *topics.Service) ([]mcpserver.Binding, error) {
 	if err != nil {
 		return nil, err
 	}
+	b1, err = mcpserver.WithAppCallback(b1)
+	if err != nil {
+		return nil, err
+	}
 	bindings = append(bindings, b1)
 	return bindings, nil
 }

@@ -161,10 +161,17 @@ func requestAuthority(ctx context.Context) (identity.Envelope, error) {
 	if err != nil || !e.Valid() {
 		return identity.Envelope{}, access.ErrUnauthenticated
 	}
-	if !e.Has("mcp.use") {
+	if !e.Has("mcp.use") && !connectionDiscovery(e) {
 		return identity.Envelope{}, access.ErrForbidden
 	}
 	return e, nil
+}
+
+// connectionDiscovery consumes Pengui's existing signed service-connection
+// scope. It authorizes static transport discovery only, never resource reads,
+// tool invocation or domain authority. Mixed scope profiles are not this path.
+func connectionDiscovery(e identity.Envelope) bool {
+	return e.CapabilityConnection()
 }
 
 func invalidJSON(raw []byte) bool { _, err := gateway.DecodeJSON(raw, 16384); return err != nil }
