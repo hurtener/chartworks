@@ -73,3 +73,14 @@ visual pass remains open: Chrome displayed ERR_BLOCKED_BY_CLIENT when reopening
 the app. The owner was asked to restore the browser page. FA09/FA10, desktop/mobile
 visual sign-off, the refreshed walkthrough and final service cleanup remain open;
 this checkpoint does not establish predecessor visual parity or goal completion.
+
+## Chart label correction
+
+A focused client-presentation review found that chart tooltips used internal
+column aliases instead of saved display labels, and bar/line axes ignored saved
+date formats. The shared renderer now applies those presentation choices to
+axis labels and tooltips. Category identity, positions and saved input remain
+unchanged, including distinct instants that display the same clock time during
+a daylight-saving fold. Five chart variants exercise that regression; the
+focused controller/shared-presentation suite passes 125 checks. This is local
+rendering evidence, not desktop/mobile browser sign-off.

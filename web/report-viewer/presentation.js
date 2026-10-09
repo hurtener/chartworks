@@ -321,7 +321,7 @@ function pointCategoryKey(p) { return text(p.category_key) || categoryKey(p.cate
 function seriesNames(c,w) {
   if (array(c.series).length) return new Map(c.series.map(s=>[s.id,s.name]));
   const names = new Map();
-  for (const p of c.points) if (!names.has(seriesKey(p))) names.set(seriesKey(p),cellValue(p.series,columnFor(c,'value')?.name || w.null));
+  for (const p of c.points) if (!names.has(seriesKey(p))) names.set(seriesKey(p),cellValue(p.series,columnLabel(columnFor(c,'value')) || w.null));
   return names;
 }
 function palette(c,p) { return Math.max(0,array(c.palette || c.series).findIndex(s=>s.id===p.series_id)); }
@@ -388,11 +388,11 @@ function chartRoot(parent, chart, w) {
 }
 function titleFor(chart, p, w) {
   const def = array(chart.series).find(s=>s.id===p.series_id), labels = [];
-  if (def) labels.push(`${w.series}: ${def.name}`,`${w.seriesID}: ${def.id}`);
+  if (def) labels.push(`${w.series}: ${def.name}`);
   if (chart.version === 2) labels.push(`${w.row}: ${p.row < 0 ? w.gaps : p.row+1}`);
   for (const c of array(chart.columns)) {
     if (array(chart.mapping?.bindings?.values).includes(c.id) && c.id !== p.measure) continue;
-    labels.push(`${c.name}: ${exact(pointCell(chart,p,c),c,w.null)}`);
+    labels.push(`${columnLabel(c)}: ${exact(pointCell(chart,p,c),c,w.null)}`);
   }
   return labels.join(' · ');
 }
@@ -403,7 +403,7 @@ function renderBars(parent, c, w) {
   const categories = [], catIndex = new Map(), names = seriesNames(c,w), series = Array.from(names.values()), seriesIndex = new Map(Array.from(names.keys(),(key,i)=>[key,i]));
   for (const p of points) {
     const ck = pointCategoryKey(p), sk = seriesKey(p);
-    if (!catIndex.has(ck)) { catIndex.set(ck,categories.length); categories.push(cellValue(p.category,w.null)); }
+    if (!catIndex.has(ck)) { catIndex.set(ck,categories.length); categories.push(exact(p.category,columnFor(c,'category'),w.null)); }
     if (!seriesIndex.has(sk)) { seriesIndex.set(sk,series.length); series.push(cellValue(p.series,w.null)); }
   }
   const magnitude = scale(points.map(p => coordinate(p.value)));
@@ -438,7 +438,7 @@ function renderLines(parent,c,w) {
   if (hi === lo) hi = lo+1;
   const categories = [], indices = new Map(), names = seriesNames(c,w), groups = new Map(Array.from(names.keys(),key=>[key,[]]));
   for (const p of points) {
-    const key = pointCategoryKey(p); if (!indices.has(key)) { indices.set(key,categories.length); categories.push(cellValue(p.category,w.null)); }
+    const key = pointCategoryKey(p); if (!indices.has(key)) { indices.set(key,categories.length); categories.push(exact(p.category,columnFor(c,'category'),w.null)); }
     const sk = seriesKey(p); if (!groups.has(sk)) groups.set(sk,[]); groups.get(sk).push(p);
   }
   const x = p => 65+indices.get(pointCategoryKey(p))*680/Math.max(1,categories.length-1), y = v => 350-(v/magnitude-lo)/(hi-lo)*315;
@@ -568,7 +568,7 @@ export function renderChart(parent, chart, language='en', timezone='UTC', contex
     const t = chart.transformation;
     if(t.missing_points||t.gap_points||chart.omitted_rows)parent.append(element('p',`${w.missingValues}: ${t.missing_points} · ${w.gaps}: ${t.gap_points} · ${w.omittedRows}: ${chart.omitted_rows}`,'notice output-warning'));
     diagnostics.append(element('p',`${w.missingValues}: ${t.missing_points} · ${w.gaps}: ${t.gap_points} · ${w.omittedRows}: ${chart.omitted_rows} / ${chart.input_rows} · ${w.zeroSize}: ${t.zero_size_points}`,'transformation'),element('p',w.resolution,'metadata'));
-    if (['line','area'].includes(chart.kind)) diagnostics.append(element('p',`${columnFor(chart,'category')?.name} · ${w.grain}: ${columnFor(chart,'category')?.grain || 'unspecified'} / ${chart.mapping.order[0]?.direction}`,'metadata'));
+    if (['line','area'].includes(chart.kind)) diagnostics.append(element('p',`${columnLabel(columnFor(chart,'category'))} · ${w.grain}: ${columnFor(chart,'category')?.grain || 'unspecified'} / ${chart.mapping.order[0]?.direction}`,'metadata'));
   }
   for(const warning of array(chart.warnings))if(warning!=='geometry_approximate_labels_exact')parent.append(element('p',chartWarning(warning,language),'notice output-warning'));
   accessiblePoints(parent,chart,w);if(chart.kind!=='kpi'||chart.version===2)parent.append(diagnostics);

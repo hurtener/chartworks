@@ -326,10 +326,10 @@
     },
     {
       "path": "web/report-viewer/presentation.js",
-      "bytes": 53022,
-      "sha256": "9bab8985a8051bf7aee7984cdc2e0fdefd15fcab68b20bcc35cea9cac3cacf97",
+      "bytes": 53057,
+      "sha256": "71b3eb9507ae08191aadbc4181152aeb8e83c98f72cd1e67357b05eac75bf050",
       "imports": [],
-      "bytesInOutput": 36696
+      "bytesInOutput": 36700
     }
   ],
   "configuration": [
@@ -363,7 +363,7 @@
   ],
   "output": {
     "path": "web/report-app/generated/report-app.js",
-    "bytes": 271551,
-    "sha256": "e4ab18ef36b0a1cd51f293882bcd981b0e9c237e2f35f51494987f8896a37b96"
+    "bytes": 271555,
+    "sha256": "f1def512f66551620131ff9418c4056f0990f591db37818dee5469284b268ae7"
   }
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ReportApp, awaitEmbeddedParent,intrinsicReportSize} from './app.js';
-import {Viewer,renderRetainedOutput} from '../report-viewer/app.js';
+import {Viewer,renderRetainedOutput,renderChart} from '../report-viewer/app.js';
 import {mapView,mapSaved,mapValidation,mapCatalog,mapClone} from './mapping-fixture.mjs';
 import {formatView,formatSaved} from './formatting-fixture.mjs';
 import {appError, layoutWidgets} from './model.js';
@@ -193,7 +193,7 @@ test('dataset metadata denial clears prior retained values and prevents stale fi
 
 test('intrinsic frame height converges independently of host viewport padding',()=>{const root=installDOM(),sizes=[];let viewport=900;const app=new ReportApp(root,{resize:(width,height)=>{sizes.push({width,height});viewport=height+16;}});root.getBoundingClientRect=()=>({top:0,width:1440,height:viewport});root.children.forEach((child,index)=>{child.getBoundingClientRect=()=>({bottom:index===0?52:720});});app.requestRootSize();app.requestRootSize();app.requestRootSize();assert.deepEqual(sizes,[{width:1440,height:720}]);assert.equal(viewport,736);assert.equal(intrinsicReportSize(root).height,720);app.close();});
 test('shared KPI separates units, preserves every exact digit and keeps incomplete amounts visible',async()=>{const {capturedViews}=await import('./browser_fixture.mjs');const root=installDOM(),v=JSON.parse(JSON.stringify(capturedViews.kpi));v.output.amount_completeness=[{label:'Known revenue',evidence:'reviewed_definition',query_outcome:'succeeded',rows_scope:'returned_query_rows',role:'amount',result:{policy:'reviewed-amount-completeness-v1',scope:'returned_query_rows',metric:'revenue',unknown_count_metric:'unknown',status:'incomplete',rows:[{row:0,status:'incomplete',unknown_count:'2'}]}}];renderRetainedOutput(root,v,{locale:'en-US'});const p=root.querySelectorAll('p').find(e=>e.className==='kpi');assert.equal(p.textContent,'9,007,199,254,740,993.125 USD revenue');assert.equal(p.children[0].textContent,'9,007,199,254,740,993.125');assert.equal(p.children[1].textContent,' USD revenue');assert.equal(p.getAttribute('aria-label'),p.textContent);assert.equal(p.children[0].getAttribute('title'),'9007199254740993.125');assert(Number(p.style['--kpi-width'])>10);assert(root.querySelectorAll('details').some(e=>e.className==='retained-values'));assert(!root.querySelectorAll('p').some(e=>e.textContent==='geometry_approximate_labels_exact'));const disclosure=root.querySelectorAll('div').find(e=>e.className==='amount-disclosure');assert(disclosure.children.some(e=>e.textContent==='Known revenue: incomplete'));assert(disclosure.children.some(e=>e.textContent==='Unknown amount count (returned rows): 2'));assert(disclosure.querySelectorAll('details')[0].textContent.includes('Evidence: reviewed definition'));});
-test('shared line axes retain complete labels outside shrinking SVG coordinates',async()=>{const {capturedViews}=await import('./browser_fixture.mjs');const root=installDOM(),v=JSON.parse(JSON.stringify(capturedViews.trend));renderRetainedOutput(root,v,{locale:'en-US'});const axis=root.querySelectorAll('div').find(e=>e.className==='chart-axis');assert.deepEqual(axis.children.map(e=>e.textContent),['2026-01-02','2026-01-03']);assert(root.querySelectorAll('details').some(e=>e.className==='rendering-details'));assert.equal(root.querySelectorAll('circle').length,2);});
+test('shared line axes retain complete labels outside shrinking SVG coordinates',async()=>{const {capturedViews}=await import('./browser_fixture.mjs');const root=installDOM(),v=JSON.parse(JSON.stringify(capturedViews.trend));renderRetainedOutput(root,v,{locale:'en-US'});const axis=root.querySelectorAll('div').find(e=>e.className==='chart-axis');assert.deepEqual(axis.children.map(e=>e.textContent),['Jan 02, 2026','Jan 03, 2026']);assert(root.querySelectorAll('details').some(e=>e.className==='rendering-details'));assert.equal(root.querySelectorAll('circle').length,2);});
 
 test('native declared KPI rounding keeps the unrounded retained value keyboard-accessible in details',async()=>{const {capturedViews}=await import('./browser_fixture.mjs');const root=installDOM(),v=JSON.parse(JSON.stringify(capturedViews.kpi));for(const c of v.output.chart.columns)c.format.fraction_digits=0;renderRetainedOutput(root,v,{locale:'en-US'});const displayed=root.querySelectorAll('p').find(e=>e.className==='kpi'),details=root.querySelectorAll('details').find(e=>e.className==='retained-values');assert.equal(displayed.children[0].textContent,'9,007,199,254,740,993');assert(details.querySelectorAll('p').some(e=>e.className==='metadata raw-retained-value'&&e.textContent==='Unrounded retained value: 9007199254740993.125'));assert.equal(details.querySelectorAll('summary')[0].textContent,'View data');});
 
@@ -597,3 +597,24 @@ test('both starting points allocate one private target and save only native head
 });
 
 test('expanding the canvas is a local view preference and selecting a component restores its inspector',async()=>{const root=installDOM(),f=fixture(),app=new ReportApp(root,f.adapter);await app.start();app.mode='builder';await app.openDraft('report-a');app.render();const before=f.calls.length,definition=JSON.stringify(app.session.definition);root.querySelectorAll('button').find(b=>b.textContent==='Expand canvas').emit('click');assert.equal(app.canvasExpanded,true);assert(!root.querySelectorAll('aside').some(e=>e.className==='component-panel'));assert(root.querySelectorAll('button').some(b=>b.textContent==='Show components'));assert.equal(f.calls.length,before);assert.equal(JSON.stringify(app.session.definition),definition);app.selectWidget('heading');assert.equal(app.canvasExpanded,false);assert(root.querySelectorAll('aside').some(e=>e.className==='component-panel'));assert.equal(app.session.dirty,false);app.close();});
+
+test('chart axes and tooltips honor saved display labels and dates without merging equal formatted categories',()=>{
+ for(const kind of ['line','area','bar','column','grouped_bar']){
+  const root=installDOM(),chart={version:1,kind,state:'ready',columns:[
+   {id:'group_1',name:'group_1',display_label:'Recorded at',type:'temporal',format:{date_pattern:'datetime_short',locale:'en-US'}},
+   {id:'value_1',name:'value_1',display_label:'Average reading',type:'number',format:{preserve_precision:true}},
+  ],mapping:{version:1,kind,bindings:{category:'group_1',value:'value_1'},order:[{column:'group_1',direction:'asc'}],options:{legend:{visible:true}}},points:[
+   {category:{value:'2026-11-01 05:30:00+00'},value:{value:'12.25',coordinate:12.25}},
+   {category:{value:'2026-11-01 06:30:00+00'},value:{value:'15.5',coordinate:15.5}},
+  ]};
+  const original=JSON.stringify(chart);renderChart(root,chart,'en','America/New_York');
+  const svg=root.querySelectorAll('svg')[0],ticks=svg.querySelectorAll('text').filter(e=>e.textContent.startsWith('Nov 01, 2026 01:30'));
+  assert.equal(ticks.length,2,kind+' retains two distinct instants across the repeated hour');
+  const marks=svg.querySelectorAll(['line','area'].includes(kind)?'circle':'rect');
+  assert.equal(marks.length,2);const horizontal=['bar','grouped_bar'].includes(kind),axis=['line','area'].includes(kind)?'cx':horizontal?'y':'x';
+  assert.notEqual(marks[0].getAttribute(axis),marks[1].getAttribute(axis),kind+' positions use original category identity');
+  for(const mark of marks){const tip=mark.querySelectorAll('title')[0].textContent;assert.match(tip,/Recorded at: Nov 01, 2026 01:30/);assert.match(tip,/Average reading: (12\.25|15\.5)/);assert.doesNotMatch(tip,/group_1:|value_1:/);}
+  if(kind==='grouped_bar')assert(root.querySelectorAll('div').some(e=>e.className==='legend'&&e.textContent==='1. Average reading'));
+  assert.equal(JSON.stringify(chart),original,'rendering preserves saved input');
+ }
+});
