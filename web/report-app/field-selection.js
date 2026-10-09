@@ -1,5 +1,6 @@
 import {appError,copyData,validID} from './model.js';
 import {INVALID_REQUEST,STALE_VALIDATION} from './error-codes.js';
+import {sourceDatasetPin} from './source-catalog.js';
 
 export const FIELD_COMPILER='typed-dataset-postgres-v3';
 const aggregations=['count','distinct_count','sum','average','minimum','maximum'];
@@ -76,5 +77,5 @@ export function typedFieldIntent(view,draft){
   if(!Number.isSafeInteger(draft.pageSize)||draft.pageSize<1||draft.pageSize>1000)invalid();
   mapping.table={columns:bindings.columns.map(column=>({column,visible:true})),page_size:draft.pageSize,show_totals:false};
  }
- return {topic:copyData(view.topic),dataset:view.dataset,dimensions:[],measure:'',fields:copyData(f),mapping};
+ return {...(view.source_dataset?{source_dataset:sourceDatasetPin(view.source_dataset)}:{topic:copyData(view.topic)}),dataset:view.dataset,dimensions:[],measure:'',fields:copyData(f),mapping};
 }

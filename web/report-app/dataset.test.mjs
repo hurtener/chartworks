@@ -86,7 +86,7 @@ test('bounded host topic pages advance through empty and short dependency-filter
  const session=new DatasetSession(async(name,args)=>{calls.push({name,args});if(!args.after)return {items:[],next:'a'};if(args.after==='a')return {items:[{...topic,topic:'b'}],next:'c'};return {items:[{...topic,topic:'d'}]};});
  await session.loadTopics();assert.equal(session.next,'a');assert.deepEqual(session.topics,[]);
  await session.loadTopics(session.next);assert.equal(session.next,'c');assert.equal(session.topics[0].topic,'b');
- await session.loadTopics(session.next);assert.equal(session.next,'');assert.deepEqual(session.topics.map(t=>t.topic),['b','d']);assert.equal(calls.length,3);
+ await session.loadTopics(session.next);assert.equal(session.next,'');assert.deepEqual(session.topics.map(t=>t.topic),['d']);assert.equal(calls.length,3);
 });
 
 test('host topic cursor and shape corruption fail without replacing the prior catalog',async()=>{

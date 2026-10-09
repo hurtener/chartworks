@@ -89,7 +89,7 @@ func (r *cloudMemoryRepository) ReadSource(_ context.Context, scope store.Scope,
 	}
 	return record, nil
 }
-func (r *cloudMemoryRepository) ListSources(context.Context, store.Scope, access.Selection, int) ([]Source, error) {
+func (r *cloudMemoryRepository) ListSourcePage(context.Context, store.Scope, access.Selection, SourceListRequest) ([]Source, error) {
 	return nil, nil
 }
 func (r *cloudMemoryRepository) WithSource(ctx context.Context, scope store.Scope, id string, fn func(context.Context, Record) error) error {

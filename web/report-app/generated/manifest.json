@@ -18,8 +18,8 @@
     },
     {
       "path": "web/report-app/app.js",
-      "bytes": 103453,
-      "sha256": "549ad0fcee709cfdcc1f8550a3d709a8c28205d9370d36b2c9e44e46e9a5bb49",
+      "bytes": 103605,
+      "sha256": "87ea372684e1e42b1b78d13f8a7012fef364dd141f90474c3cd0e811f13d1f2d",
       "imports": [
         "web/report-app/allocation.js",
         "web/report-app/bridge.js",
@@ -43,18 +43,18 @@
         "web/report-app/theme.js",
         "web/report-viewer/presentation.js"
       ],
-      "bytesInOutput": 78495
+      "bytesInOutput": 78646
     },
     {
       "path": "web/report-app/bridge.js",
-      "bytes": 11214,
-      "sha256": "67b8b43b526b1dd27cbf123af03c93cda63fe68f0a9bafa1acf9dcac35bf1441",
+      "bytes": 11249,
+      "sha256": "4c59730b37832dddb8b1acff570c91b21033be2b3bd116d7f3bcd1ffb77207b3",
       "imports": [
         "web/report-app/error-codes.js",
         "web/report-app/model.js",
         "web/report-viewer/presentation.js"
       ],
-      "bytesInOutput": 7849
+      "bytesInOutput": 7884
     },
     {
       "path": "web/report-app/catalog.js",
@@ -68,8 +68,8 @@
     },
     {
       "path": "web/report-app/dataset-editor.js",
-      "bytes": 15080,
-      "sha256": "cc60db924b68087486404a95755e23d0f8d31bc90dc155419c45f22f9f1ba20c",
+      "bytes": 17710,
+      "sha256": "a28e5137adeaf3b99fb4bb20f192168ff83ad4984b3eed9ed7e588169e633c86",
       "imports": [
         "web/report-app/allocation.js",
         "web/report-app/dataset.js",
@@ -78,21 +78,22 @@
         "web/report-app/filter-controls.js",
         "web/report-app/filters.js"
       ],
-      "bytesInOutput": 10559
+      "bytesInOutput": 12491
     },
     {
       "path": "web/report-app/dataset.js",
-      "bytes": 22465,
-      "sha256": "a9ddb9faede95d8484364076e22f4e7744f0577815441b06eb3fd0a98593287f",
+      "bytes": 25779,
+      "sha256": "bf4786cc46344439c762a604e4023f057cdd9c3c15ce7e909dde9861f97477bc",
       "imports": [
         "web/report-app/error-codes.js",
         "web/report-app/field-selection.js",
         "web/report-app/filter-controls.js",
         "web/report-app/filters.js",
         "web/report-app/mapping.js",
-        "web/report-app/model.js"
+        "web/report-app/model.js",
+        "web/report-app/source-catalog.js"
       ],
-      "bytesInOutput": 15758
+      "bytesInOutput": 18242
     },
     {
       "path": "web/report-app/dom.js",
@@ -120,13 +121,14 @@
     },
     {
       "path": "web/report-app/field-selection.js",
-      "bytes": 7213,
-      "sha256": "f343e2e3455b452801864198d030c2f3dfb256abcaa1dd4115f5c49b4e1e442b",
+      "bytes": 7349,
+      "sha256": "3752b6dc1a5dfc11c7b08c04c7d092c1632d648a8afd9c69103472375df41806",
       "imports": [
         "web/report-app/error-codes.js",
-        "web/report-app/model.js"
+        "web/report-app/model.js",
+        "web/report-app/source-catalog.js"
       ],
-      "bytesInOutput": 5634
+      "bytesInOutput": 5694
     },
     {
       "path": "web/report-app/filter-controls.js",
@@ -276,6 +278,16 @@
       "bytesInOutput": 6820
     },
     {
+      "path": "web/report-app/source-catalog.js",
+      "bytes": 2460,
+      "sha256": "27b384d71c8efeb88fd1f748991680aa0f4070c9353a0c4f4006d27cc2309d67",
+      "imports": [
+        "web/report-app/error-codes.js",
+        "web/report-app/model.js"
+      ],
+      "bytesInOutput": 1510
+    },
+    {
       "path": "web/report-app/starters.js",
       "bytes": 4123,
       "sha256": "e6bc3d584e6aa5208fedbb550a4d05910b52aa7a71e5b150872b93be09214fc6",
@@ -327,13 +339,13 @@
     },
     {
       "path": "web/report-app/styles.css",
-      "bytes": 22766,
-      "sha256": "8dbf45dfc06d6802e37d4cc761e867506603ee18b9f55ac96eff43b6417a59ed"
+      "bytes": 23331,
+      "sha256": "5c2a1f2ee1f1fdd5fb8b18b67a32c2ff99ede83fd68650d04fa67b746e432d1f"
     }
   ],
   "output": {
     "path": "web/report-app/generated/report-app.js",
-    "bytes": 256231,
-    "sha256": "b196b35c4b3d3fb1c66fbf395af386e1336acb8ccd556900069f25a5f1bf1cdf"
+    "bytes": 262403,
+    "sha256": "46548a5b405cdfb190b7d91410287c110836b1c93560fb15d6fca1e60f995cf2"
   }
 }

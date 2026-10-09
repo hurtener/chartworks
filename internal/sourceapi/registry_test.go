@@ -32,7 +32,7 @@ func TestSourceRegistrySchemasAndManifest(t *testing.T) {
 	for _, settings := range []struct {
 		warehouse, validation bool
 		count                 int
-	}{{false, false, 4}, {false, true, 4}, {true, false, 8}, {true, true, 9}} {
+	}{{false, false, 5}, {false, true, 5}, {true, false, 9}, {true, true, 10}} {
 		registry, err := SourceRegistry(settings.warehouse, settings.validation)
 		if err != nil {
 			t.Fatal(err)
@@ -56,6 +56,7 @@ func TestSourceRegistrySchemasAndManifest(t *testing.T) {
 		}
 	}
 	samples := map[string]string{
+		"listSourcePage":  `{"after":"","limit":32}`,
 		"listDatasets":    `{"source":"source1","context":"source1:v1","after":"","limit":32}`,
 		"describeDataset": `{"source":"source1","context":"source1:v1","dataset":"sales"}`,
 		"createSource":    `{"id":"source1","name":"Synthetic source","connection":"approved_alias"}`,

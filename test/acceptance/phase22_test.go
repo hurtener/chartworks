@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -338,10 +339,10 @@ func TestPhase22(t *testing.T) {
 	})
 	t.Run("AC03", func(t *testing.T) {
 		inventory := f.registry.Manifest()
-		if len(inventory) != 22 {
+		if len(inventory) != len(f.bindings) {
 			t.Fatal("missing concrete bindings", len(inventory))
 		}
-		expected := []string{"list_topics", "describe_topic", "list_datasets", "describe_dataset", "preflight_question", "plan_question", "run_question", "refine_question", "get_query_context", "submit_sql", "submit_feedback", "review_example", "list_examples", "export_examples", "import_example"}
+		expected := []string{"list_source_page", "list_topics", "describe_topic", "list_datasets", "describe_dataset", "preflight_question", "plan_question", "run_question", "refine_question", "get_query_context", "submit_sql", "submit_feedback", "review_example", "list_examples", "export_examples", "import_example"}
 		seen := map[string]bool{}
 		httpRegistry := phase21Registry(t)
 		definitions := map[string]api.Definition{}
@@ -489,6 +490,10 @@ func TestPhase22(t *testing.T) {
 	})
 	t.Run("AC06", func(t *testing.T) {
 		beforeModel, beforeSource := f.domain.model.requests.Load(), f.domain.f.lookups.Load()
+		sourcePage := phase22Call[sources.SourcePage](t, client, "list_source_page", sources.SourceListRequest{Limit: 32})
+		if len(sourcePage.Items) == 0 {
+			t.Fatal("missing source page")
+		}
 		sourceList := phase22Call[[]sources.Source](t, client, "list_sources", struct{}{})
 		if len(sourceList) == 0 {
 			t.Fatal("missing source metadata")
@@ -516,8 +521,23 @@ func TestPhase22(t *testing.T) {
 			t.Fatal(err)
 		}
 		list, err := local.ListTools(t.Context())
-		if err != nil || len(list.Tools) != 18 {
+		if err != nil {
 			t.Fatal("in-process discovery", err)
+		}
+		var want, got []string
+		for _, tool := range f.registry.Manifest() {
+			action, _ := tool.Meta["chartworks/action"].(string)
+			if slices.Contains(f.scopes, action) {
+				want = append(want, tool.Name)
+			}
+		}
+		for _, tool := range list.Tools {
+			got = append(got, tool.Name)
+		}
+		sort.Strings(want)
+		sort.Strings(got)
+		if !reflect.DeepEqual(want, got) || !slices.Contains(got, "list_source_page") {
+			t.Fatal("in-process discovery differs from permitted registrations", want, got)
 		}
 		resources, err := local.ListResources(t.Context())
 		if err != nil || len(resources.Resources) != 1 {

@@ -104,3 +104,22 @@ These tests do not establish the table picker or a signed-in host journey.
 FA03 still requires usable paged table/upload discovery through the existing
 public source services. Physical-field filters, audience management and the final
 visual/live acceptance remain open. No criterion is closed by this checkpoint.
+
+## Paged catalog and picker checkpoint
+
+The source page is implemented through the existing source core and registered
+HTTP/MCP/SDK surfaces. Both Pengui hosts expose bounded, policy-filtered source
+and dataset catalogs with explicit continuation, including sparse pages. The
+shared Builder offers Tables & uploads alongside Reviewed topics, carries the
+server's source/context/revision/schema pin and uses the same physical-field
+picker. Topic and source catalogs no longer silently stop at a UI item ceiling.
+Catalogs and selection perform no source/model work. Denied/closed reads erase
+metadata. Empty mobile canvases now fit their message and preserve space for the
+controls.
+
+This closes the implementation gap in the prior source checkpoint, but FA03/FA04
+remain open until actual uploaded data and the signed-in host journeys are
+qualified with physical filters. FA06/FA07 still require audience management and
+the author-to-reader-to-amendment walkthrough. A broad Phase23/AC01 run uncovered
+an analytical-mismatch/error-registration regression outside catalog reads; it
+is retained as an open qualification finding, not a passing product gate.

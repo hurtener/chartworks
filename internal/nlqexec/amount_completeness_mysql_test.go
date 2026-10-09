@@ -260,7 +260,7 @@ func (r *completenessSourceRepository) ReadSource(_ context.Context, s store.Sco
 	}
 	return v, nil
 }
-func (r *completenessSourceRepository) ListSources(context.Context, store.Scope, access.Selection, int) ([]sources.Source, error) {
+func (r *completenessSourceRepository) ListSourcePage(context.Context, store.Scope, access.Selection, sources.SourceListRequest) ([]sources.Source, error) {
 	return nil, store.ErrUnavailable
 }
 func (r *completenessSourceRepository) ReadDatasetCatalog(context.Context, identity.Envelope, sources.DatasetQuery) ([]sources.Dataset, error) {

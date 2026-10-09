@@ -68,7 +68,7 @@ func sourceDialect(dialect string) bool {
 type Repository interface {
 	PutSource(context.Context, store.Scope, int64, Record) error
 	ReadSource(context.Context, store.Scope, string) (Record, error)
-	ListSources(context.Context, store.Scope, access.Selection, int) ([]Source, error)
+	ListSourcePage(context.Context, store.Scope, access.Selection, SourceListRequest) ([]Source, error)
 	ReadDatasetCatalog(context.Context, identity.Envelope, DatasetQuery) ([]Dataset, error)
 	WithSource(context.Context, store.Scope, string, func(context.Context, Record) error) error
 }
@@ -251,11 +251,15 @@ func (s *Service) Get(ctx context.Context, e identity.Envelope, id string) (out 
 
 // List restricts eligible IDs before the storage limit, never after fetching broad metadata.
 func (s *Service) List(ctx context.Context, e identity.Envelope, limit int) (out []Source, err error) {
+	return s.listSources(ctx, e, SourceListRequest{Limit: limit})
+}
+
+func (s *Service) listSources(ctx context.Context, e identity.Envelope, in SourceListRequest) (out []Source, err error) {
 	selection, err := access.Constrain(e, "sources.read", "source", "read")
 	if err != nil {
 		return nil, err
 	}
-	if limit < 1 || limit > 100 {
+	if in.Limit < 1 || in.Limit > 100 || in.After != "" && !identity.Identifier(in.After) {
 		return nil, store.ErrInvalid
 	}
 	scope, err := store.NewScope(e.Tenant(), e.User())
@@ -264,7 +268,7 @@ func (s *Service) List(ctx context.Context, e identity.Envelope, limit int) (out
 	}
 	err = s.call(ctx, e, false, func(ctx context.Context) error {
 		var e2 error
-		out, e2 = s.repo.ListSources(ctx, scope, selection, limit)
+		out, e2 = s.repo.ListSourcePage(ctx, scope, selection, in)
 		return e2
 	})
 	if err != nil {

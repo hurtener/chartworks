@@ -22,7 +22,7 @@ function renderDatasetFilters(parent,session,{locked,busy,canAllocate,change,sea
   if(capability.kinds.includes('select'))return !capability.option_lookup?'Governed option search is unavailable for this field':!searchFilter?'This host has not enabled governed option search':!canAllocate?'This host cannot prepare a private chart target for option search':'';
   return '';
  };
- if(!view.filter_capabilities)section.append(datasetNode('p','Filter creation is unavailable for this reviewed dataset version. You can still prepare an unfiltered chart.','metadata'));
+ if(!view.filter_capabilities)section.append(datasetNode('p','Filter creation is unavailable for this dataset version. You can still prepare an unfiltered chart.','metadata'));
  else{
   const selection=session.filterSelection,selected=view.dimensions.find(d=>d.id===selection.dimension),capability=datasetFilterCapability(view,selection.dimension);
   section.append(datasetSelect('Filter field',[{value:'',label:'Choose a filter field'},...view.dimensions.map(field=>{const reason=availability(field),used=filters.some(f=>f.dimension===field.id);return {value:field.id,label:`${field.name}${used?' · already added':reason?' · unavailable: '+reason:''}`,disabled:used||!!reason};})],selection.dimension,value=>{if(locked)return;selection.dimension=value;selection.kind=datasetFilterCapability(view,value)?.kinds[0]||'';change();},locked||filters.length>=4));
@@ -57,14 +57,29 @@ export function renderDatasetEditor(parent,session,{busy=false,allocation=null,c
  const section=datasetNode('section',undefined,'dataset-editor');section.append(datasetNode('h2','Create from dataset'),datasetNode('p','Choose your data and fields, then prepare the result.','metadata'));
  const locked=busy||session.locked||!!allocation?.pending||!!allocation?.unknown,edit=fn=>{session.edit(fn);change();};
  if(!session.custody){
-  section.append(datasetButton('Refresh topics',()=>read(()=>session.loadTopics()),locked));
-  for(const topic of session.topics){const button=datasetButton(topic.name||topic.topic,()=>read(()=>session.selectTopic(topic)),locked);button.className='dataset-topic';button.setAttribute('aria-pressed',String(session.publication?.topic===topic.topic));section.append(button);}if(session.next)section.append(datasetButton('More topics',()=>read(()=>session.loadTopics(session.next)),locked));
-  if(!session.topics.length)section.append(datasetNode('p','No reviewed topics are visible under current access.','metadata'));
-  if(session.publication)section.append(datasetSelect('Reviewed dataset',[{value:'',label:'Choose dataset'},...session.datasets.map(d=>({value:d.id,label:d.name||d.id}))],session.view?.dataset||'',id=>{if(id)read(()=>session.selectDataset(id));},locked));
+  if(session.tablesEnabled&&session.topicsEnabled){const tabs=datasetNode('div',undefined,'dataset-origins');tabs.setAttribute('aria-label','Data catalog');for(const [mode,label]of [['topics','Reviewed topics'],['tables','Tables & uploads']]){const button=datasetButton(label,()=>read(()=>session.chooseCatalog(mode)),locked);button.setAttribute('aria-pressed',String(session.catalog===mode));tabs.append(button);}section.append(tabs);}
+  if(session.catalog==='tables'){
+   section.append(datasetButton('Refresh sources',()=>read(()=>session.loadSources()),locked));
+   for(const source of session.sources){const button=datasetButton(source.name,()=>read(()=>session.selectSource(source)),locked);button.className='dataset-topic';button.setAttribute('aria-pressed',String(session.source?.id===source.id));section.append(button);}
+   if(!session.sources.length)section.append(datasetNode('p',session.sourceNext?'No visible sources on this page. Continue to the next page.':'No registered sources are visible under current access.','metadata'));
+   if(session.sourceHistory.length>1)section.append(datasetButton('Previous sources',()=>read(()=>session.loadSources(session.sourceHistory.at(-2))),locked));
+   if(session.sourceNext)section.append(datasetButton('Next sources',()=>read(()=>session.loadSources(session.sourceNext)),locked));
+   if(session.source){
+    section.append(datasetSelect('Table or upload',[{value:'',label:'Choose a dataset'},...session.tables.map(item=>({value:item.relation.id,label:item.relation.name}))],session.view?.dataset||'',id=>{if(id)read(()=>session.selectTable(id));},locked));
+    if(!session.tables.length)section.append(datasetNode('p',session.tableNext?'No visible datasets on this page. Continue to the next page.':'No registered datasets are visible in this source context.','metadata'));
+    if(session.tableHistory.length>1)section.append(datasetButton('Previous datasets',()=>read(()=>session.loadTables(session.tableHistory.at(-2))),locked));
+    if(session.tableNext)section.append(datasetButton('Next datasets',()=>read(()=>session.loadTables(session.tableNext)),locked));
+   }
+  }else{
+   section.append(datasetButton('Refresh topics',()=>read(()=>session.loadTopics()),locked));
+   for(const topic of session.topics){const button=datasetButton(topic.name||topic.topic,()=>read(()=>session.selectTopic(topic)),locked);button.className='dataset-topic';button.setAttribute('aria-pressed',String(session.publication?.topic===topic.topic));section.append(button);}if(session.topicHistory.length>1)section.append(datasetButton('Previous topics',()=>read(()=>session.loadTopics(session.topicHistory.at(-2))),locked));if(session.next)section.append(datasetButton('Next topics',()=>read(()=>session.loadTopics(session.next)),locked));
+   if(!session.topics.length)section.append(datasetNode('p','No reviewed topics are visible under current access.','metadata'));
+   if(session.publication)section.append(datasetSelect('Reviewed dataset',[{value:'',label:'Choose dataset'},...session.datasets.map(d=>({value:d.id,label:d.name||d.id}))],session.view?.dataset||'',id=>{if(id)read(()=>session.selectDataset(id));},locked));
+  }
  }
- const view=session.view,draft=session.draft;section.append(datasetNode('p',session.custody?'3 · Review preparation':view?'2 · Define your chart':'1 · Choose reviewed data','eyebrow'));
+ const view=session.view,draft=session.draft;section.append(datasetNode('p',session.custody?'3 · Review preparation':view?'2 · Define your chart':'1 · Choose your data','eyebrow'));
  if(view){
-  section.append(datasetNode('p',`${session.publication?.name||view.topic.topic} · ${session.datasets.find(d=>d.id===view.dataset)?.name||view.dataset} · ${view.topic.version}`,'metadata'));
+  section.append(datasetNode('p',view.source_dataset?`${session.source?.name||view.source} · ${session.tables.find(d=>d.relation.id===view.dataset)?.relation.name||view.dataset} · Source revision ${view.source_revision}`:`${session.publication?.name||view.topic.topic} · ${session.datasets.find(d=>d.id===view.dataset)?.name||view.dataset} · ${view.topic.version}`,'metadata'));
   if(!(draft.fields?view.fields?.supported:view.supported))section.append(datasetNode('p',`This dataset cannot be prepared here: ${draft.fields?view.fields?.reason:view.reason||'unsupported'}.`,'notice error'));
   section.append(datasetInput('Chart title',draft.title,value=>edit(d=>{d.title=value;}),{disabled:locked}),datasetSelect('New chart type',view.chart_kinds.filter(k=>DATASET_CHART_KINDS.includes(k)).map(k=>({value:k,label:k.replaceAll('_',' ')})),draft.kind,value=>edit(d=>{d.kind=value;if(value==='kpi')d.dimensions=[];}),locked));
   if(draft.fields)renderFieldPicker(section,session,{locked,edit,change});
@@ -75,7 +90,7 @@ export function renderDatasetEditor(parent,session,{busy=false,allocation=null,c
   }
   renderDatasetFilters(section,session,{locked,busy,canAllocate,change,searchFilter,inspectFilter});
   if(draft.kind==='table')section.append(datasetInput('New table page size',draft.pageSize,value=>edit(d=>{d.pageSize=value;}),{disabled:locked,number:true}));
-  section.append(datasetNode('p','Aggregation and units come from the reviewed measure. Line and area charts need a temporal first dimension; pie and donut use one dimension.','metadata'));
+  section.append(datasetNode('p',draft.fields?'Choose aggregates for physical columns. Reviewed measures keep their approved definitions. Date grouping uses the selected calendar and timezone.':'Aggregation and units come from the reviewed measure. Line and area charts need a temporal first dimension; pie and donut use one dimension.','metadata'));
   const limits=datasetNode('details');limits.append(datasetNode('summary','Supported preparation scope'));for(const limitation of view.limitations)limits.append(datasetNode('p',limitation,'metadata'));section.append(limits);
   if(!session.custody)section.append(datasetNode('p',!canAllocate?TARGET_ALLOCATION_UNAVAILABLE:allocation?.unknown?'Resume preparation asks your host for the same chart target before preparing data.':'Your host will prepare a private chart target when you prepare.','metadata'),datasetButton('Prepare chart',prepare,locked||!canAllocate||!session.intentValid()),datasetNode('p','Prepare runs one bounded source read. Option search is a separate explicit read; editing fields and defaults does not query data.','metadata'));
  }

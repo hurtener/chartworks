@@ -117,3 +117,29 @@ report composition, a private amendment and compacted Create replay using an act
 without topic permissions. Companion tests exercise exclusive origins and missing
 or withdrawn source/dataset reach. Discovery UI, physical-field filters and both
 signed-in host journeys are still pending; this is a native lifecycle checkpoint.
+
+## Source and dataset discovery
+
+The Builder offers reviewed topics and registered tables/uploads. The latter do
+not require a topic. `POST /v1/sources/list`, MCP `list_source_page`, and SDK
+`ListSourcePage` accept `after` and `limit` (1–32), returning secret-free `items`
+and an explicit optional `next`. Current source reach and byte-ordered cursors
+apply in storage before the limit. The original source list remains compatible.
+Existing dataset list/describe operations supply the exact registered context,
+revision and schema digest; selection sends this `source_dataset` pin to the
+native authoring metadata operation. It sends neither a client schema nor SQL.
+
+Both Pengui host transports compose these catalogs under current exact policy.
+Each page visits at most eight permitted roots. A sparse or empty visible page
+can still have a next cursor. Source names additionally require the source's
+current execution context; dataset metadata requires source/context/dataset
+reach. The final policy/session fence suppresses withdrawn or late responses.
+No catalog operation queries a warehouse, resolves source credentials, invokes
+a model, grants data access or creates a semantic topic.
+
+The UI keeps bounded pages, offers previous/next navigation, checks origin and
+revision before showing fields, and erases catalog metadata on denied reads or
+closure. Legacy hosts retain the topic entry point. The first physical field or
+aggregate is always an explicit author choice; display names have no analytical
+meaning. Physical filters and independent audience management remain open in the
+[active plan](../plans/flexible-report-authoring.md).

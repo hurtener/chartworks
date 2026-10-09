@@ -2,7 +2,7 @@ import {INVALID_REQUEST, FORBIDDEN, UNAVAILABLE, BUSY, CANCELLED_OR_TIMED_OUT} f
 import {boundedJSON} from '../report-viewer/presentation.js';
 import {appError, APP_MAX_WIRE} from './model.js';
 
-export const REPORT_APP_TOOLS = new Set(['chart_catalog','list_topics','describe_topic','reporting_search','reporting_describe','reporting_runs','reporting_view','reporting_run','reporting_filter_options',...['capabilities','drafts','read','create','save','preview','execute','widget','block_read','block_mapping','block_copy','block_validate','dataset','prepare_chart','preparation','create_prepared','preparation_control','dataset_options','report_options','option_status','option_control','lifecycle','block_publish','rebind_published','report_transition'].map(a=>`reporting_authoring_${a}_v1`)]);
+export const REPORT_APP_TOOLS = new Set(['chart_catalog','list_source_page','list_datasets','list_topics','describe_topic','reporting_search','reporting_describe','reporting_runs','reporting_view','reporting_run','reporting_filter_options',...['capabilities','drafts','read','create','save','preview','execute','widget','block_read','block_mapping','block_copy','block_validate','dataset','prepare_chart','preparation','create_prepared','preparation_control','dataset_options','report_options','option_status','option_control','lifecycle','block_publish','rebind_published','report_transition'].map(a=>`reporting_authoring_${a}_v1`)]);
 // Initialization metadata is a bounded immutable narrowing hint, never authority.
 export function hostToolHint(container,key) {
   if(!container||!Object.hasOwn(container,key))return null;
