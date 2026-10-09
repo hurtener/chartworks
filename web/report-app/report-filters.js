@@ -3,6 +3,7 @@ import {node as rfNode, button as rfButton} from './dom.js';
 import {appError,authoringTool,copyData,validID} from './model.js';
 import {reportPages} from './pages.js';
 import {FilterOptionLookup} from './filters.js';
+import {columnScalar} from './column-filters.js';
 import {filterInputState,renderFilterInput} from './filter-controls.js';
 const reportFilterKey=(page,name)=>JSON.stringify([page,name]);
 
@@ -53,7 +54,7 @@ export class ReportFilterControls{
   if(published){report=a.description?.resource.target.id;revision=a.description?.resource.target.revision;digest=a.description?.definition_digest;}
   else{report=a.session.state?.id;revision=a.session.revision;const view=await a.invoke(authoringTool('read'),{report,revision});if(!this.current(editor))return;if(view.state?.id!==report||view.revision!==revision||view.state.draft_revision!==revision)throw appError(STALE_VALIDATION);digest=view.digest;}
   if(!validID(report)||!Number.isSafeInteger(revision)||! /^[a-f0-9]{64}$/.test(digest||''))throw appError(STALE_VALIDATION);
-  const target={report:{policy:published?'published':'private_preview',report,revision,digest,page:editor.page,filter:editor.filter.parameter.name}},key=JSON.stringify(target);let lookup=this.lookups.get(key);if(!lookup){if(this.lookups.size>=32)throw appError(LIMIT_EXCEEDED);lookup=new FilterOptionLookup((name,args)=>a.invoke(name,args),target,{locale:a.locale});this.lookups.set(key,lookup);}editor.lookup=lookup;await lookup.search(search,cursor);
+  const target={report:{policy:published?'published':'private_preview',report,revision,digest,page:editor.page,filter:editor.filter.parameter.name}},key=JSON.stringify(target);let lookup=this.lookups.get(key);if(!lookup){if(this.lookups.size>=32)throw appError(LIMIT_EXCEEDED);lookup=new FilterOptionLookup((name,args)=>a.invoke(name,args),target,{locale:a.locale,...(editor.filter.parameter.column?{validateValue:value=>columnScalar(editor.filter.parameter.column.type,value)}:{})});this.lookups.set(key,lookup);}editor.lookup=lookup;await lookup.search(search,cursor);
  }
  async inspect(editor,action){if(!this.current(editor)||editor.suspended||!editor.lookup)throw appError(STALE_VALIDATION);await editor.lookup.inspect(action);}
  done(editor,value){if(!this.current(editor)||editor.suspended||this.app.busy)return;const a=this.app,name=editor.filter.parameter.name;this.editor=null;this.focusTarget={key:editor.key};if(editor.mode==='default')a.editPage(d=>{if(!d.filters?.some(f=>f.parameter.name===name))throw appError(STALE_VALIDATION);d.filters.find(f=>f.parameter.name===name).parameter.default=copyData(value);},editor.page);else{this.temporary.set(reportFilterKey(editor.page,name),copyData(value));a.message='Temporary filters changed. Run or preview explicitly to update values.';a.render();}}

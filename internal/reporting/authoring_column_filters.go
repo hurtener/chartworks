@@ -37,7 +37,7 @@ func authoringColumnFilterCapability(c semantics.Column) *ColumnFilterCapability
 	if kind == "" {
 		return nil
 	}
-	out := &ColumnFilterCapability{Type: kind, Kinds: []string{"select", "multi_select"}, MaxSetSize: DimensionSetCapacity}
+	out := &ColumnFilterCapability{Type: kind, Kinds: []string{"select", "multi_select"}, MaxSetSize: DimensionSetCapacity, OptionLookup: optionColumnType(kind)}
 	if slices.Contains([]string{"number", "integer"}, kind) {
 		out.Kinds = append(out.Kinds, "range")
 	}

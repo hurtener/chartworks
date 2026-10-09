@@ -48,7 +48,7 @@ function renderDatasetFilters(parent,session,{locked,busy,canAllocate,change,sea
 function renderDatasetLookupRecovery(parent,session,{busy,inspectFilter}){
  for(const [dimension,lookup]of session.filterLookups){
   if(!lookup.pending&&!lookup.unknown)continue;
-  const section=datasetNode('section',undefined,'dataset-option-recovery'),field=session.view?.dimensions.find(d=>d.id===dimension);
+  const section=datasetNode('section',undefined,'dataset-option-recovery'),field=session.view&&datasetFilterFields(session.view).find(d=>d.id===dimension);
   section.append(datasetNode('h3',`Option lookup: ${field?.name||dimension}`),datasetNode('p',lookup.pending?'Reading governed options…':'The option lookup outcome is unconfirmed. Inspect, cancel, or reconcile this original lookup before preparing a chart or changing datasets.','notice'));
   if(inspectFilter)for(const [action,label]of [['','Inspect lookup'],['cancel','Cancel lookup'],['reconcile','Reconcile lookup']])section.append(datasetButton(label,()=>inspectFilter(dimension,action),busy||session.pending||lookup.pending));
   else section.append(datasetNode('p','This host has not enabled option lookup recovery. Resume this setup in a host with the original-operation controls.','metadata'));

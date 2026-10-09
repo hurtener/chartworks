@@ -5,7 +5,7 @@ import {FilterOptionLookup,displayFilterRange,inclusiveFilterRange,selectionFilt
 import {filterInputState} from './filter-controls.js';
 import {checkFieldCatalog,typedFieldIntent} from './field-selection.js';
 import {sourceDatasetPin,sameSourceDataset,checkSource,checkRegisteredDataset,checkCatalogPage,catalogHistory} from './source-catalog.js';
-import {columnFilterKey,columnFromFilterKey,datasetFilterKey,columnFilterValue} from './column-filters.js';
+import {columnFilterKey,columnFromFilterKey,datasetFilterKey,columnFilterValue,columnScalar} from './column-filters.js';
 
 export const DATASET_CHART_KINDS=['bar','column','line','area','pie','donut','kpi','table'];
 export const DATASET_FILTER_KINDS=['select','multi_select','date_range'];
@@ -121,10 +121,10 @@ export class DatasetSession {
  cancelFilter(dimension){if(this.locked)throw appError(BUSY);this.filterStages.delete(dimension);}
  async searchFilter(dimension,newBlock,search='',cursor=''){
   if(this.locked)throw appError(BUSY);const capability=datasetFilterCapability(this.view,dimension),filter=this.draft.filters?.find(f=>datasetFilterKey(f)===dimension);
-  if(filter?.column||!this.view?.supported||!capability?.supported||!capability.option_lookup||!filter||!['select','multi_select'].includes(filter.kind)||!validID(newBlock)||this.newBlock&&this.newBlock!==newBlock)throw appError(INVALID_REQUEST);
-  this.newBlock=newBlock;const target={dataset:{topic:datasetPin(this.view.topic),dataset:this.view.dataset,dimension,new_block:newBlock}};let lookup=this.filterLookups.get(dimension);
+  if(!(filter?.column?this.view?.fields?.supported:this.view?.supported)||!capability?.supported||!capability.option_lookup||!filter||!['select','multi_select'].includes(filter.kind)||!validID(newBlock)||this.newBlock&&this.newBlock!==newBlock)throw appError(INVALID_REQUEST);
+  this.newBlock=newBlock;const target={dataset:{...(this.view.source_dataset?{source_dataset:sourceDatasetPin(this.view.source_dataset)}:{topic:datasetPin(this.view.topic)}),dataset:this.view.dataset,...(filter.column?{column:filter.column}:{dimension}),new_block:newBlock}};let lookup=this.filterLookups.get(dimension);
   if(lookup&&JSON.stringify(stableDatasetValue(lookup.target))!==JSON.stringify(stableDatasetValue(target)))throw appError(STALE_VALIDATION);
-  if(!lookup){lookup=new FilterOptionLookup(this.invoke,target,{locale:this.locale,...(this.optionOperation?{operation:this.optionOperation}:{})});this.filterLookups.set(dimension,lookup);}
+  if(!lookup){lookup=new FilterOptionLookup(this.invoke,target,{locale:this.locale,...(filter.column?{validateValue:value=>columnScalar(capability.type,value)}:{}),...(this.optionOperation?{operation:this.optionOperation}:{})});this.filterLookups.set(dimension,lookup);}
   return lookup.search(search,cursor);
  }
  async inspectFilter(dimension,action=''){if(this.closed||this.pending||this.custody)throw appError(BUSY);const lookup=this.filterLookups.get(dimension);if(!lookup)throw appError(INVALID_REQUEST);return lookup.inspect(action);}

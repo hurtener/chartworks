@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -64,7 +65,7 @@ func (s *Authoring) authoringOptions(ctx context.Context, e identity.Envelope, i
 		return AuthoringOptionView{}, ErrInvalid
 	}
 	if err := RequireAuthoringOptionTarget(e, in.Target); err != nil {
-		return AuthoringOptionView{}, err
+		return AuthoringOptionView{}, fmt.Errorf("option target: %w", err)
 	}
 	b, repo, err := s.optionRepository()
 	if err != nil {
@@ -84,7 +85,7 @@ func (s *Authoring) authoringOptions(ctx context.Context, e identity.Envelope, i
 		return s.optionStatus(ctx, e, prior)
 	}
 	if !errors.Is(err, store.ErrNotFound) {
-		return AuthoringOptionView{}, err
+		return AuthoringOptionView{}, fmt.Errorf("option custody: %w", err)
 	}
 	if !AuthoringOptionOperationValid(in.Operation, time.Now(), true) {
 		return AuthoringOptionView{}, store.ErrExpired
@@ -95,22 +96,22 @@ func (s *Authoring) authoringOptions(ctx context.Context, e identity.Envelope, i
 		if errors.As(err, &unsupported) {
 			return AuthoringOptionView{Operation: in.Operation, InputDigest: digest(in), Status: "unsupported", Code: unsupported.code, Options: []FilterOption{}}, nil
 		}
-		return AuthoringOptionView{}, err
+		return AuthoringOptionView{}, fmt.Errorf("option resolution: %w", err)
 	}
 	parameters, err := s.optionQueryParameters(e, in, resolved)
 	if err != nil {
 		return AuthoringOptionView{}, err
 	}
-	statement, err := filterOptionStatementNullPolicy(resolved.binding, resolved.relation, resolved.physical, in.Search != "", in.Cursor != "", in.Limit+1, true)
+	statement, err := authoringOptionStatement(resolved, in.Search != "", in.Cursor != "", in.Limit+1)
 	if err != nil {
 		return AuthoringOptionView{}, err
 	}
 	now := time.Now().UTC()
 	timeout := min(time.Duration(b.limits.ValidationTimeout), time.Duration(b.limits.Execution.Timeout))
-	r := AuthoringOptionRecord{Tenant: e.Tenant(), Actor: e.User(), Session: e.Session(), Operation: in.Operation, InputDigest: digest(in), Target: clone(in.Target), SourceOperation: "authoring-option:" + digest([]string{e.Tenant(), e.User(), e.Session(), in.Operation}), Source: resolved.binding.Source, Context: resolved.binding.Context, SourceRevision: resolved.binding.Revision, BindingDigest: digest(resolved.binding), Topic: resolved.topic, Dataset: resolved.dataset, Dimension: resolved.dimension, ResolutionDigest: optionResolutionDigest(resolved), References: clone(resolved.refs), Blocks: clone(resolved.blocks), CreatedAt: now, Deadline: minTime(now.Add(timeout), e.Deadline()), Status: "accepted", RemoteState: "not_issued", Rows: in.Limit + 1}
+	r := AuthoringOptionRecord{Tenant: e.Tenant(), Actor: e.User(), Session: e.Session(), Operation: in.Operation, InputDigest: digest(in), Target: clone(in.Target), SourceOperation: "authoring-option:" + digest([]string{e.Tenant(), e.User(), e.Session(), in.Operation}), Source: resolved.binding.Source, Context: resolved.binding.Context, SourceRevision: resolved.binding.Revision, BindingDigest: digest(resolved.binding), Topic: resolved.topic, Dataset: resolved.dataset, Dimension: resolved.dimension, Column: clone(resolved.column), ResolutionDigest: optionResolutionDigest(resolved), References: clone(resolved.refs), Blocks: clone(resolved.blocks), CreatedAt: now, Deadline: minTime(now.Add(timeout), e.Deadline()), Status: "accepted", RemoteState: "not_issued", Rows: in.Limit + 1}
 	r, fresh, err := repo.ReserveAuthoringOption(ctx, e, r)
 	if err != nil {
-		return AuthoringOptionView{}, err
+		return AuthoringOptionView{}, fmt.Errorf("option reservation: %w", err)
 	}
 	if !fresh {
 		return s.optionStatus(ctx, e, r)
@@ -132,14 +133,18 @@ func (s *Authoring) authoringOptions(ctx context.Context, e identity.Envelope, i
 func (s *Authoring) optionQueryParameters(e identity.Envelope, in AuthoringOptionRequest, r authoringOptionResolution) ([]exec.Parameter, error) {
 	parameters := []exec.Parameter{}
 	if in.Search != "" {
-		parameters = append(parameters, exec.Parameter{Kind: "text", Value: "%" + strings.NewReplacer("!", "!!", "%", "!%", "_", "!_").Replace(in.Search) + "%"})
+		p, err := optionSearchParameter(r, in.Search)
+		if err != nil {
+			return nil, err
+		}
+		parameters = append(parameters, p)
 	}
 	if in.Cursor != "" {
 		cursor, err := s.documents.decodeFilterCursor(in.Cursor)
-		if err != nil || cursor.Report != digest(in.Target) || cursor.Filter != r.dimension || cursor.Search != in.Search || cursor.Limit != in.Limit || cursor.Locale != in.Locale || cursor.SourceRevision != r.binding.Revision || cursor.Authority != filterAuthority(e) || cursor.Type != "text" || cursor.Page != optionResolutionDigest(r) {
+		if err != nil || cursor.Report != digest(in.Target) || cursor.Filter != r.cursorField() || cursor.Search != in.Search || cursor.Limit != in.Limit || cursor.Locale != in.Locale || cursor.SourceRevision != r.binding.Revision || cursor.Authority != filterAuthority(e) || cursor.Type != r.cursorType() || cursor.Page != optionResolutionDigest(r) {
 			return nil, ErrStale
 		}
-		p, err := filterParameter(cursor.Type, cursor.Last)
+		p, err := optionCursorParameter(r, cursor.Last)
 		if err != nil {
 			return nil, err
 		}
@@ -191,7 +196,7 @@ func (s *Authoring) runAuthoringOptions(ctx context.Context, e identity.Envelope
 	if report.Attempt.Manifest.Operation != r.SourceOperation || report.Attempt.Manifest.Session != e.Session() || report.Attempt.Manifest.Receipt.Manifest != plan.Receipt().Manifest || !successful(report.Attempt.Status) {
 		return fail("option_read_failed")
 	}
-	if err := validateFilterOptionResult(report.Result, in.Limit); err != nil || report.Result.Schema[0].Type != "text" {
+	if err := validateFilterOptionResult(report.Result, in.Limit); err != nil || resolved.column == nil && report.Result.Schema[0].Type != "text" {
 		return fail("option_result_unsupported")
 	}
 	out := authoringOptionView(r)
@@ -199,19 +204,26 @@ func (s *Authoring) runAuthoringOptions(ctx context.Context, e identity.Envelope
 		if len(row) != 1 || string(row[0]) == "null" {
 			return fail("option_result_unsupported")
 		}
-		label, err := filterLabel(row[0], in.Locale)
+		value := row[0]
+		if resolved.column != nil {
+			value, err = physicalOptionValue(*resolved.column, report.Result.Schema[0], value)
+			if err != nil {
+				return fail("option_result_unsupported")
+			}
+		}
+		label, err := filterLabel(value, in.Locale)
 		if err != nil {
 			return fail("option_result_unsupported")
 		}
-		if _, err := filterParameter("text", row[0]); err != nil {
+		if _, err := optionCursorParameter(resolved, value); err != nil {
 			return fail("option_result_unsupported")
 		}
-		out.Options = append(out.Options, FilterOption{Value: append(json.RawMessage(nil), row[0]...), Label: label})
+		out.Options = append(out.Options, FilterOption{Value: append(json.RawMessage(nil), value...), Label: label})
 	}
 	out.Complete = len(report.Result.Rows) <= in.Limit
 	if !out.Complete {
 		last := out.Options[len(out.Options)-1].Value
-		out.Next, err = s.documents.encodeFilterCursor(filterCursor{Report: digest(in.Target), Filter: r.Dimension, Page: r.ResolutionDigest, Search: in.Search, Limit: in.Limit, Locale: in.Locale, SourceRevision: r.SourceRevision, Authority: filterAuthority(e), Type: "text", Last: last, Expires: time.Now().Add(5 * time.Minute).Unix()})
+		out.Next, err = s.documents.encodeFilterCursor(filterCursor{Report: digest(in.Target), Filter: resolved.cursorField(), Page: r.ResolutionDigest, Search: in.Search, Limit: in.Limit, Locale: in.Locale, SourceRevision: r.SourceRevision, Authority: filterAuthority(e), Type: resolved.cursorType(), Last: last, Expires: time.Now().Add(5 * time.Minute).Unix()})
 		if err != nil {
 			return fail("option_cursor_failed")
 		}

@@ -192,10 +192,14 @@ func testReportAppSourceDatasetNative(t *testing.T, filtered bool) {
 		t.Fatal("exact retained aggregate", err)
 	}
 	reportScopes := append(slices.Clone(scopes), "cw.report.read:source-report", "cw.report.write:source-report", "cw.report.publish:source-report", "cw.report.preview:source-report")
+	if filtered {
+		reportScopes = append(reportScopes, "reporting.execute", "cw.block.execute:"+request.NewBlock, "cw.report.execute:source-report")
+	}
 	reportAuthor := phase27Actor(t, f.f, author.User(), reportScopes)
 	document := phase29Text("Source dataset report")
 	document.Widgets = append(document.Widgets, phase29BlockWidget("chart-widget", request.NewBlock, 1, "chart"))
 	if filtered {
+		document.Widgets[len(document.Widgets)-1].Block.Revision = created.Block.Revision
 		if len(created.Block.Parameters) != 4 {
 			t.Fatal("physical parameters not retained")
 		}
@@ -207,16 +211,39 @@ func testReportAppSourceDatasetNative(t *testing.T, filtered bool) {
 			document.Widgets[len(document.Widgets)-1].Bindings = append(document.Widgets[len(document.Widgets)-1].Bindings, reporting.FilterBinding{Parameter: parameter.Name, Filter: parameter.Name})
 		}
 	}
+	if filtered {
+		document.SchemaVersion = reporting.PagedDocumentVersion
+		document.ReportPages = []reporting.ReportPage{{ID: "main", Title: "Selected data", Widgets: document.Widgets, Filters: document.Filters}}
+		document.Widgets = nil
+		document.Filters = nil
+	}
+
 	reportState, err := f.documents.Create(ctx, reportAuthor, "report", "source-report", document)
 	if err != nil {
 		t.Fatal("report create", err)
+	}
+	var optionReport reporting.AuthoringReportOptionTarget
+	if filtered {
+		snapshot, err := authoring.Read(ctx, reportAuthor, reporting.AuthoringReadRequest{Report: reportState.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		optionReport = reporting.AuthoringReportOptionTarget{Policy: "private_preview", Report: reportState.ID, Revision: snapshot.Revision, Digest: snapshot.Digest, Page: "main"}
+		checkSourceReportOptions(t, f, authoring, reportAuthor, optionReport, created.Block.Parameters, 800)
 	}
 	phase29Publish(t, f.documents, reportAuthor, reportState)
 	runtimeScopes := slices.DeleteFunc(slices.Clone(reportScopes), func(scope string) bool {
 		return strings.Contains(scope, ".write") || strings.Contains(scope, ".publish") || scope == "reporting.validate" || scope == "charts.bind"
 	})
 	runtimeScopes = append(runtimeScopes, "reporting.execute", "cw.block.execute:"+request.NewBlock, "cw.report.execute:source-report", "cw.run.read:*")
+	slices.Sort(runtimeScopes)
+	runtimeScopes = slices.Compact(runtimeScopes)
 	runtime := phase27Actor(t, f.f, author.User(), runtimeScopes)
+	if filtered {
+		optionReport.Policy = "published"
+		optionReader := phase27Actor(t, f.f, author.User(), slices.DeleteFunc(slices.Clone(runtimeScopes), func(scope string) bool { return strings.HasSuffix(scope, ":*") }))
+		checkSourceReportOptions(t, f, authoring, optionReader, optionReport, created.Block.Parameters, 810)
+	}
 	composition, err := f.compositions.Admit(ctx, runtime, "report", "source-report", reporting.CompositionRequest{Key: "source-report-run"})
 	if err != nil {
 		t.Fatal("source composition admission", err)
@@ -280,7 +307,7 @@ func testReportAppSourceDatasetNative(t *testing.T, filtered bool) {
 	}
 	expectedAttempts := before + 4
 	if filtered {
-		expectedAttempts++
+		expectedAttempts += 5
 	}
 	if f.attemptCount(t) != expectedAttempts || f.f.model.requests.Load() != models {
 		t.Fatal("unexpected source or model work")

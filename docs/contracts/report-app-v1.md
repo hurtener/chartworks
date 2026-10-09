@@ -259,8 +259,9 @@ explicit dataset/page-filter Search, retained status and original-attempt contro
 through shared HTTP/MCP/SDK DTOs. No typing, selection, page navigation or retained
 redraw implies a source read. Lost values are distinct from empty choices;
 new_operation_allowed permits only a separately explicit new search after
-liability is resolved. Browser controls and their integration require separate
-qualification.
+liability is resolved. D-109 adds exact typed physical selectors and source-only
+origins through the same operations. Local shared controls and both browser
+transports are qualified; signed-in host integration remains a separate gate.
 
 ## Manual lifecycle transport and agent guidance
 

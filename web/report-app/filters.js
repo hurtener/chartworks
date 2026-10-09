@@ -40,14 +40,14 @@ export function newOptionOperation(){return `option:${Math.floor(Date.now()/1000
 // One disposable lookup controller belongs to one exact target. Search is always
 // explicit. A missing response must be inspected, never replayed as a new query.
 export class FilterOptionLookup{
- constructor(invoke,target,{operation=newOptionOperation,locale='en-US'}={}){this.invoke=invoke;this.target=copyData(target);this.operation=operation;this.locale=locale;this.pending=false;this.closed=false;this.epoch=0;this.request=null;this.result=null;this.unknown=false;this.values=[];}
+ constructor(invoke,target,{operation=newOptionOperation,locale='en-US',validateValue=null}={}){this.invoke=invoke;this.validateValue=validateValue;this.target=copyData(target);this.operation=operation;this.locale=locale;this.pending=false;this.closed=false;this.epoch=0;this.request=null;this.result=null;this.unknown=false;this.values=[];}
  canSearch(){return !this.closed&&!this.pending&&(!this.request||this.result?.new_operation_allowed===true);}
  async search(search='',cursor=''){
   if(!this.canSearch()||typeof search!=='string'||new TextEncoder().encode(search).length>256||search.includes('\0')||typeof cursor!=='string')throw appError(BUSY);
   if(cursor&&(!this.result?.values_available||cursor!==this.result.next||search!==this.request.search))throw appError(STALE_VALIDATION);
   const key=this.operation();if(!/^option:[1-9][0-9]*:[a-f0-9]{32}$/.test(key)||key===this.request?.operation)throw appError(INVALID_REQUEST);
   const request={target:copyData(this.target),operation:key,search,cursor,limit:199,locale:this.locale};this.request=copyData(request);this.result=null;this.values=[];this.unknown=true;this.pending=true;const epoch=++this.epoch;
-  try{const result=checkOptionResult(await this.invoke(authoringTool(this.target.dataset?'dataset_options':'report_options'),request),key);if(this.closed||epoch!==this.epoch)return false;this.result=result;this.values=copyData(result.options);this.unknown=!result.values_available&&!result.new_operation_allowed&&result.status!=='unsupported';return true;}
+  try{const result=checkOptionResult(await this.invoke(authoringTool(this.target.dataset?'dataset_options':'report_options'),request),key);if(this.closed||epoch!==this.epoch)return false;for(const option of result.options)this.validateValue?.(option.value);this.result=result;this.values=copyData(result.options);this.unknown=!result.values_available&&!result.new_operation_allowed&&result.status!=='unsupported';return true;}
   finally{if(!this.closed&&epoch===this.epoch)this.pending=false;}
  }
  async inspect(action=''){

@@ -10,9 +10,9 @@ export const typedFieldCatalog={compiler:'typed-dataset-postgres-v3',supported:t
 // Synthetic native metadata projection; production capabilities come from the server.
 for(const column of typedFieldCatalog.columns){
  const type=column.native_type==='int4'?'integer':column.type,temporal=['date','timestamp','instant'].includes(type);
- column.filters={type,kinds:temporal?['range']:['integer','number'].includes(type)?['select','multi_select','range']:['select','multi_select'],option_lookup:false,...(temporal?{calendar_required:true}:{max_set_size:16}),...(type==='instant'?{timezone_required:true}:{})};
+ column.filters={type,kinds:temporal?['range']:['integer','number'].includes(type)?['select','multi_select','range']:['select','multi_select'],option_lookup:!temporal,...(temporal?{calendar_required:true}:{max_set_size:16}),...(type==='instant'?{timezone_required:true}:{})};
 }
 export const physicalFilterCatalog={...structuredClone(typedFieldCatalog),columns:[...structuredClone(typedFieldCatalog.columns),
- {id:'accepted',name:'Accepted',source_name:'accepted',native_type:'boolean',type:'boolean',category:'boolean',nullable:true,supported:true,aggregations:['count','distinct_count'],grains:[],filters:{type:'boolean',kinds:['select','multi_select'],max_set_size:16,option_lookup:false}},
+ {id:'accepted',name:'Accepted',source_name:'accepted',native_type:'boolean',type:'boolean',category:'boolean',nullable:true,supported:true,aggregations:['count','distinct_count'],grains:[],filters:{type:'boolean',kinds:['select','multi_select'],max_set_size:16,option_lookup:true}},
  {id:'recorded',name:'Recorded at',source_name:'recorded_at',native_type:'timestamptz',type:'instant',category:'temporal',nullable:false,supported:true,aggregations:['count','distinct_count'],grains:['minute','hour','day','week','month','quarter','year'],filters:{type:'instant',kinds:['range'],calendar_required:true,timezone_required:true,option_lookup:false}},
 ]};

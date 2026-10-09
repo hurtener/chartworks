@@ -25,7 +25,7 @@ func (d *DB) DiscoverAuthoringOptionDependencies(ctx context.Context, e identity
 		return out, err
 	}
 	defer cancel()
-	out = reporting.OptionDependencyManifest{Version: "report-option-dependencies-v1", Target: in.Target, Operation: in.Operation, Actions: []string{"reporting.read", "sources.read", "sources.query", "topics.read"}, References: []reporting.ResourceReference{}}
+	out = reporting.OptionDependencyManifest{Version: "report-option-dependencies-v1", Target: in.Target, Operation: in.Operation, Actions: []string{"reporting.read", "sources.read", "sources.query"}, References: []reporting.ResourceReference{}}
 	// Query only the coordinates of the original attempt. Tenant, actor, canonical
 	// login, operation and the complete target digest are predicates before read.
 	err = d.transactionOptions(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(ctx context.Context, tx pgx.Tx) error {
@@ -62,7 +62,7 @@ func (d *DB) DiscoverAuthoringOptionDependencies(ctx context.Context, e identity
 		// closure. They read metadata only; the real option service still validates
 		// the chosen dimension/page/filter and current execution fences.
 		if target := in.Target.Dataset; target != nil {
-			m, e2 := d.DiscoverAuthoringDataDependencies(ctx, e, reporting.DataDependencyRequest{Topic: target.Topic, Dataset: target.Dataset})
+			m, e2 := d.DiscoverAuthoringDataDependencies(ctx, e, reporting.DataDependencyRequest{Topic: target.Topic, SourceDataset: target.SourceDataset, Dataset: target.Dataset})
 			if e2 != nil {
 				return reporting.OptionDependencyManifest{}, e2
 			}
@@ -94,7 +94,9 @@ func (d *DB) DiscoverAuthoringOptionDependencies(ctx context.Context, e identity
 	}
 	if target := in.Target.Dataset; target != nil {
 		out.Actions = append(out.Actions, "charts.bind", "reporting.write", "reporting.preview", "reporting.validate")
-		out.References = append(out.References, reporting.ResourceReference{Kind: "topic", Permission: "write", ID: target.Topic.Topic})
+		if target.SourceDataset == nil {
+			out.References = append(out.References, reporting.ResourceReference{Kind: "topic", Permission: "write", ID: target.Topic.Topic})
+		}
 		for _, p := range []string{"read", "write", "preview"} {
 			out.References = append(out.References, reporting.ResourceReference{Kind: "block", Permission: p, ID: target.NewBlock})
 		}
@@ -105,6 +107,12 @@ func (d *DB) DiscoverAuthoringOptionDependencies(ctx context.Context, e identity
 		if r.Policy == "private_preview" {
 			out.Actions = append(out.Actions, "reporting.preview")
 			out.References = append(out.References, reporting.ResourceReference{Kind: "report", Permission: "preview", ID: r.Report})
+		}
+	}
+	for _, ref := range out.References {
+		if ref.Kind == "topic" {
+			out.Actions = append(out.Actions, "topics.read")
+			break
 		}
 	}
 	slices.Sort(out.Actions)

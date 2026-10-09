@@ -14,10 +14,12 @@ import (
 
 // Option targets are exact retained coordinates, never physical source names.
 type AuthoringDatasetOptionTarget struct {
-	NewBlock  string   `json:"new_block"`
-	Topic     TopicPin `json:"topic"`
-	Dataset   string   `json:"dataset"`
-	Dimension string   `json:"dimension"`
+	NewBlock      string            `json:"new_block"`
+	Topic         TopicPin          `json:"topic,omitempty"`
+	Dataset       string            `json:"dataset"`
+	Dimension     string            `json:"dimension,omitempty"`
+	Column        string            `json:"column,omitempty"`
+	SourceDataset *SourceDatasetPin `json:"source_dataset,omitempty"`
 }
 type AuthoringReportOptionTarget struct {
 	Policy   string `json:"policy" jsonschema:"enum=private_preview,enum=published"`
@@ -82,7 +84,8 @@ type AuthoringOptionRecord struct {
 	BindingDigest    string                 `json:"binding_digest"`
 	Topic            TopicPin               `json:"topic"`
 	Dataset          string                 `json:"dataset"`
-	Dimension        string                 `json:"dimension"`
+	Dimension        string                 `json:"dimension,omitempty"`
+	Column           *ColumnReference       `json:"column,omitempty"`
 	ResolutionDigest string                 `json:"resolution_digest"`
 	References       []ResourceReference    `json:"references"`
 	Blocks           []AuthoringOptionBlock `json:"blocks"`
@@ -157,7 +160,7 @@ func RequireAuthoringOptionTarget(e identity.Envelope, target AuthoringOptionTar
 		return ErrInvalid
 	}
 	if d := target.Dataset; d != nil {
-		if !identity.Identifier(d.NewBlock) || !identity.Identifier(d.Dataset) || !identity.Identifier(d.Dimension) || !identity.Identifier(d.Topic.Topic) || !identity.Identifier(d.Topic.Version) || !hashValid(d.Topic.Digest) {
+		if !d.valid() {
 			return ErrInvalid
 		}
 		if err := requireMappingAuthoring(e); err != nil {
@@ -166,7 +169,11 @@ func RequireAuthoringOptionTarget(e identity.Envelope, target AuthoringOptionTar
 		if err := access.Require(e, Write.Action(), access.Tenant(e, "write")); err != nil {
 			return err
 		}
-		if err := RequireParent(e, d.Topic.Topic, Write, true); err != nil {
+		source := ""
+		if d.SourceDataset != nil {
+			source = d.SourceDataset.Source
+		}
+		if err := RequireOrigin(e, d.Topic.Topic, source, Write, true); err != nil {
 			return err
 		}
 		for _, a := range []Access{Read, Write, Preview, Validate} {
@@ -189,7 +196,7 @@ func RequireAuthoringOptionTarget(e identity.Envelope, target AuthoringOptionTar
 			}
 		}
 	}
-	if !e.Has("topics.read") || !e.Has("sources.query") {
+	if !e.Has("sources.query") || target.Dataset != nil && target.Dataset.SourceDataset == nil && !e.Has("topics.read") {
 		return access.ErrForbidden
 	}
 	return nil
@@ -198,6 +205,12 @@ func RequireAuthoringOptionTarget(e identity.Envelope, target AuthoringOptionTar
 func RequireAuthoringOption(e identity.Envelope, r AuthoringOptionRecord) error {
 	if err := RequireAuthoringOptionTarget(e, r.Target); err != nil {
 		return err
+	}
+	if !r.ValidOrigin() {
+		return ErrInvalid
+	}
+	if r.Topic.Topic != "" && !e.Has("topics.read") {
+		return access.ErrForbidden
 	}
 	if r.Tenant != e.Tenant() || r.Actor != e.User() || r.Session != e.Session() {
 		return access.ErrNotFound
@@ -222,4 +235,42 @@ func RequireAuthoringOption(e identity.Envelope, r AuthoringOptionRecord) error 
 		}
 	}
 	return access.Require(e, "sources.query", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: r.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: r.Context}, access.Resource{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: r.Dataset})
+}
+
+func (d AuthoringDatasetOptionTarget) valid() bool {
+	if !identity.Identifier(d.NewBlock) || !identity.Identifier(d.Dataset) || (d.Dimension == "") == (d.Column == "") {
+		return false
+	}
+	if d.Dimension != "" && !identity.Identifier(d.Dimension) || d.Column != "" && !identity.Identifier(d.Column) {
+		return false
+	}
+	if d.SourceDataset != nil {
+		return d.Column != "" && d.Topic == (TopicPin{}) && d.SourceDataset.valid() && d.Dataset == d.SourceDataset.Dataset
+	}
+	return identity.Identifier(d.Topic.Topic) && identity.Identifier(d.Topic.Version) && hashValid(d.Topic.Digest)
+}
+
+// ValidOrigin checks protected retained coordinates, never grants authority.
+func (r AuthoringOptionRecord) ValidOrigin() bool {
+	topic := r.Topic != (TopicPin{})
+	if topic && (!identity.Identifier(r.Topic.Topic) || !identity.Identifier(r.Topic.Version) || !hashValid(r.Topic.Digest)) {
+		return false
+	}
+	if r.Column == nil {
+		return topic && identity.Identifier(r.Dimension)
+	}
+	c := r.Column
+	if r.Dimension != "" || !optionColumnType(c.Type) || !c.valid() || c.SourceDataset.Source != r.Source || c.SourceDataset.Context != r.Context || c.SourceDataset.SourceRevision != r.SourceRevision || c.SourceDataset.Dataset != r.Dataset {
+		return false
+	}
+	if d := r.Target.Dataset; d != nil {
+		if d.Column == "" || d.Dimension != "" || d.Topic != r.Topic {
+			return false
+		}
+		if topic {
+			return d.SourceDataset == nil
+		}
+		return d.SourceDataset != nil && *d.SourceDataset == c.SourceDataset
+	}
+	return r.Target.Report != nil
 }

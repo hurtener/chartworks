@@ -10,6 +10,11 @@ Pengui owns identity/access decisions and signs authority. Chartworks verifies J
 
 All learned-model operations, including narrative, authoring assistance, embeddings and rerank, use [the embedded Bifrost SDK with remote providers](docs/contracts/model-gateway.md). No local models, weight downloads or alternate direct-compatible client. Frozen/no-narrative execution and artifact viewing remain independent of provider health.
 
+[D-109](docs/decisions/2026-10-09-physical-option-search.md) extends explicit option
+lookup to typed physical fields from authorized registered datasets or reviewed
+topics. Exact typed values and full source/context/schema pins use the existing
+validated read/custody service, never name-based analysis or invented topics.
+
 ## 2. Domain and custody
 
 Block identity carries localized metadata, canonical question/aliases, authorship provenance and draft/published pointers. Revisions contain exact topic/template references, approved SQL/execution definition, typed parameters, ordered expected schema, dependency manifest and stable saved output IDs. Validation evidence binds exact content/dependencies and observed schema to a real checked execution; certification is a separate attestation.

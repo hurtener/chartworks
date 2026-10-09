@@ -86,7 +86,7 @@ Use the mounted tool schemas for exact request fields and current availability.
    that original attempt; it is not a replacement-query API. Expiry prevents
    consumption but does not erase execution liability. Never auto-restart.
 
-Current compiler limits: PostgreSQL only; zero to two direct reviewed dimensions;
+Legacy compiler limits (when `fields` is omitted): PostgreSQL only; zero to two direct reviewed dimensions;
 one reviewed measure; KPI, table, bar, column, line, area, pie and donut mappings.
 The bounded typed-filter path supports at most four reviewed text select or
 multiselect filters, or date-only ranges. It rejects joins, arbitrary expressions,
@@ -95,6 +95,11 @@ group-domain, completeness and calendar policies. A broader chart catalog is not
 proof that every kind can be manually prepared. Combo has no native contract.
 Unfiltered v1 behavior remains unchanged. Custody quotas fail closed; automated
 terminal-record cleanup is not implemented and unresolved liability is not erased.
+
+The current typed `fields` compiler selects multiple physical/reviewed fields and
+measures within configured column budgets, including source-only tables. Explicit
+raw rows, typed filters and date policy follow the
+[typed field contract](typed-field-authoring-v3.md); no field names imply analysis.
 
 ## Pages and filters
 
@@ -116,11 +121,13 @@ terminal-record cleanup is not implemented and unresolved liability is not erase
 1. Typing, opening a selector, selecting values, applying filters, navigation and
    retained redraw perform no option query. Only explicit Search or explicit Next
    page may call `reporting_authoring_dataset_options_v1` or
-   `reporting_authoring_report_options_v1` on the exact reviewed target.
+   `reporting_authoring_report_options_v1` on the exact authorized target.
 2. Use a new `option:<UnixSeconds>:<32 lowercase hex>` operation key for each
    deliberate search/page, an opaque returned cursor, and bounded input. Options
-   support reviewed PostgreSQL text dimensions, 1–199 choices and 256 UTF-8 search
-   bytes. They query the reviewed population without implicitly applying other
+   support reviewed PostgreSQL text dimensions and physical text/UUID/numeric/boolean
+   fields, 1–199 choices and 256 UTF-8 search bytes. Text uses substring search;
+   other physical types use exact typed values. They query the full authorized
+   population without implicitly applying other
    staged selections. Keep source and result budgets unchanged.
 3. Preserve the original target/key/request while unresolved. After an unknown
    outcome use `reporting_authoring_option_status_v1`. Metadata inspection does

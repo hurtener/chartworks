@@ -49,6 +49,8 @@ func TestPhase29(t *testing.T) {
 	t.Run("AC06", func(t *testing.T) {
 		t.Run("legacy-filter-bindings", testPhase29FilterBindings)
 		t.Run("physical-filter-publication-and-overrides", TestReportAppColumnFiltersNative)
+		t.Run("physical-option-source-and-topic", TestReportAppPhysicalOptionsNative)
+		t.Run("physical-option-native-scalars", TestReportAppPhysicalOptionScalarTypes)
 	})
 	t.Run("AC07", TestDocumentStorage)
 	t.Run("AC08", func(t *testing.T) {

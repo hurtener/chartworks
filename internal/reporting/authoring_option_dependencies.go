@@ -38,10 +38,15 @@ func RequireOptionDependencyDiscovery(e identity.Envelope, in OptionDependencyRe
 	refs := []ResourceReference{}
 	previewKind, previewID := "", ""
 	if d := in.Target.Dataset; d != nil {
-		if !identity.Identifier(d.NewBlock) || !identity.Identifier(d.Dataset) || !identity.Identifier(d.Dimension) || !identity.Identifier(d.Topic.Topic) || !identity.Identifier(d.Topic.Version) || !hashValid(d.Topic.Digest) {
+		if !d.valid() {
 			return ErrInvalid
 		}
-		refs = append(refs, ResourceReference{Kind: "topic", Permission: "read", ID: d.Topic.Topic}, ResourceReference{Kind: "block", Permission: "read", ID: d.NewBlock}, ResourceReference{Kind: "block", Permission: "write", ID: d.NewBlock})
+		refs = append(refs, ResourceReference{Kind: "block", Permission: "read", ID: d.NewBlock}, ResourceReference{Kind: "block", Permission: "write", ID: d.NewBlock})
+		if d.SourceDataset != nil {
+			refs = append(refs, ResourceReference{Kind: "source", Permission: "read", ID: d.SourceDataset.Source})
+		} else {
+			refs = append(refs, ResourceReference{Kind: "topic", Permission: "read", ID: d.Topic.Topic})
+		}
 		previewKind, previewID = "block", d.NewBlock
 	} else {
 		r := in.Target.Report

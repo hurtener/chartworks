@@ -72,9 +72,8 @@ both compiled-browser transports pass locally. Native cases cover two unrelated
 synthetic schemas, six selected outputs, raw-row duplicate preservation, row
 count, a multi-value chart and explicit timezone calendar boundaries. The browser
 host is synthetic; this is not signed-in host acceptance. Host journeys remain
-tracked separately in the owning plan. Topic-free loaded
-table/upload discovery and Pengui audience management remain unfinished work in
-that plan; this document does not claim those paths are already available.
+tracked separately in the owning plan. Registered table discovery is implemented below. Uploaded-data signed-in
+acceptance and Pengui audience management remain unfinished in that plan.
 
 The Pengui companion must accept the optional `intent.fields` carrier in its
 closed preparation request. It treats this object as Chartworks input and derives
@@ -115,8 +114,8 @@ or relation digest mismatch is stale and cannot silently rebase a definition.
 aggregate execution, revoked data access, actor isolation, validation/publication,
 report composition, a private amendment and compacted Create replay using an actor
 without topic permissions. Companion tests exercise exclusive origins and missing
-or withdrawn source/dataset reach. Discovery UI, physical-field filters and both
-signed-in host journeys are still pending; this is a native lifecycle checkpoint.
+or withdrawn source/dataset reach. Discovery UI and physical-field filters are described below. Both signed-in
+host journeys remain pending; native checks alone do not qualify that integration.
 
 ## Source and dataset discovery
 
@@ -141,7 +140,7 @@ The UI keeps bounded pages, offers previous/next navigation, checks origin and
 revision before showing fields, and erases catalog metadata on denied reads or
 closure. Legacy hosts retain the topic entry point. The first physical field or
 aggregate is always an explicit author choice; display names have no analytical
-meaning. Physical filters and independent audience management remain open in the
+meaning. Independent audience management and final signed-in acceptance remain open in the
 [active plan](../plans/flexible-report-authoring.md).
 
 ## Physical filters in the native compiler
@@ -182,6 +181,8 @@ The native core and shared Builder/Consumer controls are locally qualified.
 Physical controls accept exact typed values, stage edits until Done and preserve
 saved values and temporal policy on Cancel. Date inputs display inclusive days;
 instant inputs require an explicit named timezone. Neither editing nor Done runs
-a source query. Physical option lookup is not yet advertised
-(`option_lookup=false`). Existing reviewed option search remains available.
-Physical option lookup and signed-in acceptance remain tracked in the active goal.
+a source query. D-109 advertises `option_lookup=true` for text, UUID, boolean,
+integer and numeric physical choices. Date/timestamp ranges remain false. Explicit
+Search uses the [governed option contract](governed-authoring-options-v1.md),
+full authorized field population and exact typed native ordering. Actual signed-in
+acceptance remains tracked in the active goal.

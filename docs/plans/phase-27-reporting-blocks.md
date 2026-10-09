@@ -4,12 +4,21 @@ Status: in_progress. Owner: internal/reporting. Hard dependencies: 15, 20, 21.
 
 ## Authority and design
 
+D-109 extends exact physical option discovery through the same validated read
+and custody core. Migration 090 retains legacy bytes and exclusive origin fences.
+`TestReportAppPhysicalOptionsNative` and `TestReportAppPhysicalOptionScalarTypes`
+qualify actual typed source ordering/search; private/published report choices are
+covered by `TestReportAppColumnFiltersNative` under Phase29/AC06. Original lookup
+cancellation, receipt, retention and dependency tests remain required. Shared
+controls use explicit Search and staged Done/Cancel. See the
+[option contract](../contracts/governed-authoring-options-v1.md).
+
 D-108 extends the shared binder with physical column value/set/range parameters
 and exact registered schema identity. `TestColumnFilter*` and
 `TestAuthoringColumnFiltersCompilerAndIdentity` cover typed values, SQL placement,
 calendar refusal and binding compatibility. `TestReportAppColumnFiltersNative`
 (mapped into Phase29/AC06) covers the actual source-only publication, report
-selection, amendment and compacted-custody lifecycle. UI/option work remains in
+selection, amendment and compacted-custody lifecycle. Signed-in host work remains in
 [the active flexible pass](flexible-report-authoring.md).
 
 [D-107](../decisions/2026-10-09-source-dataset-blocks.md) adds an exact registered

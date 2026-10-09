@@ -2102,6 +2102,12 @@ export function initializeSyntheticHost(samples, embedded, mappingSamples, datas
     if(name==='list_source_page')return wrap({items:[{id:physical.source,name:'Collected observations',context_id:physical.context,revision:1,dialect:'postgres',status:'registered'}]});
     if(name==='list_datasets')return a.source===physical.source&&a.context===physical.context?wrap(a.after?{items:[{source:physical.source,context:physical.context,source_revision:1,schema_digest:physical.schema_digest,dialect:'postgres',relation:{id:'samples',name:'Samples',columns:[]}}]}:{items:[],next:'previous'}):failure('not_found');
     if(name==='reporting_authoring_dataset_v1'&&a.source_dataset)return same(a.source_dataset,physical)&&a.dataset==='samples'?wrap({...f.dataset,topic:{topic:'',version:'',digest:''},source_dataset:physical,dataset:'samples',source:physical.source,context:physical.context,source_revision:1,dimensions:[],measures:[]}):failure('not_found');
+    // Synthetic interaction coverage; native tests separately prove source execution.
+    if(name==='reporting_authoring_dataset_options_v1'){
+      const d=a.target?.dataset;
+      if(!d||d.new_block!=='dataset-private-chart'||!same(d.source_dataset,physical)||d.dataset!==physical.dataset||d.column!=='specimen'||d.dimension||d.topic||a.search!=='alp'||a.cursor!==''||a.limit!==199)return failure('invalid_request');
+      return wrap({operation:a.operation,input_digest:'d'.repeat(64),status:'completed',values_available:true,new_operation_allowed:true,complete:true,options:[{value:'alpha',label:'alpha'}]});
+    }
     if(name==='list_topics')return wrap(f.list_topics);
     if(name==='describe_topic')return a.topic===f.dataset.topic.topic?wrap(f.describe_topic):failure('not_found');
     if(name==='reporting_authoring_dataset_v1')return same(a.topic,f.dataset.topic)&&a.dataset===f.dataset.dataset?wrap(f.dataset):failure('not_found');
@@ -2132,7 +2138,7 @@ export function initializeSyntheticHost(samples, embedded, mappingSamples, datas
     if(consumerOnly&&(name==='reporting_run'||name.startsWith('reporting_authoring_')&&name!=='reporting_authoring_capabilities_v1'))return failure('forbidden');
     if(consumerOnly&&name==='reporting_view'&&(privateRuns.has(a.run)||runDefinitions.get(a.run)?.private))return failure('not_found');
 
-    if(window.datasetMode&&['list_source_page','list_datasets','list_topics','describe_topic','reporting_authoring_dataset_v1','reporting_authoring_prepare_chart_v1','reporting_authoring_preparation_v1','reporting_authoring_create_prepared_v1','reporting_authoring_block_read_v1','reporting_authoring_block_validate_v1'].includes(name))return datasetDispatch(name,a);
+    if(window.datasetMode&&['reporting_authoring_dataset_options_v1','list_source_page','list_datasets','list_topics','describe_topic','reporting_authoring_dataset_v1','reporting_authoring_prepare_chart_v1','reporting_authoring_preparation_v1','reporting_authoring_create_prepared_v1','reporting_authoring_block_read_v1','reporting_authoring_block_validate_v1'].includes(name))return datasetDispatch(name,a);
     if(window.datasetMode&&name==='reporting_authoring_read_v1')return a.report===state.id?wrap(state.draft_revision===datasetEvidence.initial_read.revision?datasetEvidence.initial_read:datasetEvidence.final_read):failure('not_found');
     if(window.datasetMode&&name==='reporting_authoring_save_v1'){
       if(!same(a,datasetEvidence.save_request)||state.version!==datasetEvidence.initial_read.state.version)return failure('conflict');

@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "89" || len(manifest) != 89 {
+	if err != nil || SchemaVersion() != "90" || len(manifest) != 90 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -97,6 +97,7 @@ func TestSafeErrors(t *testing.T) {
 		{86, "migrations/087_authoring_preparation_retention.sql", "preparation_has_liability"},
 		{87, "migrations/088_chart_presentation.sql", "block_presentation_check"},
 		{88, "migrations/089_source_dataset_blocks.sql", "preparation_origin_exclusive"},
+		{89, "migrations/090_physical_option_columns.sql", "option_column_coordinates"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {

@@ -136,6 +136,10 @@ func filterOptionStatement(binding exec.Binding, relation exec.Relation, column 
 // The authoring text selectors cannot represent SQL NULL. The existing
 // published option contract retains its historical null-last population.
 func filterOptionStatementNullPolicy(binding exec.Binding, relation exec.Relation, column exec.Column, search, cursor bool, limit int, excludeNull bool) (string, error) {
+	return filterOptionStatementSearchPolicy(binding, relation, column, search, cursor, limit, excludeNull, false)
+}
+
+func filterOptionStatementSearchPolicy(binding exec.Binding, relation exec.Relation, column exec.Column, search, cursor bool, limit int, excludeNull, exactSearch bool) (string, error) {
 	if !slices.Contains([]string{"postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks"}, binding.Dialect) || limit < 1 || limit > 201 || !exec.SQLIdentifierForDialect(binding.Dialect, column.Name) {
 		return "", ErrUnavailable
 	}
@@ -156,7 +160,12 @@ func filterOptionStatementNullPolicy(binding exec.Binding, relation exec.Relatio
 	parameter := 0
 	if search {
 		parameter++
-		where = append(where, "LOWER("+name+") LIKE LOWER("+filterPlaceholder(binding.Dialect, parameter)+") ESCAPE '!'")
+		marker := filterPlaceholder(binding.Dialect, parameter)
+		if exactSearch {
+			where = append(where, name+" = "+marker)
+		} else {
+			where = append(where, "LOWER("+name+") LIKE LOWER("+marker+") ESCAPE '!'")
+		}
 	}
 	if cursor {
 		parameter++

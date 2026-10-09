@@ -76,3 +76,17 @@ test('physical report defaults, temporary preview and reader inputs stay separat
  controls.open(filter,'main','run');assert.equal(controls.editor.state.column.timezone,'America/New_York');controls.done(controls.editor,filterInputValue(controls.editor.state));assert.deepEqual(controls.publishedInputs(),expected);assert.deepEqual(app.description.filters[0].parameter,before.report_pages[0].filters[0].parameter);
  controls.open(filter,'main','default');controls.editor.state.end='2026-03-11T00:00';controls.done(controls.editor,filterInputValue(controls.editor.state));assert.equal(filter.parameter.default.range.end_exclusive,'2026-03-11T00:00:00');assert.equal(filter.parameter.column.timezone,'America/New_York');assert.deepEqual(controls.publishedInputs(),expected);assert.equal(calls.length,0);
 });
+
+test('physical option search keeps source pins and exact values, never commits a filter until Done',async()=>{
+ const {s}=session(),calls=[];s.invoke=async(name,args)=>{calls.push({name,args});return {operation:args.operation,input_digest:'a'.repeat(64),status:'completed',values_available:true,new_operation_allowed:true,complete:true,options:[{value:'9007199254740993.125',label:'9007199254740993.125'}]};};
+ s.addFilter(columnFilterKey('reading'),'select');const key=columnFilterKey('reading');assert.equal(calls.length,0);const stage=s.filterStages.get(key);
+ await s.searchFilter(key,'allocated-chart','9007199254740993.125');assert.equal(calls.length,1);assert.deepEqual(calls[0].args.target.dataset,{source_dataset:pin,dataset:pin.dataset,column:'reading',new_block:'allocated-chart'});assert.equal(s.draft.filters[0].default,null);
+ const r=root();let committed;renderFilterInput(r,stage,{lookup:s.filterLookups.get(key),onSearch(){throw Error('unexpected search');},onDone:value=>committed=value});
+ const choice=find(r,n=>n.type==='radio'&&n.value==='9007199254740993.125')[0];choice.checked=true;choice.fire('change');assert.equal(committed,undefined);button(r,'Done').fire('click');assert.deepEqual(committed,{literal:'9007199254740993.125'});assert.equal(calls.length,1);
+ s.commitFilter(key,committed);assert.equal(datasetIntent(s.view,s.draft).filters[0].default.literal,'9007199254740993.125');
+});
+
+test('mismatched typed option values remain unconfirmed and require original lookup inspection',async()=>{
+ const {s}=session();s.addFilter(columnFilterKey('year'),'select');s.invoke=async(_name,args)=>({operation:args.operation,input_digest:'a'.repeat(64),status:'completed',values_available:true,new_operation_allowed:true,complete:true,options:[{value:'1.25',label:'1.25'}]});
+ await assert.rejects(s.searchFilter(columnFilterKey('year'),'allocated-chart',''),/invalid_request/);const lookup=s.filterLookups.get(columnFilterKey('year'));assert.equal(lookup.unknown,true);assert.deepEqual(lookup.values,[]);assert.equal(s.hasUnsettledFilterLookups,true);assert.equal(s.draft.filters[0].default,null);
+});

@@ -64,7 +64,11 @@ func TestAuthoringOptionClosedSchemasAndExactCoordinates(t *testing.T) {
 			if i == 0 {
 				kind = "dataset"
 			}
-			for _, field := range []string{"sql", "source", "context", "column", "where", "values", "scopes"} {
+			unknown := []string{"sql", "source", "context", "where", "values", "scopes"}
+			if kind == "report" {
+				unknown = append(unknown, "column", "source_dataset")
+			}
+			for _, field := range unknown {
 				var body map[string]any
 				_ = json.Unmarshal(raw, &body)
 				body["target"].(map[string]any)[kind].(map[string]any)[field] = "injected"

@@ -17,6 +17,7 @@ type authoringOptionResolution struct {
 	topic     TopicPin
 	dataset   string
 	dimension string
+	column    *ColumnReference
 	refs      []ResourceReference
 	blocks    []AuthoringOptionBlock
 }
@@ -96,6 +97,9 @@ func (s *Authoring) resolveAuthoringOption(ctx context.Context, e identity.Envel
 		return authoringOptionResolution{}, err
 	}
 	if d := target.Dataset; d != nil {
+		if d.Column != "" {
+			return s.resolveAuthoringOptionColumn(ctx, e, AuthoringDatasetRequest{Topic: d.Topic, SourceDataset: d.SourceDataset, Dataset: d.Dataset}, d.Column, nil)
+		}
 		return s.resolveAuthoringOptionDimension(ctx, e, d.Topic, d.Dataset, d.Dimension)
 	}
 	r := target.Report
@@ -123,7 +127,7 @@ func (s *Authoring) resolveAuthoringOption(ctx context.Context, e identity.Envel
 			filter = &canvas.Definition.Filters[i]
 		}
 	}
-	if filter == nil || filter.Parameter.Dimension == nil || !slices.Contains([]string{"dimension_value", "dimension_set"}, filter.Parameter.Type) {
+	if filter == nil || !optionFilterParameter(filter.Parameter) {
 		return authoringOptionResolution{}, unsupportedPreparation("private_option_filter_unsupported")
 	}
 	var out authoringOptionResolution
@@ -155,7 +159,7 @@ func (s *Authoring) resolveAuthoringOption(ctx context.Context, e identity.Envel
 				return authoringOptionResolution{}, err
 			}
 			pins, err := AuthoringRuleAbsence(block.Revision)
-			if err != nil || len(pins) != 1 {
+			if err != nil || block.Revision.Definition.SourceDataset == nil && len(pins) != 1 || block.Revision.Definition.SourceDataset != nil && len(pins) != 0 {
 				return authoringOptionResolution{}, unsupportedPreparation("private_option_origin_unsupported")
 			}
 			if err := s.documents.blocks.checkAuthoringRuleAbsence(ctx, e, block.Revision); err != nil {
@@ -172,24 +176,10 @@ func (s *Authoring) resolveAuthoringOption(ctx context.Context, e identity.Envel
 					parameter = &block.Revision.Definition.Parameters[i]
 				}
 			}
-			if parameter == nil || parameter.Type != filter.Parameter.Type || parameter.Dimension == nil || *parameter.Dimension != *filter.Parameter.Dimension {
+			if parameter == nil || !compatibleFilter(filter.Parameter, *parameter) {
 				return authoringOptionResolution{}, unsupportedPreparation("private_option_dimension_mismatch")
 			}
-			pin := pins[0]
-			if parameter.Dimension.Topic != pin.Topic || parameter.Dimension.Version != pin.Version {
-				return authoringOptionResolution{}, ErrStale
-			}
-			publication, err := s.documents.blocks.topics.Read(ctx, e, pin.Topic, pin.Version)
-			if err != nil {
-				return authoringOptionResolution{}, err
-			}
-			dataset := ""
-			for _, d := range publication.Definition.Dimensions {
-				if d.ID == parameter.Dimension.Dimension {
-					dataset = d.Field.Dataset
-				}
-			}
-			resolved, err := s.resolveAuthoringOptionDimension(ctx, e, pin, dataset, parameter.Dimension.Dimension)
+			resolved, err := s.resolveBlockOptionParameter(ctx, e, block.Revision, *parameter, pins)
 			if err != nil {
 				return authoringOptionResolution{}, err
 			}
@@ -241,5 +231,8 @@ func canonicalAuthoringOptionBlocks(in []AuthoringOptionBlock) ([]AuthoringOptio
 }
 
 func optionResolutionDigest(r authoringOptionResolution) string {
+	if r.column != nil {
+		return digest([]any{"physical-column-v1", r.binding, r.topic, r.dataset, r.column, r.physical, r.semantic, r.scope})
+	}
 	return digest([]any{r.binding, r.topic, r.dataset, r.dimension, r.physical, r.semantic, r.scope})
 }

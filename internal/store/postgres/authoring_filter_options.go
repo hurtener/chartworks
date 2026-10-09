@@ -68,7 +68,7 @@ func (d *DB) ReadAuthoringOption(ctx context.Context, e identity.Envelope, in re
 }
 
 func optionShape(r reporting.AuthoringOptionRecord) error {
-	if !reporting.AuthoringOptionOperationValid(r.Operation, time.Now(), false) || !identity.Identifier(r.Source) || !identity.Identifier(r.Context) || !identity.Identifier(r.Dataset) || !identity.Identifier(r.Dimension) || r.SourceRevision < 1 || r.Rows < 2 || r.Rows > 200 || len(r.InputDigest) != 64 || len(r.BindingDigest) != 64 || len(r.ResolutionDigest) != 64 || r.SourceOperation != "authoring-option:"+readexec.Hash([]string{r.Tenant, r.Actor, r.Session, r.Operation}) || len(r.Blocks) > 100 || !r.Deadline.After(r.CreatedAt) || r.Deadline.Sub(r.CreatedAt) > time.Minute {
+	if !reporting.AuthoringOptionOperationValid(r.Operation, time.Now(), false) || !identity.Identifier(r.Source) || !identity.Identifier(r.Context) || !identity.Identifier(r.Dataset) || !r.ValidOrigin() || r.SourceRevision < 1 || r.Rows < 2 || r.Rows > 200 || len(r.InputDigest) != 64 || len(r.BindingDigest) != 64 || len(r.ResolutionDigest) != 64 || r.SourceOperation != "authoring-option:"+readexec.Hash([]string{r.Tenant, r.Actor, r.Session, r.Operation}) || len(r.Blocks) > 100 || !r.Deadline.After(r.CreatedAt) || r.Deadline.Sub(r.CreatedAt) > time.Minute {
 		return store.ErrInvalid
 	}
 	if (r.Target.Dataset != nil && len(r.Blocks) != 0) || (r.Target.Report != nil && len(r.Blocks) == 0) {
@@ -117,24 +117,34 @@ func authoringOptionFence(ctx context.Context, tx pgx.Tx, e identity.Envelope, r
 			return reporting.ErrStale
 		}
 		pins, err := reporting.AuthoringRuleAbsence(snapshot.Revision)
-		if err != nil || len(pins) != 1 || pins[0] != r.Topic {
+		if err != nil {
+			return reporting.ErrStale
+		}
+		if r.Topic == (reporting.TopicPin{}) {
+			origin := snapshot.Revision.Definition.SourceDataset
+			if r.Column == nil || origin == nil || *origin != r.Column.SourceDataset || len(pins) != 0 {
+				return reporting.ErrStale
+			}
+		} else if len(pins) != 1 || pins[0] != r.Topic {
 			return reporting.ErrStale
 		}
 	}
-	var version, digest string
-	var archived bool
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(h.active_version,''),h.archived,COALESCE(v.digest,'') FROM chartworks.topic_publication_heads h LEFT JOIN chartworks.topic_published_versions v ON(v.tenant_id,v.topic_id,v.version_id)=(h.tenant_id,h.topic_id,h.active_version) WHERE h.tenant_id=$1 AND h.topic_id=$2 FOR UPDATE OF h`, e.Tenant(), r.Topic.Topic).Scan(&version, &archived, &digest); err != nil {
-		return err
-	}
-	if archived || version != r.Topic.Version || digest != r.Topic.Digest {
-		return reporting.ErrStale
-	}
-	var active bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.topic_rule_publication_heads WHERE tenant_id=$1 AND topic_id=$2 AND active_version IS NOT NULL)`, e.Tenant(), r.Topic.Topic).Scan(&active); err != nil {
-		return err
-	}
-	if active {
-		return reporting.ErrStale
+	if r.Topic != (reporting.TopicPin{}) {
+		var version, digest string
+		var archived bool
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(h.active_version,''),h.archived,COALESCE(v.digest,'') FROM chartworks.topic_publication_heads h LEFT JOIN chartworks.topic_published_versions v ON(v.tenant_id,v.topic_id,v.version_id)=(h.tenant_id,h.topic_id,h.active_version) WHERE h.tenant_id=$1 AND h.topic_id=$2 FOR UPDATE OF h`, e.Tenant(), r.Topic.Topic).Scan(&version, &archived, &digest); err != nil {
+			return err
+		}
+		if archived || version != r.Topic.Version || digest != r.Topic.Digest {
+			return reporting.ErrStale
+		}
+		var active bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.topic_rule_publication_heads WHERE tenant_id=$1 AND topic_id=$2 AND active_version IS NOT NULL)`, e.Tenant(), r.Topic.Topic).Scan(&active); err != nil {
+			return err
+		}
+		if active {
+			return reporting.ErrStale
+		}
 	}
 	var raw []byte
 	if err := tx.QueryRow(ctx, `SELECT r.binding FROM chartworks.sources h JOIN chartworks.source_revisions r ON(r.tenant_id,r.source_id,r.revision)=(h.tenant_id,h.source_id,h.current_revision) WHERE h.tenant_id=$1 AND h.source_id=$2 AND NOT h.deleted FOR SHARE OF h`, e.Tenant(), r.Source).Scan(&raw); err != nil {
@@ -143,6 +153,11 @@ func authoringOptionFence(ctx context.Context, tx pgx.Tx, e identity.Envelope, r
 	var binding readexec.Binding
 	if json.Unmarshal(raw, &binding) != nil || binding.Context != r.Context || binding.Revision != r.SourceRevision || readexec.Hash(binding) != r.BindingDigest {
 		return reporting.ErrStale
+	}
+	if r.Column != nil {
+		if err := r.Column.SourceDataset.CheckBinding(binding); err != nil {
+			return err
+		}
 	}
 	if r.Target.Dataset != nil {
 		var exists bool

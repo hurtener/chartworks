@@ -148,3 +148,32 @@ Phase22/Phase23 AC01–AC03 pass against local PostgreSQL/native execution. This
 closes the recorded analytical error-registration finding; audience work remains
 open. No analytical guard was loosened.
 No FA criterion closes from this checkpoint alone.
+
+## Physical option search checkpoint
+
+D-109 completes explicit physical option search in the same native service and
+shared controls. Safe text/UUID/integer/numeric/boolean fields advertise lookup;
+temporal fields retain ranges. Both raw and reviewed dataset origins resolve
+actual registered field identity. Private and published report filters derive
+that same identity from their complete saved bindings. Native types govern exact
+search and keyset ordering, with exact strings at the browser boundary.
+
+Migration 090 preserves legacy request/record bytes, actual topic foreign keys,
+source revision and original native receipt fences. Pengui's closed host carrier
+accepts exclusive physical selectors and checks source-only manifests without
+inventing topic grants. Unknown lookups retain original custody. Typing, selecting,
+Done and Cancel perform no source work; explicit Search/Next does.
+
+Local qualification includes physical text/empty/SQL-looking strings, booleans,
+integers, exact decimal ordering, UUIDs, floats and NULL exclusion through actual
+PostgreSQL; private/published full-field populations; denied/stale reach and
+non-reexecuting replay. Existing cancellation, receipt/rule fences, retention and
+dependency checks pass with the race detector. The full reporting/API suites pass.
+Shared resource tests and 404 Chromium assertions per HTTP iframe/MCP transport
+pass, with desktop/mobile snapshots inspected. These browser hosts are synthetic.
+Pengui host race tests, 32 embedded-host tests and Svelte check also pass.
+
+FA03/FA04 still require uploaded-data and actual signed-in host acceptance.
+Independent people/Team view/edit/publish/manage authority, dependency eligibility,
+revocation/amendment and the final author-to-reader walkthrough remain open under
+FA06/FA07. Hosted CI remains billing-blocked, not green. No deployment or merge.

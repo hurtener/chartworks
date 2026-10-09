@@ -27,6 +27,7 @@ export function renderFilterInput(parent,state,{label='Filter value',lookup=null
  const changed=()=>{if(!done)return;try{filterInputValue(state);done.disabled=disabled;}catch{done.disabled=true;}};
  if(state.type?.startsWith('column_')){
   renderColumnInput(box,state,{disabled,editPolicy,changed,redraw:()=>render()});
+  if(['column_value','column_set'].includes(state.type)&&(onSearch||lookup))renderOptionSearch(box,state,{multiple:state.type==='column_set',selected:state.type==='column_set'?state.items:[state.literal],onSelect:items=>{if(state.type==='column_set')state.items=items;else state.literal=items[0];},lookup,disabled,onSearch,onInspect,render:value=>render(value)});
  }else if(state.type==='date_range'){
   for(const [key,title]of [['start','Start date'],['end','End date · inclusive']]){const row=filterNode('label',title),input=filterNode('input');input.type='date';input.value=state[key];input.setAttribute('aria-label',title);input.min='0001-01-01';input.max=key==='end'?'9999-12-30':'9999-12-31';input.addEventListener('input',()=>{state[key]=input.value;changed();});row.append(input);box.append(row);}
   box.append(filterNode('p','Calendar dates, including both selected days. Saved as start inclusive / following day exclusive; no local time-zone conversion.'));
@@ -35,20 +36,7 @@ export function renderFilterInput(parent,state,{label='Filter value',lookup=null
   const selected=filterNode('div');selected.className='filter-selected-values';
   for(const value of state.items)selected.append(filterAction(`${value===''?'Empty text':value} · remove`,()=>{state.items=state.items.filter(x=>x!==value);render();},disabled));
   const count=filterNode('p',multiple?`${state.items.length} of 16 selected · at least one required`:'Choose one value');box.append(selected,count);
-  const search=filterNode('label','Find values'),input=filterNode('input');input.type='search';input.value=state.query;input.maxLength=256;input.setAttribute('aria-label','Find values');input.addEventListener('input',()=>{state.query=input.value;});search.append(input);box.append(search);
-  box.append(filterAction('Search options',()=>onSearch?.(state.query,''),disabled||!onSearch||lookup&&!lookup.canSearch()));
-  box.append(filterNode('p','Search reads approved source data and may incur cost. It searches the full field population without changing this selection or running the report. Other chart filters are not applied to option search.'));
-  if(!lookup)box.append(filterNode('p',onSearch?'Search to load approved field values.':'Option search is unavailable until this filter has a saved, authorized data binding.'));
-  if(lookup?.pending)box.append(filterNode('p','Reading options…'));
-  if(lookup?.result?.values_available){
-   const choices=filterNode('div'),group='filter-choice-'+crypto.randomUUID();choices.className='filter-option-list';
-   if(!lookup.values.length)choices.append(filterNode('p','No matching values.'));
-   for(const option of lookup.values){const row=filterNode('label'),choice=filterNode('input');choice.type=multiple?'checkbox':'radio';choice.name=group;choice.value=option.value;choice.checked=state.items.includes(option.value);choice.disabled=disabled||multiple&&!choice.checked&&state.items.length>=16;choice.addEventListener('change',()=>{state.items=multiple?(choice.checked?[...state.items,option.value]:state.items.filter(x=>x!==option.value)):[option.value];render(option.value);});row.append(choice,filterNode('span',option.value===''?'Empty text':option.label));choices.append(row);}box.append(choices);
-   if(!lookup.result.complete)box.append(filterAction('Next options',()=>onSearch?.(lookup.request.search,lookup.result.next),disabled||!lookup.canSearch()));
-  }else if(lookup?.request&&!lookup.pending){
-   box.append(filterNode('p',lookup.result?.status==='unsupported'?'This approved binding does not support option search.':lookup.result?.status==='failed'&&lookup.result?.new_operation_allowed?`Option lookup failed (${lookup.result.code||UNAVAILABLE}). No values were applied. Check the field or narrow the search before another explicit read.`:lookup.result?.new_operation_allowed?'This lookup finished, but its values are not retained. Search again explicitly for a new page.':'The lookup outcome is unconfirmed. Inspect or reconcile it before starting another search.'));
-   for(const [action,title]of [['','Inspect lookup'],['cancel','Cancel lookup'],['reconcile','Reconcile lookup']])if(onInspect)box.append(filterAction(title,()=>onInspect(action),disabled||lookup.pending));
-  }
+  renderOptionSearch(box,state,{multiple,selected:state.items,onSelect:items=>{state.items=items;},lookup,disabled,onSearch,onInspect,render:value=>render(value)});
  }else{const input=filterNode('input');input.type=state.type==='date'?'date':'text';input.value=state.literal;input.maxLength=4096;input.setAttribute('aria-label',label);input.addEventListener('input',()=>{state.literal=input.value;changed();});box.append(input);}
  done=filterAction('Done',()=>onDone?.(copyData(filterInputValue(state))),disabled);done.className='primary';const actions=filterNode('div');actions.className='filter-editor-actions';actions.append(done,filterAction('Cancel',()=>onCancel?.(),disabled));box.append(actions);changed();
  const render=value=>{const holder=filterNode('div'),next=renderFilterInput(holder,state,{label,lookup,disabled,onSearch,onInspect,onDone,onCancel,editPolicy});box.replaceWith(next);const inputs=Array.from(next.querySelectorAll('input'));(inputs.find(input=>value!==undefined&&['checkbox','radio'].includes(input.type)&&input.value===value)||inputs[0])?.focus?.({preventScroll:true});};parent.append(box);return box;
@@ -88,4 +76,23 @@ function renderColumnInput(box,state,{disabled,editPolicy,changed,redraw}){
   const update=()=>{try{columnScalar(kind,state.literal);add.disabled=disabled||state.items.length>=16||state.items.includes(state.literal);}catch{add.disabled=true;}};field.addEventListener('input',update);update();box.append(add);
  }
  if(['integer','number'].includes(kind))box.append(filterNode('p','Numbers keep all entered digits. Missing values are excluded.'));
+}
+
+function renderOptionSearch(box,state,{multiple,selected,onSelect,lookup,disabled,onSearch,onInspect,render}){
+  const search=filterNode('label','Find values'),input=filterNode('input');input.type='search';input.value=state.query;input.maxLength=256;input.setAttribute('aria-label','Find values');input.addEventListener('input',()=>{state.query=input.value;validateSearch();});search.append(input);box.append(search);
+  const searchButton=filterAction('Search options',()=>onSearch?.(state.query,''),disabled||!onSearch||lookup&&!lookup.canSearch());
+  const validateSearch=()=>{let valid=true;if(state.column&&state.query!==''&&state.column.type!=='text'){try{columnScalar(state.column.type,state.query);}catch{valid=false;}}searchButton.disabled=disabled||!onSearch||lookup&&!lookup.canSearch()||!valid;};validateSearch();box.append(searchButton);
+  if(state.column&&state.column.type!=='text')box.append(filterNode('p','Enter one exact typed value, or leave the search empty to browse values.'));
+  box.append(filterNode('p','Search reads approved source data and may incur cost. It searches the full field population without changing this selection or running the report. Other chart filters are not applied to option search.'));
+  if(!lookup)box.append(filterNode('p',onSearch?'Search to load approved field values.':'Option search is unavailable until this filter has a saved, authorized data binding.'));
+  if(lookup?.pending)box.append(filterNode('p','Reading options…'));
+  if(lookup?.result?.values_available){
+   const choices=filterNode('div'),group='filter-choice-'+crypto.randomUUID();choices.className='filter-option-list';
+   if(!lookup.values.length)choices.append(filterNode('p','No matching values.'));
+   for(const option of lookup.values){const row=filterNode('label'),choice=filterNode('input');choice.type=multiple?'checkbox':'radio';choice.name=group;choice.value=option.value;choice.checked=selected.includes(option.value);choice.disabled=disabled||multiple&&!choice.checked&&selected.length>=16;choice.addEventListener('change',()=>{onSelect(multiple?(choice.checked?[...selected,option.value]:selected.filter(x=>x!==option.value)):[option.value]);render(option.value);});row.append(choice,filterNode('span',option.value===''?'Empty text':option.label));choices.append(row);}box.append(choices);
+   if(!lookup.result.complete)box.append(filterAction('Next options',()=>onSearch?.(lookup.request.search,lookup.result.next),disabled||!lookup.canSearch()));
+  }else if(lookup?.request&&!lookup.pending){
+   box.append(filterNode('p',lookup.result?.status==='unsupported'?'This approved binding does not support option search.':lookup.result?.status==='failed'&&lookup.result?.new_operation_allowed?`Option lookup failed (${lookup.result.code||UNAVAILABLE}). No values were applied. Check the field or narrow the search before another explicit read.`:lookup.result?.new_operation_allowed?'This lookup finished, but its values are not retained. Search again explicitly for a new page.':'The lookup outcome is unconfirmed. Inspect or reconcile it before starting another search.'));
+   for(const [action,title]of [['','Inspect lookup'],['cancel','Cancel lookup'],['reconcile','Reconcile lookup']])if(onInspect)box.append(filterAction(title,()=>onInspect(action),disabled||lookup.pending));
+  }
 }
