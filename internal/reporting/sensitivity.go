@@ -74,6 +74,11 @@ func ResolveResultPolicy(d Definition, dependencies []Dependency, definitions []
 		return 0
 	})
 	provenance := digest([]any{"reviewed-query-evidence-v1", d.Topics, dependencies, sources, d.ResultPolicy})
+	basis := "reviewed_query_dependencies"
+	if d.SourceDataset != nil {
+		basis = "registered_source_dependencies"
+		provenance = digest([]any{"source-query-evidence-v1", d.SourceDataset, dependencies, d.ResultPolicy})
+	}
 	status := "allowed"
 	unknown, sensitive, conflicting := len(dependencies) == 0, false, false
 	for _, dependency := range dependencies {
@@ -129,7 +134,7 @@ func ResolveResultPolicy(d Definition, dependencies []Dependency, definitions []
 				effective = "unknown"
 			}
 		}
-		out = append(out, EffectiveFieldPolicy{Field: field.Name, Status: effective, Basis: "reviewed_query_dependencies", ProvenanceDigest: provenance})
+		out = append(out, EffectiveFieldPolicy{Field: field.Name, Status: effective, Basis: basis, ProvenanceDigest: provenance})
 	}
 	return out
 }

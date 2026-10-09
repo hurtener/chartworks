@@ -230,6 +230,7 @@ type Output struct {
 // Definition is private authoring/persistence input. Never return this type from
 // a normal block read: SQL has its own separately authorized projection.
 type Definition struct {
+	SourceDataset      *SourceDatasetPin   `json:"source_dataset,omitempty"`
 	AmountCompleteness []AmountDeclaration `json:"amount_completeness,omitempty"`
 	QueryLimits        *QueryLimits        `json:"query_limits,omitempty"`
 	ResultPolicy       []ResultFieldPolicy `json:"result_policy,omitempty"`
@@ -309,6 +310,7 @@ type Reference struct {
 
 // State contains the CAS version and current lifecycle pointers for a stable block identity.
 type State struct {
+	Source            string    `json:"source,omitempty"`
 	ID                string    `json:"id"`
 	Topic             string    `json:"topic"`
 	Version           int64     `json:"version"`
@@ -412,6 +414,7 @@ type Trust struct {
 // View deliberately has no Definition, SQL or private capture provenance field.
 // JSON reflection cannot accidentally expose them when a new field is added.
 type View struct {
+	SourceDataset      *SourceDatasetPin      `json:"source_dataset,omitempty"`
 	AmountCompleteness []AmountDeclaration    `json:"amount_completeness,omitempty"`
 	SchemaVersion      int                    `json:"schema_version"`
 	QueryLimits        *QueryLimits           `json:"query_limits,omitempty"`

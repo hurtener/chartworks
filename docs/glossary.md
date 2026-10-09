@@ -94,3 +94,7 @@ parent; it never transfers provider credentials to the child frame.
 **Report-local chart copy** is a separately authorized private block, not an in-place change to a shared publication. **Structural mapping validation** checks schema compatibility; it is not observed-data validation or publication approval.
 
 - **Dependency discovery manifest**: content-free native target/revision/reference coordinates for Pengui policy projection under D-098. It is neither a grant nor a validated execution plan.
+
+**Source dataset pin** is the exact registered source, execution context, dataset,
+source revision and relation digest of a topic-independent block. It carries no
+semantic approval or identity authority and cannot silently follow source drift.

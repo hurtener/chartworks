@@ -67,6 +67,7 @@ type PreparationSettlement struct {
 // original native revision. No SQL, request prose, rows or technical catalog is
 // copied. Signed reach is enforced before selecting it and again by the service.
 type AuthoringPreparationConsumed struct {
+	SourceDataset   *SourceDatasetPin     `json:"source_dataset,omitempty"`
 	ID              string                `json:"id"`
 	Tenant          string                `json:"tenant"`
 	Actor           string                `json:"actor"`
@@ -98,5 +99,9 @@ func (r AuthoringPreparationConsumed) GoString() string { return r.String() }
 
 // PreparationRecord restores only the bounded internal authority/replay coordinates.
 func (r AuthoringPreparationConsumed) PreparationRecord() AuthoringPreparationRecord {
-	return AuthoringPreparationRecord{ID: r.ID, Actor: r.Actor, Session: r.Session, Target: r.Target, Operation: r.Operation, InputDigest: r.InputDigest, SourceOperation: r.SourceOperation, Digest: r.Digest, Binding: exec.Binding{Tenant: r.Tenant, Source: r.Source, Context: r.Context, Revision: r.SourceRevision}, Topics: []TopicPin{r.Topic}, References: clone(r.References), Request: AuthoringPrepareRequest{NewBlock: r.Target, Operation: r.Operation, Intent: AuthoringDatasetIntent{Topic: r.Topic, Dataset: r.Dataset}}, ExpiresAt: r.ExpiresAt, Status: "consumed", Consumed: clone(&r)}
+	out := AuthoringPreparationRecord{ID: r.ID, Actor: r.Actor, Session: r.Session, Target: r.Target, Operation: r.Operation, InputDigest: r.InputDigest, SourceOperation: r.SourceOperation, Digest: r.Digest, Binding: exec.Binding{Tenant: r.Tenant, Source: r.Source, Context: r.Context, Revision: r.SourceRevision}, Topics: []TopicPin{r.Topic}, References: clone(r.References), Request: AuthoringPrepareRequest{NewBlock: r.Target, Operation: r.Operation, Intent: AuthoringDatasetIntent{SourceDataset: clone(r.SourceDataset), Topic: r.Topic, Dataset: r.Dataset}}, ExpiresAt: r.ExpiresAt, Status: "consumed", Consumed: clone(&r)}
+	if r.SourceDataset != nil {
+		out.Topics = nil
+	}
+	return out
 }

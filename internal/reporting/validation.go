@@ -79,7 +79,7 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 		}
 		catalog = observed.Identity
 	}
-	scope, err := validationScope(binding, definitions)
+	scope, err := definitionValidationScope(binding, d, definitions)
 	if err != nil {
 		return record, result, resolved, nil, err
 	}
@@ -153,7 +153,7 @@ func (s *Service) Validate(ctx context.Context, e identity.Envelope, id string, 
 	if err != nil {
 		return ValidationResult{}, err
 	}
-	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "validate", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, References: refs, Validation: &record, Watch: record.Dependencies, Topics: record.Topics, CheckCurrent: true})
+	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "validate", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, References: refs, Validation: &record, Watch: record.Dependencies, Topics: record.Topics, CheckCurrent: true})
 	if err != nil {
 		return ValidationResult{}, err
 	}
@@ -186,7 +186,7 @@ func (s *Service) Preview(ctx context.Context, e identity.Envelope, id string, i
 	if err != nil {
 		return PreviewResult{}, err
 	}
-	_, err = s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "preview", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, References: refs, Validation: &record, Watch: record.Dependencies, Topics: record.Topics, CheckCurrent: true})
+	_, err = s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "preview", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, References: refs, Validation: &record, Watch: record.Dependencies, Topics: record.Topics, CheckCurrent: true})
 	if err != nil {
 		return PreviewResult{}, err
 	}

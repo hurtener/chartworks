@@ -121,7 +121,7 @@ func (s *Authoring) inspectBlockLifecycle(ctx context.Context, e identity.Envelo
 	if snapshot.Validation != nil {
 		out.ValidationFresh = freshValidation(snapshot, snapshot.Validation.Evidence.ID, time.Now()) == nil
 	}
-	out.CanPublish = out.ValidationFresh && snapshot.Revision.Actor == e.User() && snapshot.PublishedAt == nil && !snapshot.State.Archived && snapshot.State.DraftRevision == snapshot.Revision.Number && snapshot.State.DraftState == "validated" && Require(e, id, Publish) == nil && RequireParent(e, snapshot.State.Topic, Publish, false) == nil && RequireReferences(e, Publish, snapshot.References) == nil
+	out.CanPublish = out.ValidationFresh && snapshot.Revision.Actor == e.User() && snapshot.PublishedAt == nil && !snapshot.State.Archived && snapshot.State.DraftRevision == snapshot.Revision.Number && snapshot.State.DraftState == "validated" && Require(e, id, Publish) == nil && RequireOrigin(e, snapshot.State.Topic, snapshot.State.Source, Publish, false) == nil && RequireReferences(e, Publish, snapshot.References) == nil
 	return out, snapshot, nil
 }
 

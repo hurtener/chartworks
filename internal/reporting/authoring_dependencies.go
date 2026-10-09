@@ -24,6 +24,7 @@ type DependencyRequest struct {
 // DependencyBlock records the actual revision selected by a stored widget pin.
 // A latest-publication widget resolves the current native publication pointer.
 type DependencyBlock struct {
+	Source   string `json:"source,omitempty"`
 	ID       string `json:"id"`
 	Topic    string `json:"topic"`
 	Revision int64  `json:"revision"`

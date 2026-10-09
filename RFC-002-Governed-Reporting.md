@@ -127,7 +127,10 @@ qualification remains separate from pure functional tests.
 field authoring to this continuation. Physical columns and reviewed semantics are
 distinct choices; explicit multi-field selections, typed aggregation, raw rows and
 calendar grouping follow the [typed compiler contract](docs/contracts/typed-field-authoring-v3.md).
-No client business schema or analytical question is assumed. Topic-independent
+No client business schema or analytical question is assumed.
+[D-107](docs/decisions/2026-10-09-source-dataset-blocks.md) adds an exact registered
+source/dataset origin without a mandatory semantic topic, using the same native
+block lifecycle and current signed data authority. Topic-independent
 tables/uploads and self-service audience management remain implementation work in
 the [active flexible authoring plan](docs/plans/flexible-report-authoring.md).
 

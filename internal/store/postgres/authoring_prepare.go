@@ -51,7 +51,7 @@ func scanAuthoringPreparation(row pgx.Row) (r reporting.AuthoringPreparationReco
 // predicate protects retained reads, operation replay and transactional consume.
 const authoringPreparationEligibility = `jsonb_array_length(p.record->'references') BETWEEN 1 AND 4096
  AND NOT EXISTS (SELECT 1 FROM (VALUES ('block','read',p.target_id),('block','write',p.target_id),('block','preview',p.target_id),('topic','write',p.topic_id)) required(kind,permission,id)
- WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements($5::jsonb) g WHERE g->>'kind'=required.kind AND g->>'permission'=required.permission AND g->>'id'=required.id))
+ WHERE required.id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements($5::jsonb) g WHERE g->>'kind'=required.kind AND g->>'permission'=required.permission AND g->>'id'=required.id))
  AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(p.record->'references') rr
  WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements($5::jsonb) g WHERE g->>'kind'=rr->>'kind' AND g->>'permission'=rr->>'permission' AND g->>'id'=rr->>'id'))
  AND (NOT $6::boolean OR EXISTS (SELECT 1 FROM jsonb_array_elements($5::jsonb) g WHERE g->>'kind'='source' AND g->>'permission'='query' AND g->>'id'=p.source_id))`
@@ -111,23 +111,27 @@ func authoringPreparationRecordTx(ctx context.Context, tx pgx.Tx, e identity.Env
 // Exclusive topic-head lock fences absence of rules as well as current pins:
 // existing first/replacement rule publication takes this head FOR SHARE.
 func authoringPreparationFence(ctx context.Context, tx pgx.Tx, e identity.Envelope, r reporting.AuthoringPreparationRecord) error {
-	if len(r.Topics) != 1 || !r.Binding.Valid() || r.Binding.Tenant != e.Tenant() {
+	if (len(r.Topics) != 1 && r.Request.Intent.SourceDataset == nil) || !r.Binding.Valid() || r.Binding.Tenant != e.Tenant() {
 		return store.ErrInvalid
 	}
-	pin := r.Topics[0]
-	var version, digest string
-	var archived bool
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(h.active_version,''),h.archived,COALESCE(v.digest,'') FROM chartworks.topic_publication_heads h LEFT JOIN chartworks.topic_published_versions v ON(v.tenant_id,v.topic_id,v.version_id)=(h.tenant_id,h.topic_id,h.active_version) WHERE h.tenant_id=$1 AND h.topic_id=$2 FOR UPDATE OF h`, e.Tenant(), pin.Topic).Scan(&version, &archived, &digest); err != nil {
-		return err
+	for _, pin := range r.Topics {
+		var version, digest string
+		var archived bool
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(h.active_version,''),h.archived,COALESCE(v.digest,'') FROM chartworks.topic_publication_heads h LEFT JOIN chartworks.topic_published_versions v ON(v.tenant_id,v.topic_id,v.version_id)=(h.tenant_id,h.topic_id,h.active_version) WHERE h.tenant_id=$1 AND h.topic_id=$2 FOR UPDATE OF h`, e.Tenant(), pin.Topic).Scan(&version, &archived, &digest); err != nil {
+			return err
+		}
+		if archived || version != pin.Version || digest != pin.Digest {
+			return reporting.ErrStale
+		}
+		var active bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.topic_rule_publication_heads WHERE tenant_id=$1 AND topic_id=$2 AND active_version IS NOT NULL)`, e.Tenant(), pin.Topic).Scan(&active); err != nil {
+			return err
+		}
+		if active {
+			return reporting.ErrStale
+		}
 	}
-	if archived || version != pin.Version || digest != pin.Digest {
-		return reporting.ErrStale
-	}
-	var active bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.topic_rule_publication_heads WHERE tenant_id=$1 AND topic_id=$2 AND active_version IS NOT NULL)`, e.Tenant(), pin.Topic).Scan(&active); err != nil {
-		return err
-	}
-	if active {
+	if pin := r.Request.Intent.SourceDataset; pin != nil && pin.CheckBinding(r.Binding) != nil {
 		return reporting.ErrStale
 	}
 	var raw []byte
@@ -141,7 +145,7 @@ func authoringPreparationFence(ctx context.Context, tx pgx.Tx, e identity.Envelo
 	return nil
 }
 func authoringPreparationShape(r reporting.AuthoringPreparationRecord) error {
-	if !identity.Identifier(r.ID) || !identity.Identifier(r.Operation) || !identity.Identifier(r.Target) || r.Compiler != reporting.AuthoringCompilerForIntent(r.Request.Intent) || r.InputDigest != readexec.Hash(r.Request) || r.Request.NewBlock != r.Target || r.Request.Operation != r.Operation || r.SourceOperation != "chart-prepare:"+readexec.Hash([]string{r.Binding.Tenant, r.Actor, r.Session, r.Target, r.Operation}) || len(r.Statement) < 1 || len(r.Statement) > 64<<10 || len(r.Scope) != 1 || len(r.Dependencies) != 1 || r.Scope[0].Dataset != r.Request.Intent.Dataset || r.Dependencies[0].Dataset != r.Request.Intent.Dataset || len(r.Topics) != 1 || r.Topics[0] != r.Request.Intent.Topic {
+	if !identity.Identifier(r.ID) || !identity.Identifier(r.Operation) || !identity.Identifier(r.Target) || r.Compiler != reporting.AuthoringCompilerForIntent(r.Request.Intent) || r.InputDigest != readexec.Hash(r.Request) || r.Request.NewBlock != r.Target || r.Request.Operation != r.Operation || r.SourceOperation != "chart-prepare:"+readexec.Hash([]string{r.Binding.Tenant, r.Actor, r.Session, r.Target, r.Operation}) || len(r.Statement) < 1 || len(r.Statement) > 64<<10 || len(r.Scope) != 1 || len(r.Dependencies) != 1 || r.Scope[0].Dataset != r.Request.Intent.Dataset || r.Dependencies[0].Dataset != r.Request.Intent.Dataset || (r.Request.Intent.SourceDataset == nil && (len(r.Topics) != 1 || r.Topics[0] != r.Request.Intent.Topic)) || (r.Request.Intent.SourceDataset != nil && (len(r.Topics) != 0 || r.Request.Intent.Topic != (reporting.TopicPin{}) || r.Request.Intent.SourceDataset.CheckBinding(r.Binding) != nil)) {
 		return store.ErrInvalid
 	}
 	return nil
@@ -375,7 +379,7 @@ func consumeAuthoringPreparation(ctx context.Context, tx pgx.Tx, e identity.Enve
 	if err := reporting.RequireAuthoringPreparation(e, r, true); err != nil {
 		return err
 	}
-	if r.Status != "prepared" || !time.Now().Before(r.ExpiresAt) || r.Digest != m.Preparation.Digest || r.Target != m.ID || r.Revision == nil || m.Revision == nil || readexec.Hash(r.Revision) != readexec.Hash(m.Revision) || readexec.Hash(r.References) != readexec.Hash(m.References) || m.Topic != r.Topics[0].Topic {
+	if r.Status != "prepared" || !time.Now().Before(r.ExpiresAt) || r.Digest != m.Preparation.Digest || r.Target != m.ID || r.Revision == nil || m.Revision == nil || readexec.Hash(r.Revision) != readexec.Hash(m.Revision) || readexec.Hash(r.References) != readexec.Hash(m.References) || m.Topic != r.Revision.Definition.ParentTopic() || m.Source != r.Revision.Definition.ParentSource() {
 		return store.ErrConflict
 	}
 	if err := authoringPreparationFence(ctx, tx, e, r); err != nil {

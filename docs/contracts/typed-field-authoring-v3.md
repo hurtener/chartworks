@@ -80,3 +80,40 @@ The Pengui companion must accept the optional `intent.fields` carrier in its
 closed preparation request. It treats this object as Chartworks input and derives
 no scopes from it; native dependency discovery and original custody remain the
 authority source. A legacy host parser may reject the new request until updated.
+
+## Registered table origin
+
+D-107 adds optional `source_dataset` to dataset metadata requests, typed intents,
+block definitions and safe block projections. Its fields are `source`, `context`,
+`dataset`, `source_revision` and `schema_digest`. The source catalog supplies the
+relation digest; the service checks it against the actual retained binding.
+`topic` must be empty and `dataset` must match the pin. This branch requires
+`fields`; it cannot use the legacy predefined-measure compiler. The physical
+catalog excludes unsafe columns and contains no invented reviewed dimensions or
+measures. Physical provenance contains only its actual source/revision.
+
+Version-two block definitions select exactly one origin. Source-backed definitions
+have no topics, rules, templates or reviewed amount declarations. They retain one
+registered dataset and its safe columns within the existing validator. Mutation,
+validation, publication, frozen execution and report composition reuse the native
+lifecycle. A private amendment does not alter the previous publication.
+
+The source parent requires source read, independently of block create/edit/publish
+authority; it never requires or grants source write. Dataset query and execution
+context use remain required references. Query effects additionally require source
+query authority. Dependency discovery returns only these coordinates. Preparation
+lookup derives them from original actor/session/target custody, including after
+SQL-bearing preparation cleanup; it cannot reinterpret a supplied replacement pin.
+
+Migration 089 makes the parent exclusive and immutable, preserves tenant foreign
+keys and the guarded native admission receipt, and retains the source pin in the
+compact consumed receipt. New source definitions change execution identity; legacy
+omitted fields and preparation records retain their hashes. A registered revision
+or relation digest mismatch is stale and cannot silently rebase a definition.
+
+`TestReportAppSourceDatasetNative` qualifies metadata-only discovery, exact native
+aggregate execution, revoked data access, actor isolation, validation/publication,
+report composition, a private amendment and compacted Create replay using an actor
+without topic permissions. Companion tests exercise exclusive origins and missing
+or withdrawn source/dataset reach. Discovery UI, physical-field filters and both
+signed-in host journeys are still pending; this is a native lifecycle checkpoint.

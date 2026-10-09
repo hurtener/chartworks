@@ -109,7 +109,11 @@ func RequireAuthoringPreparation(e identity.Envelope, r AuthoringPreparationReco
 	if r.Actor != e.User() || r.Session != e.Session() || r.Binding.Tenant != e.Tenant() {
 		return access.ErrNotFound
 	}
-	if !identity.Identifier(r.Target) || len(r.Topics) != 1 || !identity.Identifier(r.Topics[0].Topic) {
+	origin := preparationOrigin(r)
+	if !identity.Identifier(r.Target) || !sourceDatasetDefinitionValid(origin) || (r.Request.Intent.SourceDataset == nil && len(r.Topics) != 1) {
+		return ErrInvalid
+	}
+	if pin := r.Request.Intent.SourceDataset; pin != nil && (pin.SourceRevision != r.Binding.Revision || pin.Dataset != r.Request.Intent.Dataset || r.Request.Intent.Topic != (TopicPin{})) {
 		return ErrInvalid
 	}
 	for _, a := range []Access{Read, Write, Preview} {
@@ -120,7 +124,7 @@ func RequireAuthoringPreparation(e identity.Envelope, r AuthoringPreparationReco
 	if err := access.Require(e, Write.Action(), access.Tenant(e, "write")); err != nil {
 		return err
 	}
-	if err := RequireParent(e, r.Topics[0].Topic, Write, true); err != nil {
+	if err := RequireOrigin(e, origin.ParentTopic(), origin.ParentSource(), Write, true); err != nil {
 		return err
 	}
 	if err := RequireReferences(e, Write, r.References); err != nil {
@@ -210,7 +214,7 @@ func (s *Authoring) PrepareDatasetChart(ctx context.Context, e identity.Envelope
 	if err := AuthoringPreparationAdmission(in, time.Now()); err != nil {
 		return AuthoringPreparationView{}, err
 	}
-	blocks, p, dataset, err := s.datasetPublication(ctx, e, AuthoringDatasetRequest{Topic: in.Intent.Topic, Dataset: in.Intent.Dataset})
+	blocks, p, dataset, err := s.datasetPublication(ctx, e, AuthoringDatasetRequest{SourceDataset: in.Intent.SourceDataset, Topic: in.Intent.Topic, Dataset: in.Intent.Dataset})
 	if err != nil {
 		return AuthoringPreparationView{}, err
 	}
@@ -225,10 +229,12 @@ func (s *Authoring) PrepareDatasetChart(ctx context.Context, e identity.Envelope
 			return AuthoringPreparationView{}, ErrInvalid
 		}
 	}
-	if reason, err := blocks.authoringRulesDisposition(ctx, e, in.Intent.Topic); err != nil {
-		return AuthoringPreparationView{}, err
-	} else if reason != "" {
-		return AuthoringPreparationView{Status: "unsupported", Code: reason, Schema: []exec.Field{}, Validation: "not_performed"}, nil
+	if in.Intent.SourceDataset == nil {
+		if reason, err := blocks.authoringRulesDisposition(ctx, e, in.Intent.Topic); err != nil {
+			return AuthoringPreparationView{}, err
+		} else if reason != "" {
+			return AuthoringPreparationView{Status: "unsupported", Code: reason, Schema: []exec.Field{}, Validation: "not_performed"}, nil
+		}
 	}
 	ctx, cancel := context.WithDeadline(ctx, e.Deadline())
 	defer cancel()
@@ -253,8 +259,15 @@ func (s *Authoring) PrepareDatasetChart(ctx context.Context, e identity.Envelope
 	}
 	now := time.Now().UTC()
 	timeout := min(time.Duration(blocks.limits.ValidationTimeout), time.Duration(blocks.limits.Execution.Timeout))
-	skeleton := Definition{Source: binding.Source, Context: binding.Context, Topics: []TopicPin{in.Intent.Topic}}
-	r := AuthoringPreparationRecord{ID: id, Actor: e.User(), Session: e.Session(), Target: in.NewBlock, Operation: in.Operation, InputDigest: digest(in), Compiler: AuthoringCompilerForIntent(in.Intent), SourceOperation: "chart-prepare:" + digest([]string{e.Tenant(), e.User(), e.Session(), in.NewBlock, in.Operation}), Binding: binding.Clone(), Topics: clone(skeleton.Topics), References: definitionReferences(skeleton, []topics.Published{p}), Scope: compiled.Scope, Dependencies: compiled.Dependencies, Statement: compiled.SQL, Request: clone(in), CreatedAt: now, Deadline: minTime(now.Add(timeout), e.Deadline()), ExpiresAt: now.Add(min(time.Duration(blocks.limits.EvidenceTTL), 15*time.Minute)), Status: "accepted"}
+	skeleton := Definition{SchemaVersion: CurrentSchemaVersion, SourceDataset: clone(in.Intent.SourceDataset), Source: binding.Source, Context: binding.Context, Topics: []TopicPin{in.Intent.Topic}}
+	if in.Intent.SourceDataset != nil {
+		skeleton.Topics = nil
+	}
+	publications := []topics.Published{p}
+	if in.Intent.SourceDataset != nil {
+		publications = nil
+	}
+	r := AuthoringPreparationRecord{ID: id, Actor: e.User(), Session: e.Session(), Target: in.NewBlock, Operation: in.Operation, InputDigest: digest(in), Compiler: AuthoringCompilerForIntent(in.Intent), SourceOperation: "chart-prepare:" + digest([]string{e.Tenant(), e.User(), e.Session(), in.NewBlock, in.Operation}), Binding: binding.Clone(), Topics: clone(skeleton.Topics), References: definitionReferences(skeleton, publications), Scope: compiled.Scope, Dependencies: compiled.Dependencies, Statement: compiled.SQL, Request: clone(in), CreatedAt: now, Deadline: minTime(now.Add(timeout), e.Deadline()), ExpiresAt: now.Add(min(time.Duration(blocks.limits.EvidenceTTL), 15*time.Minute)), Status: "accepted"}
 	if err := RequireAuthoringPreparation(e, r, true); err != nil {
 		return AuthoringPreparationView{}, err
 	}
@@ -309,17 +322,19 @@ func (s *Service) runAuthoringPreparation(ctx context.Context, e identity.Envelo
 	if err != nil || statement != r.Statement || parameterDigest(parameters) != parameterDigest(resolved.Parameters) {
 		return reject("source_binding_changed")
 	}
-	if reason, err := s.authoringRulesDisposition(ctx, e, r.Topics[0]); err != nil {
-		return r, err
-	} else if reason != "" {
-		return reject("reviewed_rules_changed")
-	}
-	p, err := s.topics.Read(ctx, e, r.Topics[0].Topic, r.Topics[0].Version)
-	if err != nil {
-		return r, err
-	}
-	if !p.State.Active || p.State.Archived || p.Digest != r.Topics[0].Digest || p.State.Version != r.Topics[0].Version {
-		return reject("topic_changed")
+	for _, pin := range r.Topics {
+		if reason, err := s.authoringRulesDisposition(ctx, e, pin); err != nil {
+			return r, err
+		} else if reason != "" {
+			return reject("reviewed_rules_changed")
+		}
+		p, err := s.topics.Read(ctx, e, pin.Topic, pin.Version)
+		if err != nil {
+			return r, err
+		}
+		if !p.State.Active || p.State.Archived || p.Digest != pin.Digest || p.State.Version != pin.Version {
+			return reject("topic_changed")
+		}
 	}
 	if err := RequireAuthoringPreparation(e, r, true); err != nil {
 		return r, err
@@ -376,8 +391,8 @@ func (s *Service) runAuthoringPreparation(ctx context.Context, e identity.Envelo
 	if mapping.Kind == charts.KPI {
 		kind = "kpi"
 	}
-	d := Definition{SchemaVersion: SchemaVersion, Metadata: clone(r.Request.Metadata), Source: r.Binding.Source, Context: r.Binding.Context, Topics: clone(r.Topics), SQL: r.Statement, Parameters: clone(c.Parameters), ExpectedSchema: clone(result.Schema), Outputs: []Output{{ID: "chart", Kind: kind, Mapping: &mapping}}}
-	if len(r.Request.Intent.Filters) > 0 {
+	d := Definition{SourceDataset: clone(r.Request.Intent.SourceDataset), SchemaVersion: SchemaVersion, Metadata: clone(r.Request.Metadata), Source: r.Binding.Source, Context: r.Binding.Context, Topics: clone(r.Topics), SQL: r.Statement, Parameters: clone(c.Parameters), ExpectedSchema: clone(result.Schema), Outputs: []Output{{ID: "chart", Kind: kind, Mapping: &mapping}}}
+	if len(r.Request.Intent.Filters) > 0 || d.SourceDataset != nil {
 		d.SchemaVersion = CurrentSchemaVersion
 		intent := OutputIntent{Enabled: true, DefaultSelected: true, DisplayOrder: 0, Metadata: []OutputMetadata{}}
 		for _, metadata := range d.Metadata {
@@ -547,12 +562,14 @@ func (s *Authoring) CreatePreparedChart(ctx context.Context, e identity.Envelope
 	if _, _, err := blocks.resolveDefinitions(ctx, e, r.Revision.Definition, true); err != nil {
 		return AuthoringBlockView{}, err
 	}
-	if reason, err := blocks.authoringRulesDisposition(ctx, e, r.Topics[0]); err != nil {
-		return AuthoringBlockView{}, err
-	} else if reason != "" {
-		return AuthoringBlockView{}, ErrStale
+	for _, pin := range r.Topics {
+		if reason, err := blocks.authoringRulesDisposition(ctx, e, pin); err != nil {
+			return AuthoringBlockView{}, err
+		} else if reason != "" {
+			return AuthoringBlockView{}, ErrStale
+		}
 	}
-	state, err := blocks.commit(ctx, e, Mutation{ID: r.Target, Topic: r.Topics[0].Topic, Kind: "create", Revision: r.Revision, References: r.References, Preparation: &AuthoringPreparationReference{ID: r.ID, Digest: r.Digest}})
+	state, err := blocks.commit(ctx, e, Mutation{ID: r.Target, Topic: r.Revision.Definition.ParentTopic(), Source: r.Revision.Definition.ParentSource(), Kind: "create", Revision: r.Revision, References: r.References, Preparation: &AuthoringPreparationReference{ID: r.ID, Digest: r.Digest}})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			if latest, readErr := repo.ReadAuthoringPreparation(ctx, e, r.ID); readErr == nil && latest.Status == "consumed" && latest.Digest == r.Digest {

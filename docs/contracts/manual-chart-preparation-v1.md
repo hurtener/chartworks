@@ -191,3 +191,7 @@ deployment, provider call or identity/grant change.
 The additive [version-three field compiler](typed-field-authoring-v3.md) is being
 implemented under the flexible authoring plan. Its optional `fields` branch does
 not rewrite legacy v1/v2 requests, mappings or retained preparation identities.
+
+The [D-107 source origin](typed-field-authoring-v3.md#registered-table-origin)
+extends the same preparation/consume lifecycle to registered tables without topic
+creation. Migration 089 preserves the exclusive parent and compact replay receipt.

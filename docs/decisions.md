@@ -839,3 +839,8 @@ tracked independently in the team-ready reporting plan.
 compiler with explicit typed physical/reviewed fields, multiple measures and
 neutral layouts. Loaded-table lifecycle and Pengui audience management remain
 tracked separately in the active flexible authoring pass.
+
+[D-107](decisions/2026-10-09-source-dataset-blocks.md) adds an exclusive registered
+source origin for topic-independent report blocks. Exact source/context/dataset
+pins, current authority and existing execution fences replace neither reviewed
+semantics nor Pengui policy. Migration 089 retains source custody after cleanup.

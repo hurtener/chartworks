@@ -154,6 +154,8 @@ func (c *Client) ValidateManualChart(ctx context.Context, in ReportAppBlockValid
 }
 
 // Dataset-first authoring uses reviewed semantics and explicit native reads.
+type ReportAppSourceDatasetPin = reporting.SourceDatasetPin
+
 type ReportAppDatasetRequest = reporting.AuthoringDatasetRequest
 type ReportAppDatasetView = reporting.AuthoringDatasetView
 type ReportAppFieldSelection = reporting.AuthoringFieldSelection

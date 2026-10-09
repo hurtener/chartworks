@@ -47,7 +47,7 @@ func (s *Runs) pinnedPlan(ctx context.Context, e identity.Envelope, m RunManifes
 	if exec.Hash(binding) != exec.Hash(m.Binding) {
 		return exec.Plan{}, ErrStale
 	}
-	scope, err := validationScope(binding, definitions)
+	scope, err := definitionValidationScope(binding, d, definitions)
 	if err != nil {
 		return exec.Plan{}, err
 	}

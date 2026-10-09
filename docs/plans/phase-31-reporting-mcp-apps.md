@@ -4,6 +4,10 @@ Status: in_progress. Owner: internal/mcpserver, internal/reporting, web/report-v
 
 ## Authority and design
 
+[D-107](../decisions/2026-10-09-source-dataset-blocks.md) adds an exact registered
+source/dataset origin without topic creation. Migration 089 retains native custody;
+the active flexible-authoring pass still owns discovery and host qualification.
+
 The active [flexible authoring pass](flexible-report-authoring.md) owns the shared
 schema-driven picker for both transports. D-106 preserves explicit preparation
 and retained custody. Compiled-browser controls and real host acceptance are

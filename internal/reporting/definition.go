@@ -113,6 +113,9 @@ func ExecutionDigest(d Definition) string {
 		Parameters []Parameter
 		Schema     []exec.Field
 	}{CanonicalizationVersion, d.Source, d.Context, d.Topics, d.Rules, d.Template, d.SQL, d.Parameters, d.ExpectedSchema})
+	if d.SourceDataset != nil {
+		base = digest([]any{"block-source-dataset-v1", base, d.SourceDataset})
+	}
 	if len(d.Templates) > 0 {
 		base = digest([]any{"block-execution-template-selections-v1", base, d.Templates})
 	}
@@ -164,7 +167,7 @@ func templateSelections(d Definition) ([]TemplateSelection, error) {
 }
 
 func validateDefinition(ctx context.Context, d Definition, limits config.Reporting, captured bool) error {
-	if ctx == nil || limits.Validate() != nil || (d.SchemaVersion != SchemaVersion && d.SchemaVersion != CurrentSchemaVersion) || !metadataValid(d.Metadata, limits) || !identity.Identifier(d.Source) || !identity.Identifier(d.Context) || len(d.Topics) == 0 || len(d.Topics) > 8 || strings.TrimSpace(d.SQL) == "" || !text(d.SQL, limits.MaxSQLBytes) || len(d.ExpectedSchema) == 0 || len(d.ExpectedSchema) > limits.MaxSchemaColumns || len(d.Outputs) == 0 || len(d.Outputs) > limits.MaxOutputs {
+	if ctx == nil || limits.Validate() != nil || (d.SchemaVersion != SchemaVersion && d.SchemaVersion != CurrentSchemaVersion) || !metadataValid(d.Metadata, limits) || !identity.Identifier(d.Source) || !identity.Identifier(d.Context) || !sourceDatasetDefinitionValid(d) || strings.TrimSpace(d.SQL) == "" || !text(d.SQL, limits.MaxSQLBytes) || len(d.ExpectedSchema) == 0 || len(d.ExpectedSchema) > limits.MaxSchemaColumns || len(d.Outputs) == 0 || len(d.Outputs) > limits.MaxOutputs {
 		return ErrInvalid
 	}
 	encoded, err := json.Marshal(d)

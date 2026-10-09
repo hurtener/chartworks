@@ -160,6 +160,9 @@ func compositionDefinitionsTx(ctx context.Context, tx pgx.Tx, e identity.Envelop
 		}
 		current.RuleAbsence = append(current.RuleAbsence, absent...)
 		current.Topics = append(current.Topics, block.Revision.Definition.Topics...)
+		if source := block.Revision.Definition.ParentSource(); source != "" {
+			current.Source = source
+		}
 		current.Watch = append(current.Watch, block.Validation.Dependencies...)
 	}
 	if len(m.Groups) != 0 {

@@ -60,12 +60,12 @@ func (d *DB) DiscoverReportWriteDependencies(ctx context.Context, e identity.Env
 				var b reporting.DependencyBlock
 				// Private pins remain private even after later publication. Native
 				// actor and digest custody applies before any metadata is returned.
-				if err := tx.QueryRow(ctx, `SELECT h.block_id,h.topic_id,r.revision,r.digest,$4::boolean
+				if err := tx.QueryRow(ctx, `SELECT h.block_id,COALESCE(h.topic_id,''),COALESCE(h.source_parent,''),r.revision,r.digest,$4::boolean
  FROM chartworks.block_heads h JOIN chartworks.block_revisions r USING(tenant_id,block_id)
  LEFT JOIN chartworks.block_publications p USING(tenant_id,block_id,revision)
  WHERE h.tenant_id=$1 AND h.block_id=$2 AND NOT h.archived
  AND r.revision=CASE WHEN $3::bigint>0 THEN $3 ELSE h.published_revision END
- AND (($4::boolean AND $3>0 AND r.actor_id=$5 AND r.digest=$6) OR (NOT $4::boolean AND p.revision IS NOT NULL AND $6=''))`, e.Tenant(), pin.Block, pin.Revision, private, e.User(), pin.Digest).Scan(&b.ID, &b.Topic, &b.Revision, &b.Digest, &b.Private); err != nil {
+ AND (($4::boolean AND $3>0 AND r.actor_id=$5 AND r.digest=$6) OR (NOT $4::boolean AND p.revision IS NOT NULL AND $6=''))`, e.Tenant(), pin.Block, pin.Revision, private, e.User(), pin.Digest).Scan(&b.ID, &b.Topic, &b.Source, &b.Revision, &b.Digest, &b.Private); err != nil {
 					return err
 				}
 				if !slices.Contains(out.Blocks, b) {
@@ -89,7 +89,14 @@ func (d *DB) DiscoverReportWriteDependencies(ctx context.Context, e identity.Env
 				return store.ErrInvalid
 			}
 			out.References = append(out.References, refs...)
-			out.References = append(out.References, reporting.ResourceReference{Kind: "block", Permission: "read", ID: b.ID}, reporting.ResourceReference{Kind: "topic", Permission: "read", ID: b.Topic})
+			out.References = append(out.References, reporting.ResourceReference{Kind: "block", Permission: "read", ID: b.ID})
+			if b.Topic != "" {
+				out.References = append(out.References, reporting.ResourceReference{Kind: "topic", Permission: "read", ID: b.Topic})
+			} else if b.Source != "" {
+				out.References = append(out.References, reporting.ResourceReference{Kind: "source", Permission: "read", ID: b.Source})
+			} else {
+				return store.ErrInvalid
+			}
 			if b.Private {
 				out.References = append(out.References, reporting.ResourceReference{Kind: "block", Permission: "preview", ID: b.ID})
 			}

@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/store"
@@ -26,31 +27,58 @@ func (d *DB) DiscoverAuthoringDataDependencies(ctx context.Context, e identity.E
 		return out, err
 	}
 	defer cancel()
-	out = reporting.DataDependencyManifest{Version: "report-data-dependencies-v1", Topic: in.Topic, Dataset: in.Dataset, NewBlock: in.NewBlock, Operation: in.Operation, References: []reporting.ResourceReference{}, QueryReferences: []reporting.ResourceReference{}}
+	out = reporting.DataDependencyManifest{Version: "report-data-dependencies-v1", SourceDataset: in.SourceDataset, Topic: in.Topic, Dataset: in.Dataset, NewBlock: in.NewBlock, Operation: in.Operation, References: []reporting.ResourceReference{}, QueryReferences: []reporting.ResourceReference{}}
 	err = d.transactionOptions(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly, IsoLevel: pgx.RepeatableRead}, func(ctx context.Context, tx pgx.Tx) error {
 		if in.NewBlock != "" {
-			var raw []byte
+			var raw, origin []byte
 			var source, partition string
 			// Retention moves consumed custody to its existing compact receipt.
 			// Both branches bind tenant, actor, native session and exact target
 			// before projecting coordinates. Neither branch resurrects an attempt.
-			err := tx.QueryRow(ctx, `SELECT preparation_id,operation_id,topic,version,digest,dataset,source,partition,refs FROM (
- SELECT preparation_id,operation_id,record#>>'{topics,0,topic}' topic,record#>>'{topics,0,version}' version,record#>>'{topics,0,digest}' digest,record#>>'{request,intent,dataset}' dataset,record#>>'{binding,source}' source,record#>>'{binding,context}' partition,record->'references' refs
+			err := tx.QueryRow(ctx, `SELECT preparation_id,operation_id,COALESCE(topic,''),COALESCE(version,''),COALESCE(digest,''),dataset,source,partition,refs,origin FROM (
+ SELECT preparation_id,operation_id,record#>>'{topics,0,topic}' topic,record#>>'{topics,0,version}' version,record#>>'{topics,0,digest}' digest,record#>>'{request,intent,dataset}' dataset,record#>>'{binding,source}' source,record#>>'{binding,context}' partition,record->'references' refs,record#>'{request,intent,source_dataset}' origin
  FROM chartworks.authoring_preparations WHERE tenant_id=$1 AND actor_id=$2 AND session_id=$3 AND target_id=$4 AND (($5<>'' AND preparation_id=$5) OR ($6<>'' AND operation_id=$6))
  UNION ALL
- SELECT preparation_id,operation_id,record#>>'{topic,topic}',record#>>'{topic,version}',record#>>'{topic,digest}',record->>'dataset',record->>'source',record->>'context',record->'references'
+ SELECT preparation_id,operation_id,record#>>'{topic,topic}',record#>>'{topic,version}',record#>>'{topic,digest}',record->>'dataset',record->>'source',record->>'context',record->'references',record->'source_dataset'
  FROM chartworks.authoring_preparation_consumed WHERE tenant_id=$1 AND actor_id=$2 AND session_id=$3 AND target_id=$4 AND (($5<>'' AND preparation_id=$5) OR ($6<>'' AND operation_id=$6))
- ) custody LIMIT 1`, e.Tenant(), e.User(), e.Session(), in.NewBlock, in.Preparation, in.Operation).Scan(&out.Preparation, &out.Operation, &out.Topic.Topic, &out.Topic.Version, &out.Topic.Digest, &out.Dataset, &source, &partition, &raw)
+ ) custody LIMIT 1`, e.Tenant(), e.User(), e.Session(), in.NewBlock, in.Preparation, in.Operation).Scan(&out.Preparation, &out.Operation, &out.Topic.Topic, &out.Topic.Version, &out.Topic.Digest, &out.Dataset, &source, &partition, &raw, &origin)
 			if err == nil {
+				out.SourceDataset = nil
+				if len(origin) > 0 && json.Unmarshal(origin, &out.SourceDataset) != nil {
+					return store.ErrInvalid
+				}
 				if json.Unmarshal(raw, &out.References) != nil || len(out.References) < 1 || len(out.References) > 128 {
 					return store.ErrInvalid
 				}
 				out.QueryReferences = dataQueryReferences(source, partition, out.Dataset)
 				return nil
 			}
-			if !errors.Is(err, pgx.ErrNoRows) || in.Topic.Topic == "" {
+			if !errors.Is(err, pgx.ErrNoRows) || in.Topic.Topic == "" && in.SourceDataset == nil {
 				return err
 			}
+		}
+		if pin := in.SourceDataset; pin != nil {
+			var revision int64
+			var relationJSON []byte
+			err := tx.QueryRow(ctx, `SELECT r.revision,relation
+ FROM chartworks.sources s JOIN chartworks.source_revisions r
+ ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision)
+ CROSS JOIN LATERAL jsonb_array_elements(r.binding->'relations') relation
+ WHERE s.tenant_id=$1 AND s.source_id=$2 AND NOT s.deleted AND r.context_id=$3
+ AND relation->>'id'=$4`, e.Tenant(), pin.Source, pin.Context, pin.Dataset).Scan(&revision, &relationJSON)
+			if err != nil {
+				return err
+			}
+			var relation exec.Relation
+			if json.Unmarshal(relationJSON, &relation) != nil {
+				return store.ErrInvalid
+			}
+			if revision != pin.SourceRevision || exec.Hash(relation) != pin.SchemaDigest {
+				return reporting.ErrStale
+			}
+			out.References = []reporting.ResourceReference{{Kind: "source", Permission: "read", ID: pin.Source}, {Kind: "dataset", Permission: "query", ID: pin.Dataset}, {Kind: "execution_context", Permission: "use", ID: pin.Context}}
+			out.QueryReferences = dataQueryReferences(pin.Source, pin.Context, pin.Dataset)
+			return nil
 		}
 		var archived, active bool
 		err := tx.QueryRow(ctx, `SELECT v.version_id,v.digest,h.archived,h.active_version=v.version_id

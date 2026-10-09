@@ -63,6 +63,7 @@ type AuthoringBlockValidation struct {
 // AuthoringBlockMetadata is an explicit safe projection, not an embedded View
 // that could acquire new private output payloads through future native changes.
 type AuthoringBlockMetadata struct {
+	SourceDataset      *SourceDatasetPin         `json:"source_dataset,omitempty"`
 	AmountCompleteness []AmountDeclaration       `json:"amount_completeness,omitempty"`
 	SchemaVersion      int                       `json:"schema_version"`
 	QueryLimits        *QueryLimits              `json:"query_limits,omitempty"`
@@ -140,6 +141,7 @@ func (s *Authoring) blockService() (*Service, error) {
 func authoringBlockView(v View, limits config.Reporting) AuthoringBlockView {
 	v = clone(v)
 	metadata := AuthoringBlockMetadata{AmountCompleteness: v.AmountCompleteness, SchemaVersion: v.SchemaVersion, QueryLimits: v.QueryLimits, ResultPolicy: v.ResultPolicy, State: v.State, Revision: v.Revision, RevisionID: v.RevisionID, Digest: v.Digest, ExecutionDigest: v.ExecutionDigest, Metadata: v.Metadata, Source: v.Source, Context: v.Context, Topics: v.Topics, Rules: v.Rules, Parameters: v.Parameters, ExpectedSchema: v.ExpectedSchema, Outputs: []AuthoringBlockOutput{}, Actor: v.Actor, CreatedAt: v.CreatedAt, Private: v.Private, Trust: v.Trust}
+	metadata.SourceDataset = v.SourceDataset
 	if evidence := v.Evidence; evidence != nil {
 		safe := authoringBlockEvidence(*evidence)
 		metadata.Evidence = &safe
@@ -425,7 +427,7 @@ func (s *Authoring) copyBlockDefinition(ctx context.Context, e identity.Envelope
 	if err != nil {
 		return AuthoringBlockView{}, err
 	}
-	if err := RequireParent(e, base.State.Topic, Write, true); err != nil {
+	if err := RequireOrigin(e, base.State.Topic, base.State.Source, Write, true); err != nil {
 		return AuthoringBlockView{}, err
 	}
 	if err := RequireReferences(e, Write, base.References); err != nil {
@@ -450,7 +452,7 @@ func (s *Authoring) copyBlockDefinition(ctx context.Context, e identity.Envelope
 	if err != nil {
 		return AuthoringBlockView{}, err
 	}
-	state, err := blocks.commit(ctx, e, Mutation{ID: in.NewBlock, Topic: d.Topics[0].Topic, Kind: "create", Revision: &r, References: refs})
+	state, err := blocks.commit(ctx, e, Mutation{ID: in.NewBlock, Topic: d.ParentTopic(), Source: d.ParentSource(), Kind: "create", Revision: &r, References: refs})
 	if err != nil {
 		return AuthoringBlockView{}, err
 	}

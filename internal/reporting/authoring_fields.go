@@ -302,7 +302,11 @@ func compileAuthoringFields(in AuthoringDatasetIntent, p topics.Published, datas
 		alias := "group_" + strconv.Itoa(i+1)
 		projection = append(projection, expression+" AS "+pgx.Identifier{alias}.Sanitize())
 		grouping = append(grouping, expression)
-		out.Columns = append(out.Columns, charts.Column{ID: alias, Name: alias, DisplayLabel: label, Role: role, Grain: d.Grain, Provenance: charts.Provenance{Version: 1, Source: binding.Source, SourceRevision: binding.Revision, Topic: in.Topic.Topic, TopicVersion: in.Topic.Version, SemanticID: d.Field}})
+		provenance := charts.Provenance{Version: 1, Source: binding.Source, SourceRevision: binding.Revision}
+		if in.Topic.Topic != "" {
+			provenance.Topic, provenance.TopicVersion, provenance.SemanticID = in.Topic.Topic, in.Topic.Version, d.Field
+		}
+		out.Columns = append(out.Columns, charts.Column{ID: alias, Name: alias, DisplayLabel: label, Role: role, Grain: d.Grain, Provenance: provenance})
 	}
 	seen = map[string]bool{}
 	for i, m := range f.Measures {
@@ -366,7 +370,7 @@ func compileAuthoringFields(in AuthoringDatasetIntent, p topics.Published, datas
 		provenance := charts.Provenance{Version: 1, Source: binding.Source, SourceRevision: binding.Revision}
 		// count(*) is an explicit source aggregate, not a reviewed semantic field.
 		// Inventing a semantic ID here would misrepresent its published meaning.
-		if m.Kind != "count" {
+		if m.Kind != "count" && in.Topic.Topic != "" {
 			provenance.Topic, provenance.TopicVersion, provenance.SemanticID = in.Topic.Topic, in.Topic.Version, semanticID
 		}
 		out.Columns = append(out.Columns, charts.Column{ID: alias, Name: alias, DisplayLabel: label, Role: "measure", Aggregation: aggregation, Format: charts.Format{Unit: unit}, Provenance: provenance})

@@ -17,19 +17,21 @@ import (
 
 const AuthoringCompilerVersion = "reviewed-dataset-postgres-v1"
 
-// Logical reviewed selections only; no physical names, SQL, types or rows.
+// Stable field selections and one exact origin; no SQL, client schema or rows.
 type AuthoringDatasetIntent struct {
-	Fields     *AuthoringFieldSelection `json:"fields,omitempty"`
-	Filters    []AuthoringDatasetFilter `json:"filters,omitempty"`
-	Topic      TopicPin                 `json:"topic"`
-	Dataset    string                   `json:"dataset"`
-	Dimensions []string                 `json:"dimensions"`
-	Measure    string                   `json:"measure"`
-	Mapping    AuthoringChartMapping    `json:"mapping"`
+	SourceDataset *SourceDatasetPin        `json:"source_dataset,omitempty"`
+	Fields        *AuthoringFieldSelection `json:"fields,omitempty"`
+	Filters       []AuthoringDatasetFilter `json:"filters,omitempty"`
+	Topic         TopicPin                 `json:"topic,omitempty"`
+	Dataset       string                   `json:"dataset"`
+	Dimensions    []string                 `json:"dimensions"`
+	Measure       string                   `json:"measure"`
+	Mapping       AuthoringChartMapping    `json:"mapping"`
 }
 type AuthoringDatasetRequest struct {
-	Topic   TopicPin `json:"topic"`
-	Dataset string   `json:"dataset"`
+	SourceDataset *SourceDatasetPin `json:"source_dataset,omitempty"`
+	Topic         TopicPin          `json:"topic,omitempty"`
+	Dataset       string            `json:"dataset"`
 }
 type AuthoringSemanticField struct {
 	ID          string `json:"id"`
@@ -42,6 +44,7 @@ type AuthoringSemanticField struct {
 	Reason      string `json:"reason,omitempty"`
 }
 type AuthoringDatasetView struct {
+	SourceDataset      *SourceDatasetPin           `json:"source_dataset,omitempty"`
 	Fields             *AuthoringFieldCatalog      `json:"fields,omitempty"`
 	FilterCompiler     string                      `json:"filter_compiler,omitempty"`
 	FilterCapabilities []AuthoringFilterCapability `json:"filter_capabilities,omitempty"`
@@ -115,6 +118,9 @@ func datasetUnsupported(p topics.Published) string {
 func (s *Authoring) datasetPublication(ctx context.Context, e identity.Envelope, in AuthoringDatasetRequest) (*Service, topics.Published, topics.Dataset, error) {
 	var p topics.Published
 	var dataset topics.Dataset
+	if in.SourceDataset != nil {
+		return s.sourceDataset(ctx, e, in)
+	}
 	if ctx == nil || !identity.Identifier(in.Topic.Topic) || !identity.Identifier(in.Topic.Version) || !hashValid(in.Topic.Digest) || !identity.Identifier(in.Dataset) {
 		return nil, p, dataset, ErrInvalid
 	}
@@ -155,10 +161,10 @@ func (s *Authoring) Dataset(ctx context.Context, e identity.Envelope, in Authori
 	if err != nil {
 		return AuthoringDatasetView{}, err
 	}
-	out := AuthoringDatasetView{Compiler: AuthoringCompilerVersion, Topic: in.Topic, Dataset: d.ID, Source: d.Source.Source, Context: d.Source.Context, SourceRevision: d.Source.SourceRevision, Dimensions: []AuthoringSemanticField{}, Measures: []AuthoringSemanticField{}, ChartKinds: manualChartKinds(), Limits: []string{"PostgreSQL only; zero to two direct dimensions and one reviewed measure.", "The v1 branch is unfiltered. The v2 branch supports only the advertised required-default filters; group policies, calendar bucketing, joins, arbitrary KPI expressions, active rules and amount-completeness policies remain unsupported.", "Prepare reads actual schema. Create remains private and unvalidated; Validate is a separate explicit read."}}
+	out := AuthoringDatasetView{SourceDataset: clone(in.SourceDataset), Compiler: AuthoringCompilerVersion, Topic: in.Topic, Dataset: d.ID, Source: d.Source.Source, Context: d.Source.Context, SourceRevision: d.Source.SourceRevision, Dimensions: []AuthoringSemanticField{}, Measures: []AuthoringSemanticField{}, ChartKinds: manualChartKinds(), Limits: []string{"PostgreSQL field selection supports multiple groupings and measures within the advertised column and result budgets.", "Each chart uses one dataset. Only advertised field, aggregation, calendar and filter capabilities are supported; joins and arbitrary expressions are not inferred.", "Physical columns do not imply reviewed meaning. Reviewed metrics retain their definitions and policy restrictions.", "Prepare reads actual schema. Create remains private and unvalidated; Validate is a separate explicit read."}}
 	var filterBinding exec.Binding
 	out.Reason = datasetUnsupported(p)
-	if out.Reason == "" {
+	if out.Reason == "" && in.SourceDataset == nil {
 		out.Reason, err = blocks.authoringRulesDisposition(ctx, e, in.Topic)
 	}
 	if err != nil {
@@ -215,6 +221,14 @@ type authoringCompiled struct {
 
 func compileAuthoringDataset(in AuthoringDatasetIntent, p topics.Published, dataset topics.Dataset, binding exec.Binding) (authoringCompiled, error) {
 	var out authoringCompiled
+	if in.SourceDataset != nil {
+		if in.Topic != (TopicPin{}) || in.Fields == nil || in.SourceDataset.Dataset != in.Dataset {
+			return out, ErrInvalid
+		}
+		if _, err := sourceDatasetRelation(*in.SourceDataset, binding); err != nil {
+			return out, err
+		}
+	}
 	if binding.Dialect != "postgres" {
 		return out, unsupportedPreparation("dialect_unsupported")
 	}

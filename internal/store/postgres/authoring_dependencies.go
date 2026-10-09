@@ -47,12 +47,12 @@ func reportDependenciesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, i
 	err = func() error {
 		if in.Kind == "block" {
 			var b reporting.DependencyBlock
-			err := tx.QueryRow(ctx, `SELECT h.block_id,h.topic_id,r.revision,r.digest,p.revision IS NULL
+			err := tx.QueryRow(ctx, `SELECT h.block_id,COALESCE(h.topic_id,''),COALESCE(h.source_parent,''),r.revision,r.digest,p.revision IS NULL
  FROM chartworks.block_heads h JOIN chartworks.block_revisions r USING(tenant_id,block_id)
  LEFT JOIN chartworks.block_publications p USING(tenant_id,block_id,revision)
  WHERE h.tenant_id=$1 AND h.block_id=$2 AND NOT h.archived
  AND r.revision=CASE WHEN $3::bigint>0 THEN $3 WHEN $4='draft' THEN h.draft_revision ELSE h.published_revision END
- AND (p.revision IS NOT NULL OR ($5::boolean AND r.actor_id=$6))`, e.Tenant(), in.ID, in.Revision, in.Stage, preview, e.User()).Scan(&b.ID, &b.Topic, &b.Revision, &b.Digest, &b.Private)
+ AND (p.revision IS NOT NULL OR ($5::boolean AND r.actor_id=$6))`, e.Tenant(), in.ID, in.Revision, in.Stage, preview, e.User()).Scan(&b.ID, &b.Topic, &b.Source, &b.Revision, &b.Digest, &b.Private)
 			if err != nil {
 				return err
 			}
@@ -76,7 +76,7 @@ func reportDependenciesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, i
 			// A latest-publication pin follows the native current head. Include
 			// both stored report requirements and the newly selected block's
 			// requirements; old coordinates never stand in for current ones.
-			rows, err := tx.Query(ctx, `SELECT DISTINCT b.block_id,h.topic_id,b.selected_revision,r.digest,b.private
+			rows, err := tx.Query(ctx, `SELECT DISTINCT b.block_id,COALESCE(h.topic_id,''),COALESCE(h.source_parent,''),b.selected_revision,r.digest,b.private
  FROM (SELECT block_id,COALESCE(pinned_revision,h.published_revision) selected_revision,false private
  FROM chartworks.document_block_refs b JOIN chartworks.block_heads h USING(tenant_id,block_id)
  WHERE b.tenant_id=$1 AND b.kind='report' AND b.document_id=$2 AND b.revision=$3
@@ -89,7 +89,7 @@ func reportDependenciesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, i
 				return err
 			}
 			out.Blocks, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (b reporting.DependencyBlock, err error) {
-				err = row.Scan(&b.ID, &b.Topic, &b.Revision, &b.Digest, &b.Private)
+				err = row.Scan(&b.ID, &b.Topic, &b.Source, &b.Revision, &b.Digest, &b.Private)
 				return
 			})
 			if err != nil || len(out.Blocks) > 128 {
@@ -122,7 +122,14 @@ func reportDependenciesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, i
 				return store.ErrInvalid
 			}
 			out.References = append(out.References, refs...)
-			out.References = append(out.References, reporting.ResourceReference{Kind: "block", Permission: "read", ID: b.ID}, reporting.ResourceReference{Kind: "topic", Permission: "read", ID: b.Topic})
+			out.References = append(out.References, reporting.ResourceReference{Kind: "block", Permission: "read", ID: b.ID})
+			if b.Topic != "" {
+				out.References = append(out.References, reporting.ResourceReference{Kind: "topic", Permission: "read", ID: b.Topic})
+			} else if b.Source != "" {
+				out.References = append(out.References, reporting.ResourceReference{Kind: "source", Permission: "read", ID: b.Source})
+			} else {
+				return store.ErrInvalid
+			}
 			if b.Private {
 				out.References = append(out.References, reporting.ResourceReference{Kind: "block", Permission: "preview", ID: b.ID})
 			}

@@ -8,7 +8,7 @@ import (
 
 func authoringPrepareEntries(s *reporting.Authoring) []runtimeEndpoint {
 	out := []runtimeEndpoint{
-		authoringEntry("dataset", "topics.read", "retained_metadata_read", "Read typed dataset columns and reviewed fields with explicit compiler capabilities", s.Dataset),
+		authoringEntry("dataset", "sources.read", "retained_metadata_read", "Read typed dataset columns and reviewed fields with explicit compiler capabilities", s.Dataset),
 		authoringEntry("prepare_chart", "reporting.validate", "bounded_source_read_private_preparation", "Prepare a deterministic PostgreSQL chart using actual schema and immutable operation custody", s.PrepareDatasetChart),
 		authoringEntry("preparation", "reporting.write", "retained_metadata_read", "Inspect exact private preparation metadata without source or model work", s.Preparation),
 		authoringEntry("create_prepared", "reporting.write", "private_block_preparation_consume", "Consume private preparation into an unvalidated native block draft", s.CreatePreparedChart),
@@ -16,7 +16,7 @@ func authoringPrepareEntries(s *reporting.Authoring) []runtimeEndpoint {
 	}
 	out[1].definition.Errors = append(out[1].definition.Errors, api.ErrorResponse{Status: 409, Code: "preparation_contract_required"}, api.ErrorResponse{Status: 410, Code: "preparation_operation_expired"})
 	out[0].definition.ResourceLoader = "verified exact topic/source/dataset/context read reach; retained metadata only; unsupported policies explicit"
-	out[1].definition.ResourceLoader = "charts.bind; exact tenant read/write; new block read/write/preview/validate; topic write and every dependency; sources.query source/dataset/context; actor/session/operation custody before native planning/read"
+	out[1].definition.ResourceLoader = "charts.bind; exact tenant read/write; new block read/write/preview/validate; real topic write or source read and every dependency; sources.query source/dataset/context; actor/session/operation custody before native planning/read"
 	out[2].definition.ResourceLoader = "original actor/session/tenant preparation and exact target/dependency reach; retained metadata only"
 	out[3].definition.ResourceLoader = "original actor/session/tenant/target preparation digest; current source query and target/dependency authority; atomic source/topic/rule-absence fences; no validation/publication"
 	out[4].definition.ResourceLoader = "original actor/session/tenant preparation; target validation and source query reach; existing attempt inspection/control only; no query restart"

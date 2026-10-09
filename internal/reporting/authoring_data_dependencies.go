@@ -8,20 +8,22 @@ import (
 )
 
 // DataDependencyRequest selects a retained publication or original preparation.
-// A prepare retry supplies its original operation and reviewed topic selection;
+// A prepare retry supplies its original operation and exact origin selection;
 // native custody, when present, takes precedence over that proposed selection.
 type DataDependencyRequest struct {
-	Topic       TopicPin `json:"topic"`
-	Dataset     string   `json:"dataset"`
-	NewBlock    string   `json:"new_block"`
-	Preparation string   `json:"preparation"`
-	Operation   string   `json:"operation"`
+	SourceDataset *SourceDatasetPin `json:"source_dataset,omitempty"`
+	Topic         TopicPin          `json:"topic,omitempty"`
+	Dataset       string            `json:"dataset"`
+	NewBlock      string            `json:"new_block"`
+	Preparation   string            `json:"preparation"`
+	Operation     string            `json:"operation"`
 }
 
 // DataDependencyManifest contains identifiers only. QueryReferences identify the
 // selected dataset's execution partition; References includes every dependency
 // of the whole publication, including datasets not selected for this chart.
 type DataDependencyManifest struct {
+	SourceDataset   *SourceDatasetPin   `json:"source_dataset,omitempty"`
 	Version         string              `json:"version"`
 	Topic           TopicPin            `json:"topic"`
 	Dataset         string              `json:"dataset"`
@@ -40,7 +42,11 @@ func RequireDataDependencyDiscovery(e identity.Envelope, in DataDependencyReques
 	if err := requireAuthoringEnvelope(e); err != nil {
 		return err
 	}
-	if in.Topic.Topic != "" {
+	if in.SourceDataset != nil {
+		if !in.SourceDataset.valid() || in.Topic != (TopicPin{}) || in.Dataset != in.SourceDataset.Dataset {
+			return ErrInvalid
+		}
+	} else if in.Topic.Topic != "" {
 		if !identity.Identifier(in.Topic.Topic) || (in.Topic.Version == "") != (in.Topic.Digest == "") || in.Topic.Version != "" && (!identity.Identifier(in.Topic.Version) || !hashValid(in.Topic.Digest)) || in.Dataset != "" && !identity.Identifier(in.Dataset) {
 			return ErrInvalid
 		}
@@ -48,12 +54,18 @@ func RequireDataDependencyDiscovery(e identity.Envelope, in DataDependencyReques
 		return ErrInvalid
 	}
 	if in.NewBlock == "" {
-		if in.Topic.Topic == "" || in.Preparation != "" || in.Operation != "" {
+		if (in.Topic.Topic == "" && in.SourceDataset == nil) || in.Preparation != "" || in.Operation != "" {
 			return ErrInvalid
+		}
+		if in.SourceDataset != nil {
+			return access.Require(e, DependencyDiscoveryAction, access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: in.SourceDataset.Source})
 		}
 		return access.Require(e, DependencyDiscoveryAction, access.Resource{Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: in.Topic.Topic})
 	}
 	if !identity.Identifier(in.NewBlock) || (in.Preparation == "") == (in.Operation == "") || in.Preparation != "" && !identity.Identifier(in.Preparation) || in.Operation != "" && !identity.Identifier(in.Operation) || in.Topic.Topic != "" && (in.Preparation != "" || in.Topic.Version == "" || in.Dataset == "") {
+		return ErrInvalid
+	}
+	if in.SourceDataset != nil && in.Preparation != "" {
 		return ErrInvalid
 	}
 	for _, permission := range []string{"read", "write"} {
@@ -66,6 +78,9 @@ func RequireDataDependencyDiscovery(e identity.Envelope, in DataDependencyReques
 	}
 	if in.Topic.Topic != "" {
 		return access.Require(e, DependencyDiscoveryAction, access.Resource{Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: in.Topic.Topic})
+	}
+	if in.SourceDataset != nil {
+		return access.Require(e, DependencyDiscoveryAction, access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: in.SourceDataset.Source})
 	}
 	return nil
 }

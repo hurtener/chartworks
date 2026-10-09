@@ -87,3 +87,20 @@ legacy no-measure filtering and horizontal picker clipping. No independent
 reviewer was used. Full host acceptance, topic-independent tables/uploads and
 Pengui sharing remain unfinished; FA02–FA08 stay open until their full evidence
 and lifecycle requirements are met.
+
+
+## Registered-source lifecycle checkpoint
+
+D-107 and migration 089 add topic-independent source/dataset pins to the existing
+block lifecycle and metadata dependency carrier. `TestReportAppSourceDatasetNative`
+uses actual PostgreSQL, schema-checked HTTP and an actor with no topic permissions. It covers metadata
+reads without execution, changed origin rejection, source/dataset/context revocation,
+private actor custody, exact retained aggregate values, validation/publication,
+frozen execution, report composition, private amendment and cleanup/replay.
+Pengui's closed authority and iframe request parsers accept the explicit source
+origin and typed field carrier; mapping/copy uses source read without source write.
+These tests do not establish the table picker or a signed-in host journey.
+
+FA03 still requires usable paged table/upload discovery through the existing
+public source services. Physical-field filters, audience management and the final
+visual/live acceptance remain open. No criterion is closed by this checkpoint.

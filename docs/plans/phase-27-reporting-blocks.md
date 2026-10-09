@@ -4,6 +4,10 @@ Status: in_progress. Owner: internal/reporting. Hard dependencies: 15, 20, 21.
 
 ## Authority and design
 
+[D-107](../decisions/2026-10-09-source-dataset-blocks.md) adds an exact registered
+source/dataset origin without topic creation. Migration 089 retains native custody;
+the active flexible-authoring pass still owns discovery and host qualification.
+
 The active [flexible authoring pass](flexible-report-authoring.md), D-106 and the
 [typed-field contract](../contracts/typed-field-authoring-v3.md) extend manual
 preparation with physical fields and multiple reviewed measures. Existing block

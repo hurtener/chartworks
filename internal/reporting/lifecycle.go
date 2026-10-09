@@ -54,7 +54,7 @@ func (s *Service) Publish(ctx context.Context, e identity.Envelope, id string, i
 		return State{}, err
 	}
 	v := snapshot.Validation
-	return s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "publish", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, References: snapshotsReferences(snapshot), Evidence: in.Evidence, Watch: v.Dependencies, Topics: v.Topics, CheckCurrent: true})
+	return s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "publish", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, References: snapshotsReferences(snapshot), Evidence: in.Evidence, Watch: v.Dependencies, Topics: v.Topics, CheckCurrent: true})
 }
 
 // Certify records an immutable attestation for one exact published revision and
@@ -94,7 +94,7 @@ func (s *Service) Certify(ctx context.Context, e identity.Envelope, id string, i
 	}
 	v := snapshot.Validation
 	attestation := Attestation{ID: attestationID, Revision: in.Revision, Evidence: in.Evidence, Actor: e.User(), Note: in.Note, CreatedAt: time.Now().UTC(), EvidenceExpiresAt: v.Evidence.ExpiresAt, DependencyDigest: v.Evidence.DependencyDigest, PeriodFindings: clone(findings), PeriodReviews: clone(in.PeriodReviews)}
-	_, err = s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "certify", ExpectedVersion: in.ExpectedVersion, TargetRevision: in.Revision, TargetDigest: snapshot.Revision.Digest, Note: in.Note, References: snapshotsReferences(snapshot), Evidence: in.Evidence, Attestation: &attestation, Watch: v.Dependencies, Topics: v.Topics, CheckCurrent: true})
+	_, err = s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "certify", ExpectedVersion: in.ExpectedVersion, TargetRevision: in.Revision, TargetDigest: snapshot.Revision.Digest, Note: in.Note, References: snapshotsReferences(snapshot), Evidence: in.Evidence, Attestation: &attestation, Watch: v.Dependencies, Topics: v.Topics, CheckCurrent: true})
 	if err != nil {
 		return Attestation{}, err
 	}
@@ -123,7 +123,7 @@ func (s *Service) Withdraw(ctx context.Context, e identity.Envelope, id string, 
 		return Withdrawal{}, store.ErrConflict
 	}
 	withdrawal := Withdrawal{Attestation: in.Attestation, Actor: e.User(), Note: in.Note, CreatedAt: time.Now().UTC()}
-	_, err = s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "withdraw", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, Note: in.Note, References: snapshotsReferences(snapshot), Withdrawal: &withdrawal})
+	_, err = s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "withdraw", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, Note: in.Note, References: snapshotsReferences(snapshot), Withdrawal: &withdrawal})
 	if err != nil {
 		return Withdrawal{}, err
 	}
@@ -150,7 +150,7 @@ func (s *Service) Reject(ctx context.Context, e identity.Envelope, id string, in
 	if snapshot.State.Archived || snapshot.PublishedAt != nil || snapshot.State.DraftState == "rejected" {
 		return State{}, store.ErrConflict
 	}
-	return s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "reject", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, Note: in.Note, References: snapshotsReferences(snapshot)})
+	return s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "reject", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, Note: in.Note, References: snapshotsReferences(snapshot)})
 }
 
 // Restore copies a retained authorized revision into a new private draft. Neither
@@ -177,7 +177,7 @@ func (s *Service) Restore(ctx context.Context, e identity.Envelope, id string, i
 	if err != nil {
 		return View{}, err
 	}
-	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "restore", ExpectedVersion: in.ExpectedVersion, TargetRevision: in.Revision, TargetDigest: snapshot.Revision.Digest, Note: in.Note, Revision: &r, References: snapshotsReferences(snapshot)})
+	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "restore", ExpectedVersion: in.ExpectedVersion, TargetRevision: in.Revision, TargetDigest: snapshot.Revision.Digest, Note: in.Note, Revision: &r, References: snapshotsReferences(snapshot)})
 	if err != nil {
 		return View{}, err
 	}
@@ -205,5 +205,5 @@ func (s *Service) Archive(ctx context.Context, e identity.Envelope, id string, i
 	if snapshot.State.Archived {
 		return State{}, store.ErrConflict
 	}
-	return s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "archive", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, Note: in.Note, References: snapshotsReferences(snapshot)})
+	return s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "archive", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, Note: in.Note, References: snapshotsReferences(snapshot)})
 }

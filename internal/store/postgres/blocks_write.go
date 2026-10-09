@@ -21,7 +21,7 @@ func blockAudit(kind string) string {
 
 func insertBlockRevision(ctx context.Context, tx pgx.Tx, e identity.Envelope, m reporting.Mutation) error {
 	r := m.Revision
-	if r == nil || len(r.Definition.Topics) == 0 || r.Actor != e.User() || r.Number < 1 || r.Number > int64(m.MaxRevisions) || r.Definition.Topics[0].Topic != m.Topic || reporting.DefinitionDigest(r.Definition) != r.Digest || reporting.ExecutionDigest(r.Definition) != r.ExecutionDigest {
+	if r == nil || r.Actor != e.User() || r.Number < 1 || r.Number > int64(m.MaxRevisions) || r.Definition.ParentTopic() != m.Topic || r.Definition.ParentSource() != m.Source || reporting.DefinitionDigest(r.Definition) != r.Digest || reporting.ExecutionDigest(r.Definition) != r.ExecutionDigest {
 		return store.ErrInvalid
 	}
 	if _, err := reporting.AuthoringRuleAbsence(*r); err != nil {
@@ -47,6 +47,29 @@ func insertBlockRevision(ctx context.Context, tx pgx.Tx, e identity.Envelope, m 
 	}
 	// Public topic rows, not a caller manifest, supply the source revision pins.
 	sources := map[string]topics.Binding{}
+	if pin := r.Definition.SourceDataset; pin != nil {
+		if m.Topic != "" || m.Source != pin.Source || pin.Source != r.Definition.Source || pin.Context != r.Definition.Context || len(r.Definition.Topics) != 0 {
+			return store.ErrInvalid
+		}
+		var raw []byte
+		if err := tx.QueryRow(ctx, `SELECT binding FROM chartworks.source_revisions WHERE tenant_id=$1 AND source_id=$2 AND revision=$3`, e.Tenant(), pin.Source, pin.SourceRevision).Scan(&raw); err != nil {
+			return err
+		}
+		var binding readexec.Binding
+		if json.Unmarshal(raw, &binding) != nil || pin.CheckBinding(binding) != nil || binding.Tenant != e.Tenant() {
+			return store.ErrInvalid
+		}
+		for _, required := range []reporting.ResourceReference{{Kind: "source", Permission: "read", ID: pin.Source}, {Kind: "execution_context", Permission: "use", ID: pin.Context}, {Kind: "dataset", Permission: "query", ID: pin.Dataset}} {
+			found := false
+			for _, ref := range m.References {
+				found = found || ref == required
+			}
+			if !found {
+				return store.ErrInvalid
+			}
+		}
+		sources[pin.Source] = topics.Binding{Source: pin.Source, Context: pin.Context, SourceRevision: pin.SourceRevision, Dataset: pin.Dataset}
+	}
 	for _, pin := range r.Definition.Topics {
 		var actual string
 		var definition []byte
@@ -125,7 +148,7 @@ func blockFenceCoordinates(m reporting.Mutation) error {
 func blockCurrentFence(ctx context.Context, tx pgx.Tx, e identity.Envelope, m reporting.Mutation) error {
 	pins := append([]reporting.TopicPin(nil), m.Topics...)
 	sort.Slice(pins, func(i, j int) bool { return pins[i].Topic < pins[j].Topic })
-	if len(pins) == 0 || len(m.Watch) == 0 || blockFenceCoordinates(m) != nil {
+	if (len(pins) == 0 && m.Source == "") || len(m.Watch) == 0 || blockFenceCoordinates(m) != nil {
 		return store.ErrInvalid
 	}
 	absence := map[string]reporting.TopicPin{}
@@ -287,7 +310,7 @@ func (d *DB) CommitBlock(ctx context.Context, e identity.Envelope, proof reporti
 			if count >= m.MaxBlocks {
 				return readexec.ErrLimit
 			}
-			out, err = scanBlockHead(tx.QueryRow(ctx, `INSERT INTO chartworks.block_heads AS h(tenant_id,block_id,topic_id,version,draft_revision,draft_state) VALUES($1,$2,$3,1,1,'draft') RETURNING `+blockHeadColumns, e.Tenant(), m.ID, m.Topic))
+			out, err = scanBlockHead(tx.QueryRow(ctx, `INSERT INTO chartworks.block_heads AS h(tenant_id,block_id,topic_id,source_parent,version,draft_revision,draft_state) VALUES($1,$2,NULLIF($3,''),NULLIF($4,''),1,1,'draft') RETURNING `+blockHeadColumns, e.Tenant(), m.ID, m.Topic, m.Source))
 			if err != nil {
 				return err
 			}
@@ -299,7 +322,7 @@ func (d *DB) CommitBlock(ctx context.Context, e identity.Envelope, proof reporti
 			if err != nil {
 				return err
 			}
-			if head.Version != m.ExpectedVersion || head.Topic != m.Topic {
+			if head.Version != m.ExpectedVersion || head.Topic != m.Topic || head.Source != m.Source {
 				return store.ErrConflict
 			}
 			snapshot, err = blockTx(ctx, tx, e, m.ID, reporting.Reference{Revision: m.TargetRevision}, m.Access())

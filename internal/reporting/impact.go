@@ -240,6 +240,9 @@ func (s *Service) observeImpact(ctx context.Context, e identity.Envelope, id str
 	out.publications = []topics.Published{}
 	out.pins = []TopicPin{}
 	partition := ""
+	if d.SourceDataset != nil {
+		partition = d.Context
+	}
 	for _, pin := range d.Topics {
 		publication, err := s.topics.Read(ctx, e, pin.Topic, "")
 		if err != nil {
@@ -298,7 +301,7 @@ func (s *Service) observeImpact(ctx context.Context, e identity.Envelope, id str
 	if observed.BindingDigest != exec.Hash(binding) {
 		return out, ErrStale
 	}
-	scope, err := validationScope(binding, out.publications)
+	scope, err := definitionValidationScope(binding, d, out.publications)
 	if err != nil {
 		out.impact.Reason = "current_semantics_do_not_match_source"
 		return out, nil
@@ -362,7 +365,7 @@ func (s *Service) RecheckImpact(ctx context.Context, e identity.Envelope, id str
 	if work.impact.Classification == "unavailable" {
 		health.Status = "unavailable"
 	}
-	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "health", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, References: snapshotsReferences(snapshot), Health: &health})
+	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "health", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, References: snapshotsReferences(snapshot), Health: &health})
 	if err != nil {
 		return Impact{}, err
 	}
@@ -455,7 +458,7 @@ func (s *Service) ApplyImpact(ctx context.Context, e identity.Envelope, id strin
 	if err != nil {
 		return View{}, err
 	}
-	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "rename", ExpectedVersion: in.ExpectedVersion, TargetRevision: in.Revision, TargetDigest: snapshot.Revision.Digest, Note: in.Note, Revision: &r, References: refs, Watch: work.dependencies, Topics: work.pins, CheckCurrent: true})
+	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "rename", ExpectedVersion: in.ExpectedVersion, TargetRevision: in.Revision, TargetDigest: snapshot.Revision.Digest, Note: in.Note, Revision: &r, References: refs, Watch: work.dependencies, Topics: work.pins, CheckCurrent: true})
 	if err != nil {
 		return View{}, err
 	}

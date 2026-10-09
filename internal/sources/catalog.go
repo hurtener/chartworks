@@ -27,11 +27,12 @@ type DatasetDescribeRequest struct {
 
 // Dataset is secret-free registered metadata; no rows or live estimates are read.
 type Dataset struct {
-	Source   string            `json:"source"`
-	Context  string            `json:"context"`
-	Revision int64             `json:"source_revision"`
-	Dialect  string            `json:"dialect"`
-	Relation readexec.Relation `json:"relation"`
+	SchemaDigest string            `json:"schema_digest"`
+	Source       string            `json:"source"`
+	Context      string            `json:"context"`
+	Revision     int64             `json:"source_revision"`
+	Dialect      string            `json:"dialect"`
+	Relation     readexec.Relation `json:"relation"`
 }
 
 // DatasetQuery is the shared service/store catalog request, not an authority proof.
@@ -88,6 +89,9 @@ func (s *Service) datasetCatalog(ctx context.Context, e identity.Envelope, in Da
 	})
 	if err != nil {
 		return nil, err
+	}
+	for i := range out {
+		out[i].SchemaDigest = readexec.Hash(out[i].Relation)
 	}
 	return out, nil
 }

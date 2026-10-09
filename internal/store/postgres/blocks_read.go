@@ -28,10 +28,10 @@ func blockGrants(e identity.Envelope) ([]byte, error) {
 	return json.Marshal(grants)
 }
 
-const blockHeadColumns = `h.block_id,h.topic_id,h.version,h.draft_revision,COALESCE(h.published_revision,0),h.draft_state,h.archived,h.created_at,h.updated_at`
+const blockHeadColumns = `h.block_id,COALESCE(h.topic_id,''),COALESCE(h.source_parent,''),h.version,h.draft_revision,COALESCE(h.published_revision,0),h.draft_state,h.archived,h.created_at,h.updated_at`
 
 func scanBlockHead(row pgx.Row) (out reporting.State, err error) {
-	err = row.Scan(&out.ID, &out.Topic, &out.Version, &out.DraftRevision, &out.PublishedRevision, &out.DraftState, &out.Archived, &out.CreatedAt, &out.UpdatedAt)
+	err = row.Scan(&out.ID, &out.Topic, &out.Source, &out.Version, &out.DraftRevision, &out.PublishedRevision, &out.DraftState, &out.Archived, &out.CreatedAt, &out.UpdatedAt)
 	return
 }
 
@@ -45,7 +45,7 @@ const blockReferenceEligibility = `EXISTS(SELECT 1 FROM chartworks.block_revisio
     AND g->>'id' IN(rr.resource_id,'*')))`
 
 const blockCurrent = `EXISTS(SELECT 1 FROM chartworks.block_source_pins present WHERE (present.tenant_id,present.block_id,present.revision)=(r.tenant_id,r.block_id,r.revision))
- AND EXISTS(SELECT 1 FROM chartworks.block_topic_pins present WHERE (present.tenant_id,present.block_id,present.revision)=(r.tenant_id,r.block_id,r.revision)) AND NOT EXISTS (
+ AND (jsonb_typeof(r.definition->'source_dataset')='object' OR EXISTS(SELECT 1 FROM chartworks.block_topic_pins present WHERE (present.tenant_id,present.block_id,present.revision)=(r.tenant_id,r.block_id,r.revision))) AND NOT EXISTS (
  SELECT 1 FROM chartworks.block_source_pins bp
  LEFT JOIN chartworks.sources src ON (src.tenant_id,src.source_id)=(bp.tenant_id,bp.source_id)
  LEFT JOIN chartworks.source_revisions sr ON (sr.tenant_id,sr.source_id,sr.revision)=(src.tenant_id,src.source_id,src.current_revision)
@@ -113,9 +113,9 @@ func blockTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, ref
  LEFT JOIN chartworks.block_health bh ON (bh.tenant_id,bh.block_id,bh.revision)=(r.tenant_id,r.block_id,r.revision)
  WHERE h.tenant_id=$1 AND h.block_id=$2
  AND (p.revision IS NOT NULL OR (r.actor_id=$5 AND $7))
- AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'='topic' AND g->>'permission'=$8 AND g->>'id' IN(h.topic_id,'*'))
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE (h.topic_id IS NOT NULL AND g->>'kind'='topic' AND g->>'permission'=$8 AND g->>'id' IN(h.topic_id,'*')) OR (h.topic_id IS NULL AND g->>'kind'='source' AND g->>'permission'='read' AND g->>'id' IN(h.source_parent,'*')))
  AND `+blockReferenceEligibility, args...).Scan(
-		&out.State.ID, &out.State.Topic, &out.State.Version, &out.State.DraftRevision, &out.State.PublishedRevision, &out.State.DraftState, &out.State.Archived, &out.State.CreatedAt, &out.State.UpdatedAt,
+		&out.State.ID, &out.State.Topic, &out.State.Source, &out.State.Version, &out.State.DraftRevision, &out.State.PublishedRevision, &out.State.DraftState, &out.State.Archived, &out.State.CreatedAt, &out.State.UpdatedAt,
 		&out.Revision.Number, &out.Revision.ID, &definitionVersion, &definition, &out.Revision.Digest, &out.Revision.ExecutionDigest, &out.Revision.Actor, &out.Revision.CreatedAt, &provenance, &references,
 		&validation, &attestation, &withdrawal, &out.PublishedAt, &out.Current, &health)
 	if err != nil {
@@ -204,7 +204,7 @@ func (d *DB) ListBlocks(ctx context.Context, e identity.Envelope, in reporting.L
  LEFT JOIN chartworks.block_publications p ON(p.tenant_id,p.block_id,p.revision)=(r.tenant_id,r.block_id,r.revision)
  WHERE h.tenant_id=$1 AND h.block_id>$2 AND NOT h.archived AND($7 OR h.block_id=ANY($8::text[]))
  AND (p.revision IS NOT NULL OR (r.actor_id=$5 AND $9 AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'='block' AND g->>'permission'='preview' AND g->>'id' IN(h.block_id,'*'))))
- AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'='topic' AND g->>'permission'='read' AND g->>'id' IN(h.topic_id,'*'))
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE (h.topic_id IS NOT NULL AND g->>'kind'='topic' AND g->>'permission'='read' AND g->>'id' IN(h.topic_id,'*')) OR (h.topic_id IS NULL AND g->>'kind'='source' AND g->>'permission'='read' AND g->>'id' IN(h.source_parent,'*')))
  AND `+blockReferenceEligibility+` ORDER BY h.block_id LIMIT $3`, e.Tenant(), in.After, in.Limit+1, in.IncludeDrafts, e.User(), grants, selection.All(), selection.IDs(), e.Has(reporting.Preview.Action()))
 		if err != nil {
 			return err
@@ -213,7 +213,7 @@ func (d *DB) ListBlocks(ctx context.Context, e identity.Envelope, in reporting.L
 		for rows.Next() {
 			var item reporting.Summary
 			var metadata []byte
-			if err := rows.Scan(&item.State.ID, &item.State.Topic, &item.State.Version, &item.State.DraftRevision, &item.State.PublishedRevision, &item.State.DraftState, &item.State.Archived, &item.State.CreatedAt, &item.State.UpdatedAt, &item.Revision, &metadata, &item.Private); err != nil {
+			if err := rows.Scan(&item.State.ID, &item.State.Topic, &item.State.Source, &item.State.Version, &item.State.DraftRevision, &item.State.PublishedRevision, &item.State.DraftState, &item.State.Archived, &item.State.CreatedAt, &item.State.UpdatedAt, &item.Revision, &metadata, &item.Private); err != nil {
 				return err
 			}
 			if json.Unmarshal(metadata, &item.Metadata) != nil {
@@ -261,7 +261,7 @@ func (d *DB) BlockHistory(ctx context.Context, e identity.Envelope, id string) (
  LEFT JOIN chartworks.block_publications p ON(p.tenant_id,p.block_id,p.revision)=(r.tenant_id,r.block_id,r.revision)
  WHERE h.tenant_id=$1 AND h.block_id=$2 AND $3::bigint=0 AND NOT $4::boolean
  AND(p.revision IS NOT NULL OR(r.actor_id=$5 AND $7))
- AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'='topic' AND g->>'permission'='read' AND g->>'id' IN(h.topic_id,'*'))
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE (h.topic_id IS NOT NULL AND g->>'kind'='topic' AND g->>'permission'='read' AND g->>'id' IN(h.topic_id,'*')) OR (h.topic_id IS NULL AND g->>'kind'='source' AND g->>'permission'='read' AND g->>'id' IN(h.source_parent,'*')))
  AND `+blockReferenceEligibility+` ORDER BY ev.version LIMIT 4096`, args...)
 		if err != nil {
 			return err
