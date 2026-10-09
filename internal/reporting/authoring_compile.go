@@ -345,7 +345,7 @@ func compileAuthoringDataset(in AuthoringDatasetIntent, p topics.Published, data
 	projection = append(projection, op+"("+argument+") AS "+pgx.Identifier{alias}.Sanitize())
 	out.Columns = append(out.Columns, charts.Column{ID: alias, Name: alias, DisplayLabel: measure.Name, Role: "measure", Aggregation: string(measure.Aggregation), Format: charts.Format{Unit: measure.Unit}, Provenance: charts.Provenance{Version: 1, Source: binding.Source, SourceRevision: binding.Revision, Topic: in.Topic.Topic, TopicVersion: in.Topic.Version, SemanticID: measure.ID}})
 	out.SQL = "SELECT " + strings.Join(projection, ", ") + " FROM " + pgx.Identifier{relation.Schema, relation.Name}.Sanitize()
-	predicates, parameters, err := compileAuthoringFilters(in, p, resolve)
+	predicates, parameters, err := compileAuthoringFilters(in, p, binding, resolve)
 	if err != nil {
 		return out, err
 	}

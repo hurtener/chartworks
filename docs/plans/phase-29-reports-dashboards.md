@@ -4,6 +4,14 @@ Status: in_progress. Owner: internal/reporting. Hard dependencies: 18, 28.
 
 ## Authority and design
 
+D-108 extends the shared binder with physical column value/set/range parameters
+and exact registered schema identity. `TestColumnFilter*` and
+`TestAuthoringColumnFiltersCompilerAndIdentity` cover typed values, SQL placement,
+calendar refusal and binding compatibility. `TestReportAppColumnFiltersNative`
+(mapped into Phase29/AC06) covers the actual source-only publication, report
+selection, amendment and compacted-custody lifecycle. UI/option work remains in
+[the active flexible pass](flexible-report-authoring.md).
+
 RFC-002 §§2–6, D-045/D-047 and [COMMON.md](COMMON.md) apply. Reports compose the existing execution lanes. Dashboards reference exact report revisions; neither creates another SQL/visualization engine.
 
 ## Brief findings incorporated

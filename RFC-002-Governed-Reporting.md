@@ -50,6 +50,13 @@ Dynamic widgets require explicit opt-in and ordinary query safety/scope/budgets.
 
 Preserve date/datetime/relative period/dimension value/number/integer/boolean/grain/top-N types, required/default/range/enum rules, locale/timezone and value provenance. Bind values rather than SQL fragments; identifier-like choices map to closed approved structures.
 
+[D-108](docs/decisions/2026-10-09-physical-column-filters.md) additionally permits
+physical-column value/set/range filters without reviewed dimensions. Their
+registered schema pin, actual type and positive SQL predicate are revalidated;
+report bindings compare the complete reference. Temporal ranges use explicit
+Gregorian civil semantics and a required IANA zone for instants, rejecting
+ambiguous or nonexistent local times. Existing parameter formats remain intact.
+
 Canonical precedence: block default -> report global default -> widget literal -> declared filter binding -> explicitly permitted invocation override. Same-level conflicts fail. Imports normalize old precedence with equivalent result fixtures rather than assuming every source path used this order. Security restrictions are not overridable business filters.
 
 Resolve relative periods from named timezone and accepted logical time into half-open intervals. Preserve explicit/from-date/previous/rolling/schedule windows, first-occurrence and leap/DST policy. Retries retain their period. Assisted parameterization produces bounded draft changes and original-question/template/provenance lineage, never unrelated silent SQL changes.

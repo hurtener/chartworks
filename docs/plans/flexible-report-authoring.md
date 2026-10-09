@@ -123,3 +123,20 @@ qualified with physical filters. FA06/FA07 still require audience management and
 the author-to-reader-to-amendment walkthrough. A broad Phase23/AC01 run uncovered
 an analytical-mismatch/error-registration regression outside catalog reads; it
 is retained as an open qualification finding, not a passing product gate.
+
+## Physical-filter native checkpoint
+
+D-108 adds explicit physical column parameters to the typed compiler, shared
+binder and report compatibility checks. Exact numeric values, text/UUID/boolean
+choices and half-open numeric/date/timestamp ranges use bound values. Temporal
+input has explicit calendar/zone semantics and rejects DST gaps/folds. Both raw
+source and reviewed-dataset physical columns are checked against exact registered
+schema identity. Saved defaults and temporary report selections share one core.
+
+Native acceptance covers an author without topic permissions, schema-checked
+HTTP preparation, private custody, malformed/reference/authority rejection,
+validation/publication, exact frozen results, report filter overrides across a
+23-hour calendar day, private amendment and compacted replay. Physical option
+search, Builder/Consumer controls and signed-in host evidence are still open.
+The Phase23 analytical error registration finding and audience work remain open.
+No FA criterion closes from this checkpoint alone.

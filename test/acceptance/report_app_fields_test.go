@@ -152,7 +152,7 @@ INSERT INTO analytics.sales(%s,%s,%s,%s) VALUES
 			if f.attemptCount(t) != before+2 || f.f.model.requests.Load() != models {
 				t.Fatal("unexpected source or model work")
 			}
-			for i, shape := range []string{"rows", "count", "calendar"} {
+			for i, shape := range []string{"rows", "count", "calendar", "physical-filters"} {
 				t.Run(shape, func(t *testing.T) {
 					next := request
 					next.NewBlock = "typed-" + shape
@@ -166,12 +166,19 @@ INSERT INTO analytics.sales(%s,%s,%s,%s) VALUES
 					case "rows":
 						next.Intent.Fields = &reporting.AuthoringFieldSelection{Mode: "rows", Dimensions: []reporting.AuthoringGrouping{{Kind: "column", Field: domain.category}}}
 						next.Intent.Mapping = reporting.AuthoringChartMapping{Kind: charts.Table, Bindings: charts.Bindings{Columns: []string{"group_1"}}, Options: charts.DefaultOptions(), Table: &charts.TableOptions{PageSize: 20, Columns: []charts.TableColumnIntent{{Column: "group_1", Visible: true}}}}
-					case "count":
+					case "count", "physical-filters":
 						next.Intent.Fields = &reporting.AuthoringFieldSelection{Mode: "aggregate", Measures: []reporting.AuthoringMeasureSelection{{Kind: "count"}}}
 						next.Intent.Mapping = reporting.AuthoringChartMapping{Kind: charts.KPI, Bindings: charts.Bindings{Value: "value_1"}, Options: charts.DefaultOptions()}
 					case "calendar":
 						next.Intent.Fields = &reporting.AuthoringFieldSelection{Mode: "aggregate", Dimensions: []reporting.AuthoringGrouping{{Kind: "column", Field: domain.occurred, Grain: "day", Calendar: "gregorian", Timezone: "America/Argentina/Buenos_Aires"}}, Measures: []reporting.AuthoringMeasureSelection{{Kind: "measure", Field: "mean"}, {Kind: "column", Field: domain.value, Aggregation: "maximum"}}}
 						next.Intent.Mapping = reporting.AuthoringChartMapping{Kind: charts.ColumnChart, Bindings: charts.Bindings{Category: "group_1", Values: []string{"value_1", "value_2"}}, Options: charts.DefaultOptions()}
+					}
+					if shape == "physical-filters" {
+						next.Intent.Filters = []reporting.AuthoringDatasetFilter{
+							{Column: domain.category, Kind: "multi_select", Default: reporting.Value{Items: []string{"alpha"}}},
+							{Column: domain.value, Kind: "range", Default: reporting.Value{Range: &reporting.ScalarRange{Start: "2", EndExclusive: "10"}}},
+							{Column: domain.occurred, Kind: "range", Calendar: "gregorian", Timezone: "UTC", Default: reporting.Value{Range: &reporting.ScalarRange{Start: "2026-01-01T00:00:00", EndExclusive: "2026-02-01T00:00:00"}}},
+						}
 					}
 					attempts := f.attemptCount(t)
 					prepared, err := s.PrepareDatasetChart(ctx, actor, next)
@@ -194,6 +201,18 @@ INSERT INTO analytics.sales(%s,%s,%s,%s) VALUES
 						}
 						if len(preview.Result.Rows) != 3 || counts[`"alpha"`] != 2 || counts[`"beta"`] != 1 {
 							t.Fatal("raw rows lost duplicates", counts)
+						}
+					case "physical-filters":
+						if len(preview.Result.Rows) != 1 || string(preview.Result.Rows[0][0]) != `"2"` {
+							t.Fatal("physical filter population", preview.Result.Rows)
+						}
+						if len(created.Block.Parameters) != 3 {
+							t.Fatal("physical parameter retention")
+						}
+						for _, p := range created.Block.Parameters {
+							if p.Column == nil || p.Dimension != nil {
+								t.Fatal("invented reviewed dimension")
+							}
 						}
 					case "count":
 						if len(preview.Result.Rows) != 1 || string(preview.Result.Rows[0][0]) != `"3"` {

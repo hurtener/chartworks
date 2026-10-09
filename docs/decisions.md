@@ -844,3 +844,7 @@ tracked separately in the active flexible authoring pass.
 source origin for topic-independent report blocks. Exact source/context/dataset
 pins, current authority and existing execution fences replace neither reviewed
 semantics nor Pengui policy. Migration 089 retains source custody after cleanup.
+
+[D-108](decisions/2026-10-09-physical-column-filters.md) adds typed physical-column
+filters with exact registered schema identity, explicit temporal semantics and
+shared report binding checks. The native core precedes its Builder/option UI.

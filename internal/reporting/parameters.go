@@ -17,7 +17,7 @@ func validateDeclarations(parameters []Parameter, max int) error {
 	}
 	seen := map[string]bool{}
 	for _, p := range parameters {
-		if !identity.Identifier(p.Name) || seen[p.Name] || !slices.Contains([]string{"date", "datetime", "relative_period", "dimension_value", "number", "integer", "boolean", "grain", "top_n", "dimension_list", "number_list", "integer_list", "dimension_set", "date_range"}, p.Type) || len(p.Enum) > 256 {
+		if !identity.Identifier(p.Name) || seen[p.Name] || !slices.Contains([]string{"date", "datetime", "relative_period", "dimension_value", "number", "integer", "boolean", "grain", "top_n", "dimension_list", "number_list", "integer_list", "dimension_set", "date_range", "column_value", "column_set", "column_range"}, p.Type) || len(p.Enum) > 256 {
 			return ErrInvalid
 		}
 		seen[p.Name] = true
@@ -26,6 +26,9 @@ func validateDeclarations(parameters []Parameter, max int) error {
 				return err
 			}
 			continue
+		}
+		if p.Column != nil {
+			return ErrInvalid
 		}
 		list := listScalarType(p.Type)
 		if list != "" && (p.ListLength < 1 || p.ListLength > 32) || list == "" && p.ListLength != 0 {
@@ -78,7 +81,7 @@ func validateDeclarations(parameters []Parameter, max int) error {
 			}
 		}
 		if p.Default != nil {
-			if p.Default.DateRange != nil {
+			if p.Default.DateRange != nil || p.Default.Range != nil {
 				return ErrInvalid
 			}
 			if p.Type == "relative_period" {
@@ -273,7 +276,7 @@ func ResolveParameters(parameters []Parameter, arguments []Argument, resolution 
 			}
 		}
 		value := BoundValue{Name: p.Name, Type: p.Type, Provenance: provenance}
-		if !boundedFilterParameter(p) && v.DateRange != nil {
+		if !boundedFilterParameter(p) && (v.DateRange != nil || v.Range != nil) {
 			return out, ErrInvalid
 		}
 		switch {
@@ -336,9 +339,9 @@ func scalarSlots(parameters []Parameter) int {
 	n := 0
 	for _, p := range parameters {
 		switch {
-		case p.Type == "dimension_set":
+		case p.Type == "dimension_set" || p.Type == "column_set":
 			n += DimensionSetCapacity
-		case p.Type == "date_range":
+		case p.Type == "date_range" || p.Type == "column_range":
 			n += 2
 		case p.Type == "relative_period":
 			n += 2

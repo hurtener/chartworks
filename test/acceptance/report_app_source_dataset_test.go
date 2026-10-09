@@ -19,6 +19,14 @@ import (
 )
 
 func TestReportAppSourceDatasetNative(t *testing.T) {
+	testReportAppSourceDatasetNative(t, false)
+}
+
+func TestReportAppColumnFiltersNative(t *testing.T) {
+	testReportAppSourceDatasetNative(t, true)
+}
+
+func testReportAppSourceDatasetNative(t *testing.T, filtered bool) {
 	f, authoring, _, request, _, dataset, scopes := reportDatasetFixture(t, "source-chart")
 	ctx := t.Context()
 	scopes = slices.DeleteFunc(scopes, func(scope string) bool { return scope == "topics.read" || strings.HasPrefix(scope, "cw.topic.") })
@@ -29,6 +37,13 @@ func TestReportAppSourceDatasetNative(t *testing.T) {
 		t.Fatal("source metadata", err)
 	}
 	pin := &reporting.SourceDatasetPin{Source: physical.Source, Context: physical.Context, Dataset: physical.Relation.ID, SourceRevision: physical.Revision, SchemaDigest: physical.SchemaDigest}
+	wantValue := "9007199254740998.625"
+	if filtered {
+		if _, err := f.f.f.admin.Exec(ctx, `UPDATE analytics.sales SET name=CASE id WHEN 1 THEN 'alpha' ELSE 'beta' END,active=true,created_at=CASE id WHEN 1 THEN '2026-03-08T05:00:00Z'::timestamptz ELSE '2026-03-09T04:00:00Z'::timestamptz END`); err != nil {
+			t.Fatal(err)
+		}
+		wantValue = "9007199254740993.125"
+	}
 	before, models := f.attemptCount(t), f.f.model.requests.Load()
 	discovery := phase27Actor(t, f.f, author.User(), []string{"reporting.discover", "cw.source.read:" + pin.Source})
 	requirements, err := authoring.DataDependencies(ctx, discovery, reporting.DataDependencyRequest{SourceDataset: pin, Dataset: pin.Dataset})
@@ -70,6 +85,21 @@ func TestReportAppSourceDatasetNative(t *testing.T) {
 		t.Fatal("actual physical column missing")
 	}
 	request.Intent = reporting.AuthoringDatasetIntent{SourceDataset: pin, Dataset: pin.Dataset, Fields: &reporting.AuthoringFieldSelection{Mode: "aggregate", Measures: []reporting.AuthoringMeasureSelection{{Kind: "column", Field: amount, Aggregation: "sum"}}}, Mapping: reporting.AuthoringChartMapping{Kind: charts.KPI, Bindings: charts.Bindings{Value: "value_1"}, Options: charts.DefaultOptions()}}
+	if filtered {
+		columns := map[string]string{}
+		for _, c := range view.Fields.Columns {
+			columns[c.SourceName] = c.ID
+			if c.Filters == nil && c.Supported {
+				t.Fatal("missing physical filter capability", c.ID)
+			}
+		}
+		request.Intent.Filters = []reporting.AuthoringDatasetFilter{
+			{Column: columns["name"], Kind: "multi_select", Default: reporting.Value{Items: []string{"alpha", "beta"}}},
+			{Column: columns["amount"], Kind: "range", Default: reporting.Value{Range: &reporting.ScalarRange{Start: "0", EndExclusive: "9007199254740994"}}},
+			{Column: columns["active"], Kind: "select", Default: reporting.Value{Literal: "true"}},
+			{Column: columns["created_at"], Kind: "range", Calendar: "gregorian", Timezone: "America/New_York", Default: reporting.Value{Range: &reporting.ScalarRange{Start: "2026-03-08T00:00:00", EndExclusive: "2026-03-09T00:00:00"}}},
+		}
+	}
 	encoded, _ := json.Marshal(request)
 	var body map[string]any
 	_ = json.Unmarshal(encoded, &body)
@@ -107,6 +137,26 @@ func TestReportAppSourceDatasetNative(t *testing.T) {
 	if err != nil || created.Block.State.Topic != "" || created.Block.State.Source != pin.Source || created.Block.SourceDataset == nil || !created.Block.Private {
 		t.Fatal("consume", created, err)
 	}
+	if filtered {
+		attempts := f.attemptCount(t)
+		for _, mutate := range []func(*reporting.Definition){
+			func(d *reporting.Definition) { d.Parameters[0].Column.SourceDataset.Context = "other-context" },
+			func(d *reporting.Definition) {
+				d.Parameters[0].Column.SourceDataset.SchemaDigest = strings.Repeat("0", 64)
+			},
+			func(d *reporting.Definition) { d.Parameters[0].Column.Name = "missing_column" },
+			func(d *reporting.Definition) { d.SQL += " OR TRUE" },
+		} {
+			forged := phase27Copy(t, base.Revision.Definition)
+			mutate(&forged)
+			if _, err := f.blocks.Edit(ctx, author, request.NewBlock, reporting.EditRequest{ExpectedVersion: created.Block.State.Version, Definition: forged}); err == nil {
+				t.Fatal("forged physical filter saved")
+			}
+		}
+		if f.attemptCount(t) != attempts {
+			t.Fatal("invalid filter definition executed source work")
+		}
+	}
 	validated, err := f.blocks.Validate(ctx, author, request.NewBlock, reporting.ValidateRequest{ExpectedVersion: created.Block.State.Version, Revision: created.Block.Revision})
 	if err != nil {
 		t.Fatal("validate", err)
@@ -138,13 +188,25 @@ func TestReportAppSourceDatasetNative(t *testing.T) {
 		t.Fatal("frozen run", completed.State, err)
 	}
 	output, err := f.runs.Output(ctx, executor, admitted.ID, "chart")
-	if err != nil || output.Chart == nil || len(output.Chart.Points) != 1 || output.Chart.Points[0].Value.Exact != "9007199254740998.625" {
+	if err != nil || output.Chart == nil || len(output.Chart.Points) != 1 || output.Chart.Points[0].Value.Exact != wantValue {
 		t.Fatal("exact retained aggregate", err)
 	}
 	reportScopes := append(slices.Clone(scopes), "cw.report.read:source-report", "cw.report.write:source-report", "cw.report.publish:source-report", "cw.report.preview:source-report")
 	reportAuthor := phase27Actor(t, f.f, author.User(), reportScopes)
 	document := phase29Text("Source dataset report")
 	document.Widgets = append(document.Widgets, phase29BlockWidget("chart-widget", request.NewBlock, 1, "chart"))
+	if filtered {
+		if len(created.Block.Parameters) != 4 {
+			t.Fatal("physical parameters not retained")
+		}
+		for _, parameter := range created.Block.Parameters {
+			if parameter.Column == nil || parameter.Dimension != nil || !reflect.DeepEqual(parameter.Column.SourceDataset, *pin) {
+				t.Fatal("physical filter became a semantic dimension")
+			}
+			document.Filters = append(document.Filters, reporting.ReportFilter{Parameter: parameter, Label: parameter.Column.Name})
+			document.Widgets[len(document.Widgets)-1].Bindings = append(document.Widgets[len(document.Widgets)-1].Bindings, reporting.FilterBinding{Parameter: parameter.Name, Filter: parameter.Name})
+		}
+	}
 	reportState, err := f.documents.Create(ctx, reportAuthor, "report", "source-report", document)
 	if err != nil {
 		t.Fatal("report create", err)
@@ -153,7 +215,7 @@ func TestReportAppSourceDatasetNative(t *testing.T) {
 	runtimeScopes := slices.DeleteFunc(slices.Clone(reportScopes), func(scope string) bool {
 		return strings.Contains(scope, ".write") || strings.Contains(scope, ".publish") || scope == "reporting.validate" || scope == "charts.bind"
 	})
-	runtimeScopes = append(runtimeScopes, "reporting.execute", "cw.block.execute:"+request.NewBlock, "cw.report.execute:source-report")
+	runtimeScopes = append(runtimeScopes, "reporting.execute", "cw.block.execute:"+request.NewBlock, "cw.report.execute:source-report", "cw.run.read:*")
 	runtime := phase27Actor(t, f.f, author.User(), runtimeScopes)
 	composition, err := f.compositions.Admit(ctx, runtime, "report", "source-report", reporting.CompositionRequest{Key: "source-report-run"})
 	if err != nil {
@@ -162,6 +224,26 @@ func TestReportAppSourceDatasetNative(t *testing.T) {
 	composed, err := f.compositions.Run(ctx, runtime, composition.ID, false)
 	if err != nil || !composed.Complete || composed.State != "completed" {
 		t.Fatal("source composition", composed.State, err)
+	}
+	if filtered {
+		overrides := []reporting.Argument{}
+		for _, parameter := range created.Block.Parameters {
+			if parameter.Column.Type == "instant" {
+				overrides = append(overrides, reporting.Argument{Name: parameter.Name, Value: reporting.Value{Range: &reporting.ScalarRange{Start: "2026-03-09T00:00:00", EndExclusive: "2026-03-10T00:00:00"}}})
+			}
+		}
+		changed, err := f.compositions.Admit(ctx, runtime, "report", "source-report", reporting.CompositionRequest{Key: "source-report-filter-override", Pages: []reporting.PageInput{{Page: "main", Filters: overrides}}})
+		if err != nil {
+			t.Fatal("filtered composition admission", err)
+		}
+		finished, err := f.compositions.Run(ctx, runtime, changed.ID, false)
+		if err != nil || !finished.Complete {
+			t.Fatal("filtered composition execution", err)
+		}
+		payload, err := f.compositions.Widget(ctx, runtime, changed.ID, "main", "chart-widget")
+		if err != nil || len(payload.Outputs) != 1 || payload.Outputs[0].Chart == nil || payload.Outputs[0].Chart.Points[0].Value.Exact != "5.500" {
+			t.Fatal("typed report override", payload, err)
+		}
 	}
 	reportDiscovery := phase27Actor(t, f.f, author.User(), []string{"reporting.discover", "cw.report.read:source-report"})
 	deps, err := authoring.Dependencies(ctx, reportDiscovery, reporting.DependencyRequest{Kind: "report", ID: "source-report"})
@@ -196,7 +278,11 @@ func TestReportAppSourceDatasetNative(t *testing.T) {
 	if err != nil || replay.Block.Digest != created.Block.Digest || !reflect.DeepEqual(replay.Block.SourceDataset, pin) {
 		t.Fatal("compacted replay", err)
 	}
-	if f.attemptCount(t) != before+4 || f.f.model.requests.Load() != models {
+	expectedAttempts := before + 4
+	if filtered {
+		expectedAttempts++
+	}
+	if f.attemptCount(t) != expectedAttempts || f.f.model.requests.Load() != models {
 		t.Fatal("unexpected source or model work")
 	}
 }

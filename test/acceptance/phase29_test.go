@@ -46,7 +46,10 @@ func TestPhase29(t *testing.T) {
 		t.Run("shared-artifact-request-quota", func(t *testing.T) { testPhase29SharedQuota(t, false) })
 		t.Run("shared-artifact-byte-quota", func(t *testing.T) { testPhase29SharedQuota(t, true) })
 	})
-	t.Run("AC06", testPhase29FilterBindings)
+	t.Run("AC06", func(t *testing.T) {
+		t.Run("legacy-filter-bindings", testPhase29FilterBindings)
+		t.Run("physical-filter-publication-and-overrides", TestReportAppColumnFiltersNative)
+	})
 	t.Run("AC07", TestDocumentStorage)
 	t.Run("AC08", func(t *testing.T) {
 		t.Run("document-redaction-and-metadata", TestDocumentStorage)

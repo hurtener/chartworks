@@ -41,17 +41,18 @@ type AuthoringMeasureSelection struct {
 }
 
 type AuthoringColumnCapability struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	SourceName   string   `json:"source_name"`
-	NativeType   string   `json:"native_type"`
-	Type         string   `json:"type"`
-	Category     string   `json:"category"`
-	Nullable     bool     `json:"nullable"`
-	Supported    bool     `json:"supported"`
-	Reason       string   `json:"reason,omitempty"`
-	Aggregations []string `json:"aggregations"`
-	Grains       []string `json:"grains"`
+	Filters      *ColumnFilterCapability `json:"filters,omitempty"`
+	ID           string                  `json:"id"`
+	Name         string                  `json:"name"`
+	SourceName   string                  `json:"source_name"`
+	NativeType   string                  `json:"native_type"`
+	Type         string                  `json:"type"`
+	Category     string                  `json:"category"`
+	Nullable     bool                    `json:"nullable"`
+	Supported    bool                    `json:"supported"`
+	Reason       string                  `json:"reason,omitempty"`
+	Aggregations []string                `json:"aggregations"`
+	Grains       []string                `json:"grains"`
 }
 
 type AuthoringFieldCatalog struct {
@@ -166,6 +167,7 @@ func authoringFieldCatalog(d topics.Dataset, binding exec.Binding, maxColumns in
 			item.Supported = true
 			item.Aggregations = authoringColumnAggregations(c)
 			item.Grains = authoringColumnGrains(c)
+			item.Filters = authoringColumnFilterCapability(c)
 		}
 		out.Columns = append(out.Columns, item)
 	}
@@ -376,7 +378,7 @@ func compileAuthoringFields(in AuthoringDatasetIntent, p topics.Published, datas
 		out.Columns = append(out.Columns, charts.Column{ID: alias, Name: alias, DisplayLabel: label, Role: "measure", Aggregation: aggregation, Format: charts.Format{Unit: unit}, Provenance: provenance})
 	}
 	out.SQL = "SELECT " + strings.Join(projection, ", ") + " FROM " + pgx.Identifier{relation.Schema, relation.Name}.Sanitize()
-	predicates, parameters, err := compileAuthoringFilters(in, p, resolve)
+	predicates, parameters, err := compileAuthoringFilters(in, p, binding, resolve)
 	if err != nil {
 		return out, err
 	}

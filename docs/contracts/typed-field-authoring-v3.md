@@ -143,3 +143,42 @@ closure. Legacy hosts retain the topic entry point. The first physical field or
 aggregate is always an explicit author choice; display names have no analytical
 meaning. Physical filters and independent audience management remain open in the
 [active plan](../plans/flexible-report-authoring.md).
+
+## Physical filters in the native compiler
+
+D-108 adds `filters` entries selecting exactly one `column` catalog ID or legacy
+`dimension`. Physical filters require the typed `fields` compiler. The current
+bounded shape is four filters and 64 total bind slots; it prescribes no analysis.
+`fields.columns[].filters` advertises actual type and allowed kinds:
+
+| Physical type | Kinds | Required temporal policy |
+| --- | --- | --- |
+| text / UUID / boolean | select, multi_select | none |
+| integer / decimal | select, multi_select, range | none |
+| date / civil timestamp | range | calendar=gregorian, no timezone |
+| instant timestamp | range | calendar=gregorian, explicit IANA timezone |
+
+`select` uses `default.literal`; `multi_select` uses 1–16 distinct exact strings
+in `default.items`. `range` uses `default.range.start` and `end_exclusive`, both
+exact strings. Numeric values never pass through floating-point conversion.
+Dates use YYYY-MM-DD. Civil/instant input uses YYYY-MM-DDTHH:mm:ss with optional
+canonical fractional microseconds and no offset. Instant input resolves in the
+selected zone and rejects gaps/folds; the page/report timezone is irrelevant.
+
+The resulting declaration contains a `column` reference with `source_dataset`,
+actual `name`, exact codec `type` and optional `calendar`/`timezone`. It contains
+no `dimension` reference. `column_value`, `column_set` and `column_range` are the
+corresponding parameter types. All defaults are required. Native SQL validation
+proves positive equality/IN/half-open range use on that exact physical column,
+including direct native authoring. Type relabeling, changed source/context/schema,
+wrong columns, OR/negation, parameter reuse and incompatible report bindings fail.
+
+The same parameter binds saved chart defaults, report defaults and explicit reader
+selections. Changing a selection is a deliberate execution; metadata reads and
+saved amendments do not query a source. Old declaration hashes remain unchanged.
+No new SQL or authority carrier is exposed to the browser.
+
+The native core is locally qualified. Physical option lookup is not yet advertised
+(`option_lookup=false`), and physical filter controls in the Builder/Consumer still
+require integration. Existing reviewed option search remains available. These
+pending surfaces and signed-in acceptance are tracked in the active goal.

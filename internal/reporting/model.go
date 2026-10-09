@@ -113,8 +113,9 @@ type DimensionReference struct {
 // Parameter uses exact text for scalar values. Only the domain binder converts
 // them to the common reader's typed bind parameters; SQL fragments are absent.
 type Parameter struct {
+	Column     *ColumnReference    `json:"column,omitempty"`
 	Name       string              `json:"name"`
-	Type       string              `json:"type" jsonschema:"enum=date,enum=datetime,enum=relative_period,enum=dimension_value,enum=number,enum=integer,enum=boolean,enum=grain,enum=top_n,enum=dimension_list,enum=number_list,enum=integer_list,enum=dimension_set,enum=date_range"`
+	Type       string              `json:"type" jsonschema:"enum=date,enum=datetime,enum=relative_period,enum=dimension_value,enum=number,enum=integer,enum=boolean,enum=grain,enum=top_n,enum=dimension_list,enum=number_list,enum=integer_list,enum=dimension_set,enum=date_range,enum=column_value,enum=column_set,enum=column_range"`
 	Required   bool                `json:"required"`
 	Default    *Value              `json:"default,omitempty"`
 	Min        string              `json:"min,omitempty"`
@@ -132,10 +133,11 @@ type DateRange struct {
 
 // Value is a closed typed union interpreted by its parameter declaration.
 type Value struct {
-	DateRange *DateRange `json:"date_range,omitempty"`
-	Literal   string     `json:"literal,omitempty"`
-	Period    *Period    `json:"period,omitempty"`
-	Items     []string   `json:"items,omitempty"`
+	Range     *ScalarRange `json:"range,omitempty"`
+	DateRange *DateRange   `json:"date_range,omitempty"`
+	Literal   string       `json:"literal,omitempty"`
+	Period    *Period      `json:"period,omitempty"`
+	Items     []string     `json:"items,omitempty"`
 }
 
 // Argument assigns a typed value to a declared parameter by name.

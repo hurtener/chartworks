@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/jackc/pgx/v5"
@@ -12,11 +13,14 @@ import (
 
 const AuthoringFilteredCompilerVersion = "reviewed-dataset-postgres-v2"
 
-// AuthoringDatasetFilter exposes only reviewed logical coordinates and values.
+// AuthoringDatasetFilter selects one reviewed dimension or physical catalog column.
 // Names, types, physical columns and predicate operators are server-owned.
 type AuthoringDatasetFilter struct {
-	Dimension string `json:"dimension"`
-	Kind      string `json:"kind" jsonschema:"enum=select,enum=multi_select,enum=date_range"`
+	Dimension string `json:"dimension,omitempty"`
+	Column    string `json:"column,omitempty"`
+	Calendar  string `json:"calendar,omitempty"`
+	Timezone  string `json:"timezone,omitempty"`
+	Kind      string `json:"kind" jsonschema:"enum=select,enum=multi_select,enum=date_range,enum=range"`
 	Default   Value  `json:"default"`
 }
 
@@ -37,20 +41,35 @@ func authoringDateColumn(c semantics.Column) bool {
 	return (c.Category == "date" || c.Category == "temporal") && c.NativeType == "date"
 }
 
-func compileAuthoringFilters(in AuthoringDatasetIntent, publication topics.Published, resolve func(semantics.Reference) (semantics.Column, error)) ([]string, []Parameter, error) {
+func compileAuthoringFilters(in AuthoringDatasetIntent, publication topics.Published, binding exec.Binding, resolve func(semantics.Reference) (semantics.Column, error)) ([]string, []Parameter, error) {
 	predicates := []string{}
 	parameters := []Parameter{}
 	if len(in.Filters) > 4 {
 		return nil, nil, unsupportedPreparation("filter_limit_exceeded")
 	}
 	filters := slices.Clone(in.Filters)
-	slices.SortFunc(filters, func(a, b AuthoringDatasetFilter) int { return strings.Compare(a.Dimension, b.Dimension) })
+	slices.SortFunc(filters, func(a, b AuthoringDatasetFilter) int {
+		return strings.Compare(authoringFilterKey(a), authoringFilterKey(b))
+	})
 	previous := ""
 	for _, filter := range filters {
-		if filter.Dimension == "" || filter.Dimension == previous {
+		key := authoringFilterKey(filter)
+		if key == "" || key == previous {
 			return nil, nil, ErrInvalid
 		}
-		previous = filter.Dimension
+		previous = key
+		if filter.Column != "" {
+			predicate, parameter, err := compileAuthoringColumnFilter(in, filter, binding, scalarSlots(parameters)+1, resolve)
+			if err != nil {
+				return nil, nil, err
+			}
+			predicates = append(predicates, predicate...)
+			parameters = append(parameters, parameter)
+			continue
+		}
+		if filter.Calendar != "" || filter.Timezone != "" {
+			return nil, nil, ErrInvalid
+		}
 		var dimension *semantics.Dimension
 		for i := range publication.Definition.Dimensions {
 			d := &publication.Definition.Dimensions[i]

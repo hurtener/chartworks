@@ -4,6 +4,14 @@ Status: in_progress. Owner: internal/reporting. Hard dependencies: 15, 20, 21.
 
 ## Authority and design
 
+D-108 extends the shared binder with physical column value/set/range parameters
+and exact registered schema identity. `TestColumnFilter*` and
+`TestAuthoringColumnFiltersCompilerAndIdentity` cover typed values, SQL placement,
+calendar refusal and binding compatibility. `TestReportAppColumnFiltersNative`
+(mapped into Phase29/AC06) covers the actual source-only publication, report
+selection, amendment and compacted-custody lifecycle. UI/option work remains in
+[the active flexible pass](flexible-report-authoring.md).
+
 [D-107](../decisions/2026-10-09-source-dataset-blocks.md) adds an exact registered
 source/dataset origin without topic creation. Migration 089 retains native custody;
 the active flexible-authoring pass still owns discovery and host qualification.

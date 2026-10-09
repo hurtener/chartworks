@@ -17,11 +17,14 @@ import (
 const DimensionSetCapacity = 16
 
 func boundedFilterParameter(p Parameter) bool {
-	return p.Type == "dimension_set" || p.Type == "date_range"
+	return p.Type == "dimension_set" || p.Type == "date_range" || columnFilterParameter(p)
 }
 
 func validateBoundedFilterDeclaration(p Parameter) error {
-	if !boundedFilterParameter(p) || !p.Required || p.Default == nil || p.ListLength != 0 || p.Min != "" || p.Max != "" || len(p.Enum) != 0 || p.Dimension == nil || !identity.Identifier(p.Dimension.Topic) || !identity.Identifier(p.Dimension.Version) || !identity.Identifier(p.Dimension.Dimension) {
+	if columnFilterParameter(p) {
+		return validateColumnFilterDeclaration(p)
+	}
+	if p.Column != nil || !boundedFilterParameter(p) || !p.Required || p.Default == nil || p.ListLength != 0 || p.Min != "" || p.Max != "" || len(p.Enum) != 0 || p.Dimension == nil || !identity.Identifier(p.Dimension.Topic) || !identity.Identifier(p.Dimension.Version) || !identity.Identifier(p.Dimension.Dimension) {
 		return ErrInvalid
 	}
 	_, err := resolveBoundedFilter(p, *p.Default)
@@ -29,7 +32,10 @@ func validateBoundedFilterDeclaration(p Parameter) error {
 }
 
 func resolveBoundedFilter(p Parameter, value Value) ([]exec.Parameter, error) {
-	if value.Period != nil || value.Literal != "" {
+	if columnFilterParameter(p) {
+		return resolveColumnFilter(p, value)
+	}
+	if value.Range != nil || value.Period != nil || value.Literal != "" {
 		return nil, ErrInvalid
 	}
 	switch p.Type {
@@ -184,7 +190,10 @@ func validateBoundedFilterSQL(ctx context.Context, sql string, parameters []Para
 				continue
 			}
 			key := strings.Join(column, "\x00")
-			if c.kind == "dimension_set" && astString(expression["kind"]) == "AEXPR_IN" && operator(expression) == "=" {
+			if c.kind == "column_value" && astString(expression["kind"]) == "AEXPR_OP" && operator(expression) == "=" && parameterNumber(expression["rexpr"]) == c.first {
+				found = true
+			}
+			if (c.kind == "dimension_set" || c.kind == "column_set") && astString(expression["kind"]) == "AEXPR_IN" && operator(expression) == "=" {
 				items := astArray(astObject(astObject(expression["rexpr"])["List"])["items"])
 				if len(items) != c.width {
 					continue
@@ -199,7 +208,7 @@ func validateBoundedFilterSQL(ctx context.Context, sql string, parameters []Para
 					found = true
 				}
 			}
-			if c.kind == "date_range" && astString(expression["kind"]) == "AEXPR_OP" {
+			if (c.kind == "date_range" || c.kind == "column_range") && astString(expression["kind"]) == "AEXPR_OP" {
 				n := parameterNumber(expression["rexpr"])
 				if operator(expression) == ">=" && n == c.first {
 					startColumn = key
@@ -209,7 +218,7 @@ func validateBoundedFilterSQL(ctx context.Context, sql string, parameters []Para
 				}
 			}
 		}
-		if c.kind == "date_range" {
+		if c.kind == "date_range" || c.kind == "column_range" {
 			found = startColumn != "" && startColumn == endColumn
 		}
 		if !found {
@@ -273,48 +282,59 @@ func validateBoundedFilterSemantics(ctx context.Context, d Definition, binding e
 		if !boundedFilterParameter(parameter) {
 			continue
 		}
-		if parameter.Dimension == nil {
+		if parameter.Dimension == nil && !columnFilterParameter(parameter) {
 			return ErrInvalid
 		}
 		var dimension *semantics.Dimension
 		var column *semantics.Column
-		for _, publication := range publications {
-			if publication.Definition.Topic != parameter.Dimension.Topic || publication.Definition.Version != parameter.Dimension.Version {
-				continue
+		if columnFilterParameter(parameter) {
+			resolved, err := resolveFilterColumn(d, parameter, binding, publications)
+			if err != nil {
+				return err
 			}
-			for i := range publication.Definition.Dimensions {
-				candidate := &publication.Definition.Dimensions[i]
-				if candidate.ID == parameter.Dimension.Dimension {
-					if dimension != nil {
-						return ErrInvalid
-					}
-					dimension = candidate
+			if parameter.Column.SourceDataset.Dataset != physical.ID {
+				return ErrInvalid
+			}
+			column = &resolved
+		} else {
+			for _, publication := range publications {
+				if publication.Definition.Topic != parameter.Dimension.Topic || publication.Definition.Version != parameter.Dimension.Version {
+					continue
 				}
-			}
-			if dimension != nil {
-				for _, dataset := range publication.Definition.Datasets {
-					if dataset.ID == dimension.Field.Dataset {
-						if dataset.Source.Source != binding.Source || dataset.Source.Context != binding.Context || dataset.Source.SourceRevision != binding.Revision {
-							return ErrStale
+				for i := range publication.Definition.Dimensions {
+					candidate := &publication.Definition.Dimensions[i]
+					if candidate.ID == parameter.Dimension.Dimension {
+						if dimension != nil {
+							return ErrInvalid
 						}
-						for i := range dataset.Columns {
-							candidate := &dataset.Columns[i]
-							if candidate.ID == dimension.Field.ID {
-								if column != nil {
-									return ErrInvalid
+						dimension = candidate
+					}
+				}
+				if dimension != nil {
+					for _, dataset := range publication.Definition.Datasets {
+						if dataset.ID == dimension.Field.Dataset {
+							if dataset.Source.Source != binding.Source || dataset.Source.Context != binding.Context || dataset.Source.SourceRevision != binding.Revision {
+								return ErrStale
+							}
+							for i := range dataset.Columns {
+								candidate := &dataset.Columns[i]
+								if candidate.ID == dimension.Field.ID {
+									if column != nil {
+										return ErrInvalid
+									}
+									column = candidate
 								}
-								column = candidate
 							}
 						}
 					}
 				}
 			}
-		}
-		if dimension == nil || column == nil || dimension.Field.Kind != semantics.KindColumn || dimension.Field.Dataset != physical.ID || len(dimension.Filters) != 0 || dimension.Temporal != nil {
-			return unsupportedPreparation("filter_dimension_unsupported")
-		}
-		if parameter.Type == "dimension_set" && !authoringTextColumn(*column) || parameter.Type == "date_range" && (!authoringDateColumn(*column) || dimension.Role != semantics.DimensionTemporal) {
-			return unsupportedPreparation("filter_type_unsupported")
+			if dimension == nil || column == nil || dimension.Field.Kind != semantics.KindColumn || dimension.Field.Dataset != physical.ID || len(dimension.Filters) != 0 || dimension.Temporal != nil {
+				return unsupportedPreparation("filter_dimension_unsupported")
+			}
+			if parameter.Type == "dimension_set" && !authoringTextColumn(*column) || parameter.Type == "date_range" && (!authoringDateColumn(*column) || dimension.Role != semantics.DimensionTemporal) {
+				return unsupportedPreparation("filter_type_unsupported")
+			}
 		}
 		found := false
 		for _, actual := range physical.Columns {
@@ -333,7 +353,7 @@ func validateBoundedFilterSemantics(ctx context.Context, d Definition, binding e
 				return nil
 			}
 			right := expression["rexpr"]
-			if parameter.Type == "dimension_set" {
+			if parameter.Type == "dimension_set" || parameter.Type == "column_set" {
 				items := astArray(astObject(astObject(right)["List"])["items"])
 				if len(items) == 0 {
 					return nil

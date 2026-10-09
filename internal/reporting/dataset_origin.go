@@ -147,6 +147,14 @@ func (s *Service) resolveSourceDataset(ctx context.Context, e identity.Envelope,
 			return nil, nil, ErrInvalid
 		}
 	}
+	for _, parameter := range d.Parameters {
+		if boundedFilterParameter(parameter) {
+			if err := validateBoundedFilterSemantics(ctx, d, binding, nil); err != nil {
+				return nil, nil, err
+			}
+			break
+		}
+	}
 	for _, output := range d.Outputs {
 		if output.Mapping == nil {
 			continue
