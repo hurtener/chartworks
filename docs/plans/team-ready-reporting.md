@@ -1,6 +1,6 @@
 # Team-ready reporting
 
-Status: locally qualified; delivery finalization in progress, 2026-10-09. Owner: phases 03/04/29/31/32 and the existing
+Status: locally qualified and delivered, 2026-10-09. Owner: phases 03/04/29/31/32 and the existing
 Pengui companion. This is the next manual product pass after the locally
 qualified [quality continuation](manual-report-product-quality.md); it does not
 close phase 34 migration or phase 25 release.
@@ -61,7 +61,7 @@ a universal widget limit or full migration parity.
   verified layout appears before values and unselected pages are not prefetched.
 - [x] TR07: applicable local Go/race/browser/frontend/planning checks pass;
   bounded single-agent adversarial review and narrow fixes are recorded.
-- [ ] TR08: draft PRs, exact-source evidence and a standalone UI walkthrough are
+- [x] TR08: draft PRs, exact-source evidence and a standalone UI walkthrough are
   updated; temporary owned services are stopped and production is unchanged.
 
 ## Private source comparison

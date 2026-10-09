@@ -1,6 +1,6 @@
 # Team reporting product pass — local qualification
 
-Status: locally qualified; delivery finalization in progress, 2026-10-09. Owning work:
+Status: locally qualified and delivered, 2026-10-09. Owning work:
 [team-ready reporting](../plans/team-ready-reporting.md). This is a bounded manual
 reporting increment; phase 34 migration and phase 25 release remain separate.
 
@@ -75,12 +75,18 @@ per transport issue zero requests. No source/model operation is invoked by readi
 
 The local measurements below include host admission and exact authorized retained
 reads. They are two report opens (initial and reload), not a production latency
-study. The warm navigation range is twenty alternating page selections.
+study. These final reader checks used binaries built from the committed
+implementation, immediately after a service restart. MCP first-open admission
+was colder than the reload. The warm navigation range is twenty alternating page
+selections. A narrow table check additionally reached the sixth retained monthly
+row on desktop/mobile without another request; tables retain a bounded scrolling
+viewport. Two HTTP response-body capture warnings affected diagnostic recording,
+not required UI/state/request assertions; both readers had zero page errors.
 
 | Transport | Layout visible | Six selected-page outputs | First second-page visit | Warm page navigation |
 | --- | --- | --- | --- | --- |
-| HTTP iframe | 868 / 240 ms | 1101 / 1102 ms | 990 / 896 ms | 52–170 ms, median 73.5 ms |
-| Restricted MCP | 337 / 338 ms | 1171 / 1180 ms | 890 / 889 ms | 55–61 ms, median 59 ms |
+| HTTP iframe | 346 / 338 ms | 571 / 564 ms | 367 / 378 ms | 57–75 ms, median 58.5 ms |
+| Restricted MCP | 2941 / 347 ms | 3790 / 1183 ms | 882 / 876 ms | 51–80 ms, median 58 ms |
 
 An earlier eager-loading build took about seven seconds to open the twelve-chart
 MCP report. Selected-page loading removes the unnecessary sibling reads from
@@ -122,7 +128,11 @@ Passed locally:
 - 362 actual compiled-App browser assertions per transport, including responsive
   geometry, keyboard, interruption, private/public isolation and selected-page reads.
 - Go race tests for identity, configuration and MCP resources; Pengui minter and
-  focused App authority/projection/effect/read/write tests.
+  the full App test group (`TestApp*`) covering authority, projection, effects,
+  reads, writes, catalog and browser boundaries. The final broader App group
+  found five legacy overflow fixtures still using the old 35-dependency input;
+  the fixtures now exceed the shared provider ceiling while preserving their
+  refusal/no-dispatch assertions. This correction changes tests only.
 - Native Linux race acceptance for the selected Phase03, Phase29, Phase31 and
   ReportApp tests. The first combined run failed only because Node/Chrome were
   missing. After installing Node 22 and Chromium and correcting its executable
@@ -134,7 +144,20 @@ Passed locally:
   exposed a pre-existing macOS `/var` versus `/private/var` test-fixture mismatch;
   the canonical temporary directory runs the same full planning checks.
 
-Finalization still records committed-source binaries, final draft PR heads,
-standalone walkthrough and owned-service cleanup. Hosted CI is billing-blocked
-under the owner's local-testing instruction. No production deployment or merge
-is authorized or claimed.
+Implementation binaries were built from clean Chartworks `9c4128a0` and Pengui
+`48c883ea`; both final ordinary-reader journeys passed against them. Later
+qualification changes are tests/documentation only. The private task evidence
+contains the complete source hashes, binary hashes, current PR heads, raw logs,
+measurements and screenshot manifest. The standalone walkthrough has sixteen
+embedded captures; all load with working desktop/mobile navigation, zero remote
+requests and no browser errors.
+
+The fixture completed normally after 249 live source attempts and zero additional
+fixture model calls; runtime model services were disabled. All four owned Linux
+services and the local TLS proxy are stopped. Fixture databases/roles were cleaned
+up, container volumes preserved, and unrelated user services left running.
+
+Chartworks #76 and Pengui #367 remain draft/open/unmerged, with unchanged runtime
+companion #784. Hosted CI is billing-blocked under the owner's local-testing
+instruction. This is local product qualification, not phase 34 migration or phase
+25 release. Production is unchanged.
