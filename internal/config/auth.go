@@ -3,6 +3,8 @@ package config
 import (
 	"strings"
 	"time"
+
+	"github.com/hurtener/chartworks/internal/identity"
 )
 
 // Audiences pins the intended resource on each transport; values are never taken from a token.
@@ -65,7 +67,7 @@ func ValidateAuth(a Auth) error {
 	if a.ClockSkew < 0 || a.ClockSkew > Duration(time.Minute) || a.MaxTokenLifetime < Duration(time.Second) || a.MaxTokenLifetime > Duration(24*time.Hour) {
 		return invalid("auth", "invalid temporal bounds")
 	}
-	if a.MaxTokenBytes < 1024 || a.MaxTokenBytes > 65536 || a.MaxClaimBytes < 512 || a.MaxClaimBytes > a.MaxTokenBytes || a.MaxScopes < 1 || a.MaxScopes > 32 || a.MaxScopeBytes < 1 || a.MaxScopeBytes > 4096 {
+	if a.MaxTokenBytes < 1024 || a.MaxTokenBytes > 65536 || a.MaxClaimBytes < 512 || a.MaxClaimBytes > a.MaxTokenBytes || a.MaxScopes < 1 || a.MaxScopes > identity.MaxScopes || a.MaxScopeBytes < 1 || a.MaxScopeBytes > identity.MaxTotalScopeBytes {
 		return invalid("auth", "invalid claim size bounds")
 	}
 	return nil

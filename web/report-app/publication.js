@@ -72,7 +72,7 @@ export class PublicationSession {
   available(action='lifecycle'){return !this.closed&&this.supports(authoringTool('lifecycle'))&&this.supports(authoringTool(action));}
   invalidate(){this.generation++;this.view=null;this.selection.clear();this.confirmations.clear();for(const op of this.operations.values())op.retryView=null;this.message='';this.rejectNote='';this.panelExpanded=false;}
   current(session){const r=this.view?.report;return !!r&&!session.dirty&&r.state.id===session.state?.id&&r.revision===session.revision&&r.state.version===session.state.version&&r.digest===session.digest;}
-  blocked(report){return this.pending||Array.from(this.operations.values()).some(op=>op.status==='unknown'&&(op.report===report||op.args.report===report));}
+  blocked(report){return this.pending||this.batching||Array.from(this.operations.values()).some(op=>op.status==='unknown'&&(op.report===report||op.args.report===report));}
   records(report){return Array.from(this.operations.values()).filter(op=>op.report===report||op.args.report===report);}
   get custodyBytes(){return Array.from(this.operations.values()).reduce((sum,op)=>sum+custodySize(op),0);}
   retain(op,patch={}){
@@ -83,7 +83,7 @@ export class PublicationSession {
     for(const id of removed)this.operations.delete(id);Object.assign(op,patch);this.operations.set(op.id,op);
   }
   async read(target){if(!this.available())throw appError(FORBIDDEN);return checkLifecycle(await this.invoke(authoringTool('lifecycle'),copyData(target)),target);}
-  async open(report,revision){this.panelExpanded=true;if(this.closed||this.pending||!validID(report)||!integer(revision,256))throw appError(BUSY);const generation=++this.generation;this.view=null;this.rejectNote='';this.selection.clear();this.confirmations.clear();const view=await this.read({report,revision});if(this.closed||generation!==this.generation)return null;this.view=view;return view;}
+  async open(report,revision){this.panelExpanded=true;if(this.closed||this.pending||this.batching||!validID(report)||!integer(revision,256))throw appError(BUSY);const generation=++this.generation;this.view=null;this.rejectNote='';this.selection.clear();this.confirmations.clear();const view=await this.read({report,revision});if(this.closed||generation!==this.generation)return null;this.view=view;return view;}
   rejected(report,revision){return this.records(report).some(op=>op.action==='reject'&&op.args.revision===revision&&['confirmed','observed'].includes(op.status));}
   setRejectNote(value){if(this.pending||this.closed)return;if(typeof value!=='string'||value.length>2048)throw appError(INVALID_REQUEST);this.rejectNote=value;this.confirmations.clear();}
   request(action,target){const r=this.view?.report;if(!r||r.state.archived)throw appError(FORBIDDEN);
@@ -97,11 +97,37 @@ export class PublicationSession {
   token(action,target){return JSON.stringify([action,this.view?.report?.digest,this.request(action,target),action==='block_publish'?outputDisclosure(this.view.blocks.find(item=>key(item.block)===target).block.outputs):[]]);}
   confirm(action,target,value){const token=this.token(action,target);if(value)this.confirmations.add(token);else this.confirmations.delete(token);}
   confirmed(action,target){try{return this.confirmations.has(this.token(action,target));}catch{return false;}}
-  select(widget,value){if(this.pending)return;if(value)this.selection.add(widget);else this.selection.delete(widget);this.confirmations.clear();}
+  select(widget,value){if(this.pending||this.batching)return;if(value)this.selection.add(widget);else this.selection.delete(widget);this.confirmations.clear();}
+  chartBatchTargets(){return this.view?.blocks.filter(publicationEligible).map(item=>key(item.block))||[];}
+  chartBatchToken(){const targets=this.chartBatchTargets(),r=this.view?.report;if(targets.length<2||!r)throw appError(INVALID_REQUEST);return JSON.stringify(['chart_batch',stateCoordinates(r.state),r.revision,r.digest,targets.map(target=>this.token('block_publish',target))]);}
+  confirmChartBatch(value){const token=this.chartBatchToken();if(value)this.confirmations.add(token);else this.confirmations.delete(token);}
+  chartBatchConfirmed(){try{return this.confirmations.has(this.chartBatchToken());}catch{return false;}}
+  operation(action,target){
+    const args=this.request(action,target);if(Array.from(this.operations.values()).some(op=>op.status==='unknown'&&(args.block&&op.args.block===args.block||args.report&&op.args.report===args.report)))throw appError(BUSY);
+    return {id:JSON.stringify([action,args]),action,args:copyData(args),report:this.view.report.state.id,status:'unknown',disclosure:action==='block_publish'?publicationClone(outputDisclosure(this.view.blocks.find(item=>key(item.block)===target).block.outputs)):null,digest:this.view.report.digest,prior:action==='reject'?pick(this.view.report.state,['draft_revision','published_revision','latest_revision']):null,base:action==='rebind_published'?publicationClone(this.view.report.definition):null};
+  }
+  async publishChartBatch(progress=()=>{}){
+    if(this.closed||this.batching||!this.available('block_publish')||this.blocked(this.view?.report?.state.id)||!this.chartBatchConfirmed())throw appError(BUSY);
+    // Seal only the exact inspected revisions and disclosures covered by this
+    // confirmation. Each independent CAS is retained immediately before send.
+    // Unsent operations are never represented as unknown or retried implicitly.
+    const generation=this.generation,operations=this.chartBatchTargets().map(target=>this.operation('block_publish',target));let last=null,completed=0;
+    this.batching=true;this.confirmations.clear();
+    try{
+      for(const op of operations){
+        if(this.closed||generation!==this.generation)return null;
+        this.retain(op);last=await this.dispatch(op,generation);
+        if(!last||this.closed||generation!==this.generation)return null;
+        completed++;this.message=`${completed} of ${operations.length} chart revisions published. The report remains unchanged.`;progress();
+      }
+      this.message=`${completed} chart revisions published. Select their report components and link the published charts to continue.`;return last;
+    }catch(error){if(!this.closed&&generation===this.generation){this.view=null;this.message=`${completed} of ${operations.length} chart revisions confirmed published. Publication stopped; remaining charts were not sent. Inspect current status before continuing. ${this.message}`;}throw error;}
+    finally{this.batching=false;}
+  }
   async mutate(action,target){
     const tool=reportTransition(action)?'report_transition':action;
     if(this.closed||!this.available(tool)||this.blocked(this.view?.report?.state.id)||!this.confirmed(action,target))throw appError(BUSY);
-    const args=this.request(action,target);if(Array.from(this.operations.values()).some(op=>op.status==='unknown'&&(args.block&&op.args.block===args.block||args.report&&op.args.report===args.report)))throw appError(BUSY);const generation=this.generation,report=this.view.report.state.id,id=JSON.stringify([action,args]),op={id,action,args:copyData(args),report,status:'unknown',disclosure:action==='block_publish'?publicationClone(outputDisclosure(this.view.blocks.find(item=>key(item.block)===target).block.outputs)):null,digest:this.view.report.digest,prior:action==='reject'?pick(this.view.report.state,['draft_revision','published_revision','latest_revision']):null,base:action==='rebind_published'?publicationClone(this.view.report.definition):null};
+    const generation=this.generation,op=this.operation(action,target);
     this.retain(op);return this.dispatch(op,generation);
   }
   async dispatch(op,generation,retry=false){
@@ -124,10 +150,10 @@ export class PublicationSession {
   retryToken(op){return JSON.stringify(['retry',op.id,op.digest,op.disclosure]);}
   confirmRetry(op,value){if(!this.retryEligible(op))throw appError(FORBIDDEN);if(value)this.confirmations.add(this.retryToken(op));else this.confirmations.delete(this.retryToken(op));}
   retryConfirmed(op){return this.retryEligible(op)&&this.confirmations.has(this.retryToken(op));}
-  async retry(op){const tool=reportTransition(op.action)?'report_transition':op.action;if(this.closed||this.pending||this.operations.get(op.id)!==op||!this.available(tool)||!this.retryConfirmed(op))throw appError(BUSY);return this.dispatch(op,this.generation,true);}
+  async retry(op){const tool=reportTransition(op.action)?'report_transition':op.action;if(this.closed||this.pending||this.batching||this.operations.get(op.id)!==op||!this.available(tool)||!this.retryConfirmed(op))throw appError(BUSY);return this.dispatch(op,this.generation,true);}
   async inspectOperation(op){
     this.panelExpanded=true;
-    if(this.closed||this.pending||this.operations.get(op.id)!==op)throw appError(BUSY);const generation=this.generation,args=op.args;op.retryView=null;this.confirmations.clear();
+    if(this.closed||this.pending||this.batching||this.operations.get(op.id)!==op)throw appError(BUSY);const generation=this.generation,args=op.args;op.retryView=null;this.confirmations.clear();
     const target=args.block?{block:args.block,revision:args.revision}:{report:args.report,revision:args.revision};
     let view=await this.read(target);if(this.closed)return null;
     const exact=args.block?view.blocks[0].block:view.report;

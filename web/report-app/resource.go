@@ -17,7 +17,7 @@ import (
 
 const URI = "ui://chartworks/report-app/v1"
 
-const maxResourceBytes = 256 << 10
+const maxResourceBytes = 512 << 10
 
 //go:embed generated/report-app.js
 var appScript string

@@ -63,7 +63,7 @@ type Envelope struct {
 // FromVerified is called only after signature, issuer, audience and time validation.
 // In-process callers must obtain envelopes from auth.Verifier, not build identity DTOs.
 func FromVerified(tenant, user, session string, scopes []string, until time.Time, now func() time.Time) (Envelope, error) {
-	if !Identifier(tenant) || !Identifier(user) || !Identifier(session) || until.IsZero() || len(scopes) > 32 {
+	if !Identifier(tenant) || !Identifier(user) || !Identifier(session) || until.IsZero() || len(scopes) > MaxScopes {
 		return Envelope{}, ErrInvalid
 	}
 	if strings.HasPrefix(strings.ToLower(user), "svc:") && (!strings.HasPrefix(user, "svc:") || len(user) == 4) {
@@ -77,7 +77,7 @@ func FromVerified(tenant, user, session string, scopes []string, until time.Time
 	total := 0
 	for _, s := range scopes {
 		total += len(s)
-		if len(s) == 0 || len(s) > 256 || total > 4096 || seen[s] {
+		if len(s) == 0 || len(s) > MaxScopeBytes || total > MaxTotalScopeBytes || seen[s] {
 			return Envelope{}, ErrInvalid
 		}
 		for _, c := range s {

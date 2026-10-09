@@ -16,7 +16,7 @@ import (
 const AppMIME = "text/html;profile=mcp-app"
 
 // MaxAppBytes bounds a bundled static resource independently of tenant payloads.
-const MaxAppBytes = 256 << 10
+const MaxAppBytes = 512 << 10
 
 // AppResource is immutable bundled presentation code. It contains neither an
 // executable callback nor a tenant-data loader. NewAppResource is its only

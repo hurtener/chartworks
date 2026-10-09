@@ -35,7 +35,12 @@ current publication pointer, so an old observed dependency set cannot silently
 stand in for a newer one. Private widget pins stay private even after that block
 revision is published. There are at most 128 distinct references and 128 block
 pins; excess or incomplete metadata fails without a partial manifest. Pengui's
-32-scope/4096-byte issuer ceiling remains separate and may reject a smaller set.
+bounded issuer capacity remains separate and may reject a smaller set. D-105
+admits 128 token scopes / 16,384 aggregate scope bytes; App projection reserves
+one scope and seven bytes for MCP, leaving 127 / 16,377 on both transports.
+Every dependency and operation permission must fit; no partial manifest or
+truncated scope set is admitted. Explicit smaller verifier configurations still
+reject larger requests.
 
 Pengui resolves every returned reference through its current canonical
 ShareGrant/Team/Project machinery, plus the independently allowed operation and

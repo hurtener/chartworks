@@ -168,3 +168,11 @@ column/row/span coordinates remain authoritative. Builder rows stay exactly 80px
 reading rows use that minimum and expand for content, keeping disclosures and table
 rows visible without nested card scrolling. This is a screen-reading adjustment,
 not a rewrite of saved definitions or portable export geometry.
+
+
+## Team-ready reporting capacity
+
+[D-105](../decisions/2026-10-09-reporting-capacity.md) coordinates bounded
+exact provider authority and a 512 KiB self-contained App ceiling. The small
+read viewer remains bounded at 256 KiB. The [active product pass](team-ready-reporting.md)
+tracks twelve-chart/two-page runtime and browser qualification separately.

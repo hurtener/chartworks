@@ -172,3 +172,11 @@ App HTML) or invoke tools. Interactive App resource/tool requests still require
 No service name alone authorizes a request; the verifier, configured MCP audience,
 expiry and exact scope profile remain mandatory. No new issuer, credential,
 identity table, domain endpoint or migration is introduced.
+
+
+## Team-ready reporting capacity
+
+[D-105](docs/decisions/2026-10-09-reporting-capacity.md) coordinates bounded
+exact provider authority and a 512 KiB self-contained App ceiling. The small
+read viewer remains bounded at 256 KiB. The [active product pass](docs/plans/team-ready-reporting.md)
+tracks twelve-chart/two-page runtime and browser qualification separately.

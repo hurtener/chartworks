@@ -34,8 +34,14 @@ export function renderPublicationControls(parent,app){
   if(r.state.draft_revision>0&&r.state.draft_revision!==r.revision)section.append(button('Open current draft',()=>app.navigate(()=>app.openDraft(r.state.id,'draft')),app.busy));
   if(view.rejected===true||p.rejected(r.state.id,r.revision))section.append(node('p','This revision was returned for amendment. Edit and save a new revision before resubmitting it for review.','notice'));
   if(r.state.review_revision>0&&r.state.review_revision!==r.revision)section.append(button('Open pending review',()=>app.navigate(()=>app.openDraft(r.state.id,'review')),app.busy));
+  const batchTargets=p.chartBatchTargets();
+  if(batchTargets.length>1&&p.available('block_publish')){
+    const group=node('section',undefined,'publication-batch');group.append(node('h3',`${batchTargets.length} charts ready to publish`),node('p','Includes the entire revision and every listed output of each ready chart below. Currently authorized readers can access those publications. Audience details are unavailable. Each chart is published separately; an interruption stops the remaining changes.','notice'));
+    group.append(checkbox(`I confirm publishing all ${batchTargets.length} ready chart revisions and every listed output.`,p.chartBatchConfirmed(),locked,value=>{p.confirmChartBatch(value);app.render();}),button(`Publish ${batchTargets.length} ready charts`,()=>void app.perform(()=>app.publishChartBatch()),locked||!p.chartBatchConfirmed()));section.append(group);
+  }
   for(const item of view.blocks){const b=item.block,card=node(item.published_at?'details':'article',undefined,'publication-chart');if(item.published_at)card.append(node('summary',b.metadata?.[0]?.title||'Published chart'));
     card.append(node('h3',b.metadata?.[0]?.title||b.state.id),node('p',`Chart revision ${b.revision} · ${item.published_at?'Published':'Private'} · ${b.outputs.length} outputs`,'metadata'));
+    if(batchTargets.length>1&&publicationEligible(item))card.append(node('p','Included in ready charts','metadata'));
     const outputs=node('ul');for(const output of b.outputs)outputs.append(node('li',`${output.id} · ${output.kind}${output.mapping?.options?.title?' · '+output.mapping.options.title:''}`));card.append(outputs);
     if(!item.published_at&&p.available('block_publish')){
       card.append(node('p','Publishes this ENTIRE immutable chart revision and ALL listed outputs to authorized readers. Audience details are unavailable. Report publication and sharing stay separate.','notice'));
@@ -48,6 +54,7 @@ export function renderPublicationControls(parent,app){
   const options=publishedWidgets(view);
   if(options.length&&r.private&&r.state.draft_revision===r.revision&&p.available('rebind_published')){
     const group=node('section');group.append(node('h3','Use published charts in this report'),node('p','Link selected widgets to these published charts in a new private draft. Their outputs, filters, parameters and layout stay intact.','metadata'));
+    if(options.length>1)group.append(button(p.selection.size===options.length?'Clear selection':`Select all ${options.length} components`,()=>{const value=p.selection.size!==options.length;for(const option of options)p.select(option.widget,value);app.render();},locked));
     for(const option of options)group.append(checkbox(`${option.page} / ${option.title} · ${option.widget} · ${option.block} revision ${option.revision}`,p.selection.has(option.widget),locked,value=>{p.select(option.widget,value);app.render();}));
     if(p.selection.size)confirm(group,app,'rebind_published',undefined,'I confirm rebinding only the selected widgets to their exact published chart revisions.','Rebind selected widgets',locked);
     section.append(group);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ReportApp} from './app.js';
-import {publicationFixture,clone} from './publication-fixture.mjs';
+import {publicationFixture,multiChartFixture,clone} from './publication-fixture.mjs';
 import {authoringTool,appError} from './model.js';
 class Element {
  constructor(tag){this.tagName=tag.toUpperCase();this.children=[];this.attributes={};this.listeners={};this.dataset={};this.style={setProperty(name,value){this[name]=value;}};this._text='';this.disabled=false;this.value='';this.checked=false;}
@@ -14,7 +14,7 @@ class Element {
 }
 const buttons=(root,label)=>root.querySelectorAll('button').filter(b=>b.textContent===label);
 function tickBox(root,label){const box=root.querySelectorAll('input').find(i=>i.getAttribute('aria-label')===label);assert(box,label);assert.equal(box.disabled,false);box.checked=true;box.emit('change');}
-async function setup({supports=()=>true,wrap=(fn)=>fn}={}){globalThis.document={createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),documentElement:new Element('html')};const root=new Element('main'),f=publicationFixture(),invoke=wrap(f.invoke),app=new ReportApp(root,{resize(){},supportsTool:supports,async call(name,args){return {structuredContent:{result:await invoke(name,args)}};}});app.mode='builder';await app.openDraft('report-a');app.render();return {root,f,app};}
+async function setup({supports=()=>true,wrap=(fn)=>fn,fixture=publicationFixture}={}){globalThis.document={createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),documentElement:new Element('html')};const root=new Element('main'),f=fixture(),invoke=wrap(f.invoke),app=new ReportApp(root,{resize(){},supportsTool:supports,async call(name,args){return {structuredContent:{result:await invoke(name,args)}};}});app.mode='builder';await app.openDraft('report-a');app.render();return {root,f,app};}
 async function chartPublish(app,root){await app.inspectPublication();app.render();tickBox(root,'I confirm publishing the entire chart revision and all listed outputs.');await app.publishAction('block_publish','chart-a:2');app.render();}
 async function bindAll(app){app.publication.select('first',true);app.publication.select('second',true);app.publication.confirm('rebind_published',undefined,true);await app.publishAction('rebind_published');app.render();}
 
@@ -65,3 +65,6 @@ test('publication guidance follows native gates and returns through the reader t
  await app.editPublished();assert.equal(app.session.stage,'published');app.edit(d=>d.metadata[0].title='Amended report');await app.save();assert.equal(app.session.stage,'draft');assert.equal(app.session.revision,3);assert.deepEqual(f.report(2).definition,published.definition);
  await app.inspectPublication();app.publication.confirm('review',undefined,true);await app.publishAction('review');app.publication.confirm('publish',undefined,true);await app.publishAction('publish');assert.equal(app.session.stage,'published');assert.equal(app.session.revision,3);assert.deepEqual(f.report(2).definition,published.definition);assert(!f.calls.some(c=>/preview|execute|reporting_run$/.test(c.name)));app.close();
 });
+
+
+test('twelve-chart controls disclose exact revisions, batch only after confirmation, and explicitly select all links',async()=>{const {root,f,app}=await setup({fixture:multiChartFixture});await app.inspectPublication();app.render();assert.equal(buttons(root,'Publish 12 ready charts')[0].disabled,true);assert.equal(root.querySelectorAll('article').filter(el=>el.textContent.includes('Included in ready charts')).length,12);assert.match(root.textContent,/every listed output/);tickBox(root,'I confirm publishing all 12 ready chart revisions and every listed output.');assert.equal(buttons(root,'Publish 12 ready charts')[0].disabled,false);await app.publishChartBatch();app.render();assert.equal(app.publication.records('report-a').length,12);assert.equal(app.session.revision,1);assert(app.session.definition.report_pages.flatMap(p=>p.widgets).every(w=>w.block.policy==='private_preview'));buttons(root,'Select all 12 components')[0].emit('click');assert.equal(app.publication.selection.size,12);assert.equal(app.publication.confirmed('rebind_published'),false);tickBox(root,'I confirm rebinding only the selected widgets to their exact published chart revisions.');await app.publishAction('rebind_published');assert.equal(app.session.revision,2);assert(app.session.definition.report_pages.flatMap(p=>p.widgets).every(w=>w.block.policy==='published'));assert(!f.calls.some(c=>c.name==='reporting_run'));app.close();});

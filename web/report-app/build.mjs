@@ -75,6 +75,11 @@ if (inputs.filter(input => input.path === 'web/report-viewer/presentation.js' &&
   throw new Error('The app must consume the canonical presentation module once, without the viewer host');
 }
 const script = emitted[0].contents;
+// Keep the resource self-contained and bounded, with space for framing and growth.
+const styleBytes = await Promise.all(styles.map(path => readFile(resolve(repository, path))));
+if (script.length + styleBytes.reduce((total, bytes) => total + bytes.length, 0) > (512 - 64) * 1024) {
+  throw new Error("Report app exceeds its 448 KiB compiled-asset budget (512 KiB resource ceiling)");
+}
 if (/<\/script\b|sourceMappingURL|\beval\s*\(|\bnew\s+Function\b/.test(emitted[0].text)) {
   throw new Error('Unsafe inline bundle or source map');
 }

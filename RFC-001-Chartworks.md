@@ -194,7 +194,7 @@ L2 reviewed engineering/drift proposals remain planned. L3 auto-apply and a new 
 
 ## Phase 03/04 authority implementation
 
-D-059–D-061 implement the existing Pengui provider-scope seam with one JWT verifier/cache and immutable signed envelope. [The operator handoff](docs/contracts/pengui-provider-registration.md) and [actual operation manifest](docs/contracts/chartworks-operations.json) describe the implemented consumer. Scope limits are 32 entries, 256 bytes each, 4096 total; exact HTTP/MCP audiences may be configured separately. Synchronous operational routes and SDK clients are present, but no local issuer, grants database, reporting API or full MCP transport is added by this milestone.
+D-059–D-061 implement the existing Pengui provider-scope seam with one JWT verifier/cache and immutable signed envelope. [The operator handoff](docs/contracts/pengui-provider-registration.md) and [actual operation manifest](docs/contracts/chartworks-operations.json) describe the implemented consumer. The coordinated [D-105](docs/decisions/2026-10-09-reporting-capacity.md) scope limits are 128 entries, 256 bytes each, 16,384 total; exact HTTP/MCP audiences may be configured separately. Synchronous operational routes and SDK clients are present, but no local issuer, grants database, reporting API or full MCP transport is added by this milestone.
 
 ## Phases 05/06 implementation addendum (2026-09-05)
 

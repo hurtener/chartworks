@@ -2,6 +2,11 @@ import {mapView,mapValidation,mapClone} from './mapping-fixture.mjs';
 import {reportStage} from './publication.js';
 import {appError} from './model.js';
 export const clone=mapClone;
+export function multiChartFixture(count=12){
+  const f=publicationFixture(),source=clone(f.blocks.get('chart-a:2')),definition=f.definitions.get(1),widget=clone(definition.report_pages[0].widgets[0]);f.blocks.clear();for(const page of definition.report_pages)page.widgets=[];
+  for(let i=0;i<count;i++){const id=`chart-${i+1}`,item=clone(source);item.block.state.id=id;item.block.metadata=[{locale:'en-US',title:`Chart ${i+1}`}];f.blocks.set(`${id}:2`,item);const component=clone(widget);component.id=`component-${i+1}`;component.block.block=id;component.presentation.title=`Chart ${i+1}`;component.grid={column:0,row:Math.floor(i/2)*2,width:12,height:2};definition.report_pages[i%2].widgets.push(component);}
+  return f;
+}
 export function publicationFixture(){
   const b=mapView('chart-a',2,true).block;b.state.draft_state='validated';b.validation=mapValidation({block:b}).evidence;
   const blocks=new Map([['chart-a:2',{block:b,validation_fresh:true,can_publish:true,publication_scope:'entire_revision',audience_effect:'existing_authorized_readers'}]]);

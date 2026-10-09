@@ -1,4 +1,4 @@
-import {INVALID_REQUEST, STALE_VALIDATION, LIMIT_EXCEEDED} from './error-codes.js';
+import {INVALID_REQUEST, STALE_VALIDATION, LIMIT_EXCEEDED, BUSY} from './error-codes.js';
 import {boundedJSON, validateRetainedView} from '../report-viewer/presentation.js';
 import {reportPages} from './pages.js';
 import {appError, copyData, validID} from './model.js';
@@ -62,8 +62,8 @@ function emptyPageRoot(view) {
 // Disposable, generation-bound retained values. Only reporting_view is used;
 // neither layout redraw nor per-output paging can submit a new execution.
 export class RetainedReport {
-  constructor(invoke,onExpired=()=>{}){this.invoke=invoke;this.onExpired=onExpired;this.generation=0;this.value=null;this.entries=new Map();this.pending=new Set();this.timer=null;this.bytes=0;this.closed=false;}
-  clear(){this.generation++;clearTimeout(this.timer);this.timer=null;this.value=null;this.entries.clear();this.pending.clear();this.bytes=0;}
+  constructor(invoke,onExpired=()=>{}){this.invoke=invoke;this.onExpired=onExpired;this.generation=0;this.value=null;this.entries=new Map();this.pending=new Set();this.timer=null;this.bytes=0;this.closed=false;this.loadingPage='';}
+  clear(){this.generation++;clearTimeout(this.timer);this.timer=null;this.value=null;this.entries.clear();this.pending.clear();this.bytes=0;this.loadingPage='';}
   close(){this.clear();this.closed=true;}
   get(page,widget,output=''){return this.entries.get(retainedKey(page,widget,output))?.view;}
   check(v,request=null){
@@ -82,24 +82,39 @@ export class RetainedReport {
     if(next>CANVAS_MAX_BYTES)throw appError(LIMIT_EXCEEDED);
     this.entries.set(key,{view,bytes});this.bytes=next;
   }
-  async load(value){
+  async load(value,{page='',onProgress=()=>{}}={}){
     this.clear();if(this.closed)return false;
     const generation=this.generation;
     try{
       const expiry=this.check(value),requests=selections(value);this.value=cloneRetained(value);
       const armExpiry=()=>{if(this.closed||generation!==this.generation)return;const remaining=expiry-Date.now();if(remaining>0){this.timer=setTimeout(armExpiry,Math.min(2147483647,remaining));this.timer.unref?.();return;}this.clear();this.onExpired();};armExpiry();
-      if(!['completed','partial'].includes(value.summary.state))return true;
+      if(!['completed','partial'].includes(value.summary.state)){onProgress();return true;}
       const selected=requests.find(r=>['kind','run','page','widget','output','offset'].every(key=>r[key]===value.selection[key]));
       const initialFailure=!selected&&value.selection.output===''&&widgetFailure(value);
       const initialEmpty=!selected&&emptyPageRoot(value);
       if(initialFailure)this.check(value,{kind:'report',run:value.summary.run,page:value.selection.page,widget:value.selection.widget,output:'',offset:0,limit:100});
       if((value.pages?.length||value.text||value.output)&&!selected&&!initialFailure&&!initialEmpty)throw appError(STALE_VALIDATION);
       if(selected){this.check(value,selected);this.keep(this.value);requests.splice(requests.indexOf(selected),1);}
-      let cursor=0;
-      const read=async()=>{while(cursor<requests.length&&!this.closed&&generation===this.generation){const request=requests[cursor++],view=await this.invoke('reporting_view',request);if(this.closed||generation!==this.generation)return;this.check(view,request);this.keep(cloneRetained(view));}};
+      if(page&&!this.value.pages.some(p=>p.id===page))throw appError(INVALID_REQUEST);
+      return this.loadPage(page,onProgress);
+    }catch(e){if(generation!==this.generation||this.closed)return false;this.clear();throw e;}
+  }
+  pageReady(page){return !!this.value&&this.value.pages.some(p=>p.id===page)&&(!['completed','partial'].includes(this.value.summary.state)||selections(this.value).filter(r=>r.page===page).every(r=>this.entries.has(retainedKey(r.page,r.widget,r.output))));}
+  async loadPage(page,onProgress=()=>{}){
+    if(this.closed||!this.value)return false;
+    if(this.loadingPage)throw appError(BUSY);
+    if(page&&!this.value.pages.some(p=>p.id===page))throw appError(INVALID_REQUEST);
+    if(!['completed','partial'].includes(this.value.summary.state))return true;
+    const generation=this.generation,requests=selections(this.value).filter(r=>(!page||r.page===page)&&!this.entries.has(retainedKey(r.page,r.widget,r.output)));let cursor=0;
+    this.loadingPage=page||'*';
+    try{
+      // Validated layout is available before the first retained output finishes.
+      onProgress();
+      const read=async()=>{while(cursor<requests.length&&!this.closed&&generation===this.generation){const request=requests[cursor++],view=await this.invoke('reporting_view',request);if(this.closed||generation!==this.generation)return;this.check(view,request);this.keep(cloneRetained(view));onProgress();}};
       await Promise.all(Array.from({length:Math.min(4,requests.length)},()=>read()));
       return !this.closed&&generation===this.generation;
-    }catch(e){if(generation!==this.generation||this.closed)return false;this.clear();throw e;}
+    }catch(error){if(this.closed||generation!==this.generation)return false;this.clear();throw error;}
+    finally{if(generation===this.generation)this.loadingPage='';}
   }
   async page(page,widget,output,offset){
     const key=retainedKey(page,widget,output),entry=this.entries.get(key);

@@ -824,3 +824,11 @@ Published Consumer authority: [D-102 native published execution and original-run
 Governed option authority: [D-103 original lookup custody and target discovery](decisions/2026-10-05-option-dependency-discovery.md).
 
 MCP service discovery: [D-104 existing Pengui connection authority with no domain access](decisions/2026-10-07-mcp-connection-discovery.md).
+
+
+## Team report capacity
+
+See [the accepted decision](decisions/2026-10-09-reporting-capacity.md).
+It supersedes only the D-059–D-061 scope-size ceilings; same exact claim encoding,
+central policy, privacy, audience and expiry checks. Product acceptance remains
+tracked independently in the team-ready reporting plan.

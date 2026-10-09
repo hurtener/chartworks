@@ -349,3 +349,30 @@ discovery and original lookup recovery; see docs/contracts/report-dependencies-v
 It reuses existing option services and adds no source effect or migration. Local
 native checks and real cross-service qualification remain distinct; phase release
 status and both-mode acceptance are not changed by this integration increment.
+
+D-105 gives the immutable App document a 512 KiB hard resource budget; the separate
+small read viewer remains limited to 256 KiB. The build reserves 64 KiB for framing
+and growth and continues to embed all runtime code under the existing hash CSP.
+Provider authority uses the same exact scopes with the coordinated bounded
+128-entry / 16,384-byte ceilings; explicit smaller verifier limits remain binding.
+
+The team-reporting authoring pass adds structural starters using only native v3
+pages and text headings. Authors explicitly choose every chart and data source.
+Suggested geometry avoids existing components and never rewrites them. Starter
+guidance and empty layout illustrations are editor UI, not retained report data.
+
+An explicit confirmation can cover all currently ready chart revisions and every
+listed output. The App seals those inspected requests and dispatches each existing
+metadata-only block-publication CAS sequentially. It retains custody immediately
+before send, stops on failure, uncertainty, close or navigation, and never retries
+or represents unsent requests as committed. Report pins, review, report publication
+and source execution remain separate explicit actions. Rebinding may select all
+listed eligible components, with its own exact confirmation.
+
+Retained report opening validates the complete saved layout and exact root before
+showing it, then reads only the selected page with at most four concurrent output
+reads. Selecting an uncached sibling page uses the same exact native read path;
+returning to a cached page does not execute data. No sibling is prefetched merely
+because its layout was returned. Generation, privacy, expiry, output identity and
+16 MiB aggregate cache limits still apply. A denied or inconsistent page read
+erases the whole retained cache and view; late replies cannot repopulate it.
