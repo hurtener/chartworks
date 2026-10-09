@@ -120,9 +120,8 @@ controls.
 This closes the implementation gap in the prior source checkpoint, but FA03/FA04
 remain open until actual uploaded data and the signed-in host journeys are
 qualified with physical filters. FA06/FA07 still require audience management and
-the author-to-reader-to-amendment walkthrough. A broad Phase23/AC01 run uncovered
-an analytical-mismatch/error-registration regression outside catalog reads; it
-is retained as an open qualification finding, not a passing product gate.
+the author-to-reader-to-amendment walkthrough. The analytical error-registration
+finding from Phase23/AC01 is resolved in the physical-filter UI checkpoint below.
 
 ## Physical-filter native checkpoint
 
@@ -136,7 +135,16 @@ schema identity. Saved defaults and temporary report selections share one core.
 Native acceptance covers an author without topic permissions, schema-checked
 HTTP preparation, private custody, malformed/reference/authority rejection,
 validation/publication, exact frozen results, report filter overrides across a
-23-hour calendar day, private amendment and compacted replay. Physical option
-search, Builder/Consumer controls and signed-in host evidence are still open.
-The Phase23 analytical error registration finding and audience work remain open.
+23-hour calendar day, private amendment and compacted replay. The shared
+Builder/Consumer now has typed value/set/range controls with explicit calendar
+and timezone policy, staged Done/Cancel behavior and exact numeric entry.
+JavaScript/resource contracts and 396 browser assertions per transport pass,
+including desktop/mobile physical controls. Physical option search and signed-in
+host evidence are still open.
+The NLQ/BYO error registry now includes the analytical refusals already emitted
+by handlers. The shared surface fixture preserves the question's actual reviewed
+aggregation instead of substituting raw rows. The full `internal/nlqapi` suite and
+Phase22/Phase23 AC01–AC03 pass against local PostgreSQL/native execution. This
+closes the recorded analytical error-registration finding; audience work remains
+open. No analytical guard was loosened.
 No FA criterion closes from this checkpoint alone.

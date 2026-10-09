@@ -1,3 +1,4 @@
+import {checkColumnFilterCapability} from './column-filters.js';
 import {appError,copyData,validID} from './model.js';
 import {INVALID_REQUEST,STALE_VALIDATION} from './error-codes.js';
 import {sourceDatasetPin} from './source-catalog.js';
@@ -17,7 +18,7 @@ export function checkFieldCatalog(view){
  for(const c of f.columns){
   if(!validID(c?.id)||ids.has(c.id)||typeof c.name!=='string'||typeof c.source_name!=='string'||typeof c.native_type!=='string'||typeof c.category!=='string'||typeof c.nullable!=='boolean'||typeof c.supported!=='boolean'||!Array.isArray(c.aggregations)||!unique(c.aggregations)||c.aggregations.some(a=>!aggregations.includes(a))||!Array.isArray(c.grains)||!unique(c.grains)||c.grains.some(g=>!grains.includes(g))||c.supported&&c.reason||!c.supported&&(c.aggregations.length||c.grains.length)||c.grains.length&&!fieldTemporal(c))throw appError(STALE_VALIDATION);
   if(c.supported&&!['number','text','boolean','date','timestamp','instant','identifier'].includes(c.type))throw appError(STALE_VALIDATION);
-  ids.add(c.id);
+  checkColumnFilterCapability(c);ids.add(c.id);
  }
  const dimensions=new Set();
  for(const d of f.dimensions){

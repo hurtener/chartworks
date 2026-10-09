@@ -6,7 +6,7 @@ import {FilterOptionLookup} from './filters.js';
 import {filterInputState,renderFilterInput} from './filter-controls.js';
 const reportFilterKey=(page,name)=>JSON.stringify([page,name]);
 
-function rfText(value){return value?.items?value.items.map(x=>x===''?'Empty text':x).join(', '):value?.date_range?`${value.date_range.start} until ${value.date_range.end_exclusive} (exclusive)`:value?.literal===''?'Empty text':value?.literal??'Use parameter default';}
+function rfText(value){return value?.range?`${value.range.start} until ${value.range.end_exclusive} (exclusive)`:value?.items?value.items.map(x=>x===''?'Empty text':x).join(', '):value?.date_range?`${value.date_range.start} until ${value.date_range.end_exclusive} (exclusive)`:value?.literal===''?'Empty text':value?.literal??'Use parameter default';}
 export class ReportFilterControls{
  constructor(app){this.app=app;this.editor=null;this.lookups=new Map();this.temporary=new Map();this.accepted=null;this.defaultsOpen=false;this.defaultsElement=null;this.focusTarget=null;}
  snapshot(){return JSON.stringify([...this.temporary].sort(([a],[b])=>a.localeCompare(b)));}

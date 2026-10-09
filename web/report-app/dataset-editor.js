@@ -1,42 +1,44 @@
 import {node as datasetNode, button as datasetButton, selectField as datasetSelect, textField} from './dom.js';
 import {TARGET_ALLOCATION_UNAVAILABLE} from './allocation.js';
-import {DATASET_CHART_KINDS,datasetFilterCapability} from './dataset.js';
+import {DATASET_CHART_KINDS,datasetFilterCapability,datasetFilterFields} from './dataset.js';
 import {displayFilterRange} from './filters.js';
 import {renderFilterInput} from './filter-controls.js';
 import {renderFieldPicker} from './field-picker.js';
+import {datasetFilterKey} from './column-filters.js';
 
 function datasetInput(label,value,callback,{disabled=false,number=false}={}){return textField(label,value,next=>callback(number?Number(next):next),{type:number?'number':'text',maxLength:number?4:256,disabled});}
-const filterKindLabel={select:'One value',multi_select:'Multiple values',date_range:'Date range'};
+const filterKindLabel={select:'One value',multi_select:'Multiple values',date_range:'Date range',range:'Range'};
 function datasetFilterSummary(filter){
  if(!filter.default)return 'Choose a required default';
+ if(filter.kind==='range')return `Default: ${filter.default.range.start} until ${filter.default.range.end_exclusive} (exclusive)${filter.timezone?' · '+filter.timezone:''}`;
  if(filter.kind==='date_range'){const range=displayFilterRange(filter.default);return `Default: ${range.start} to ${range.end}, inclusive`;}
  const values=filter.kind==='select'?[filter.default.literal]:filter.default.items;
  return 'Default: '+values.map(value=>value===''?'Empty text':value).join(', ');
 }
 function renderDatasetFilters(parent,session,{locked,busy,canAllocate,change,searchFilter,inspectFilter}){
- const view=session.view,filters=session.draft.filters||[],section=datasetNode('section',undefined,'dataset-filters');
- section.append(datasetNode('h3','Chart filters'),datasetNode('p','Choose up to four reviewed fields with required defaults. Defaults are saved with the chart, separately from temporary report selections.','metadata'));
+ const view=session.view,filters=session.draft.filters||[],fields=datasetFilterFields(view,!!session.draft.fields),section=datasetNode('section',undefined,'dataset-filters');
+ section.append(datasetNode('h3','Chart filters'),datasetNode('p','Choose up to four fields with required defaults. Defaults are saved with the chart, separately from temporary report selections.','metadata'));
  const availability=field=>{
   const capability=datasetFilterCapability(view,field.id);
-  if(!capability?.supported)return capability?.reason?.replaceAll('_',' ')||'No reviewed filter capability is available';
-  if(capability.kinds.includes('select'))return !capability.option_lookup?'Governed option search is unavailable for this field':!searchFilter?'This host has not enabled governed option search':!canAllocate?'This host cannot prepare a private chart target for option search':'';
+  if(!capability?.supported)return capability?.reason?.replaceAll('_',' ')||'No filter capability is available';
+  if(!field.column&&capability.kinds.includes('select'))return !capability.option_lookup?'Governed option search is unavailable for this field':!searchFilter?'This host has not enabled governed option search':!canAllocate?'This host cannot prepare a private chart target for option search':'';
   return '';
  };
- if(!view.filter_capabilities)section.append(datasetNode('p','Filter creation is unavailable for this dataset version. You can still prepare an unfiltered chart.','metadata'));
+ if(!fields.some(f=>datasetFilterCapability(view,f.id)))section.append(datasetNode('p','Filter creation is unavailable for this dataset version. You can still prepare an unfiltered chart.','metadata'));
  else{
-  const selection=session.filterSelection,selected=view.dimensions.find(d=>d.id===selection.dimension),capability=datasetFilterCapability(view,selection.dimension);
-  section.append(datasetSelect('Filter field',[{value:'',label:'Choose a filter field'},...view.dimensions.map(field=>{const reason=availability(field),used=filters.some(f=>f.dimension===field.id);return {value:field.id,label:`${field.name}${used?' · already added':reason?' · unavailable: '+reason:''}`,disabled:used||!!reason};})],selection.dimension,value=>{if(locked)return;selection.dimension=value;selection.kind=datasetFilterCapability(view,value)?.kinds[0]||'';change();},locked||filters.length>=4));
+  const selection=session.filterSelection,selected=fields.find(d=>d.id===selection.dimension),capability=datasetFilterCapability(view,selection.dimension);
+  section.append(datasetSelect('Filter field',[{value:'',label:'Choose a filter field'},...fields.map(field=>{const reason=availability(field),used=filters.some(f=>datasetFilterKey(f)===field.id);return {value:field.id,label:`${field.name}${field.column?' · '+(field.filters?.type||field.type)+' column':''}${used?' · already added':reason?' · unavailable: '+reason:''}`,disabled:used||!!reason};})],selection.dimension,value=>{if(locked)return;selection.dimension=value;selection.kind=datasetFilterCapability(view,value)?.kinds[0]||'';change();},locked||filters.length>=4));
   section.append(datasetSelect('Filter type',(capability?.kinds||[]).map(kind=>({value:kind,label:filterKindLabel[kind]})),selection.kind,value=>{if(locked)return;selection.kind=value;change();},locked||!selected||filters.length>=4),datasetButton('Add chart filter',()=>{session.addFilter(selection.dimension,selection.kind);change();},locked||filters.length>=4||!selected||!!availability(selected)||!capability?.kinds.includes(selection.kind)));
   section.append(datasetNode('p',`${filters.length} of 4 filters added`,'metadata'));
-  const unavailable=view.dimensions.filter(field=>availability(field));
+  const unavailable=fields.filter(field=>availability(field));
   if(unavailable.length){const details=datasetNode('details');details.append(datasetNode('summary','Unavailable filter fields'));for(const field of unavailable)details.append(datasetNode('p',`${field.name}: ${availability(field)}.`,'metadata'));section.append(details);}
  }
  for(const filter of filters){
-  const field=view.dimensions.find(d=>d.id===filter.dimension),capability=datasetFilterCapability(view,filter.dimension),lookup=session.filterLookups.get(filter.dimension),stage=session.filterStages.get(filter.dimension),row=datasetNode('section',undefined,'dataset-filter');
-  row.append(datasetNode('h4',field?.name||filter.dimension),datasetSelect(`Filter type: ${field?.name||filter.dimension}`,(capability?.kinds||[]).map(kind=>({value:kind,label:filterKindLabel[kind]})),filter.kind,value=>{session.changeFilterKind(filter.dimension,value);change();},locked),datasetNode('p',datasetFilterSummary(filter),'metadata'));
-  row.append(datasetButton(`Remove filter: ${field?.name||filter.dimension}`,()=>{session.removeFilter(filter.dimension);change();},locked));
-  if(stage&&!lookup?.unknown)renderFilterInput(row,stage,{label:`Default for ${field?.name||filter.dimension}`,lookup,disabled:locked,onSearch:capability?.option_lookup&&canAllocate&&searchFilter?(search,cursor)=>searchFilter(filter.dimension,search,cursor):undefined,onInspect:inspectFilter?action=>inspectFilter(filter.dimension,action):undefined,onDone:value=>{session.commitFilter(filter.dimension,value);change();},onCancel:()=>{session.cancelFilter(filter.dimension);change();}});
-  else if(!stage)row.append(datasetButton(`Choose default: ${field?.name||filter.dimension}`,()=>{session.beginFilter(filter.dimension);change();},locked));
+  const key=datasetFilterKey(filter),field=fields.find(d=>d.id===key),capability=datasetFilterCapability(view,key),lookup=session.filterLookups.get(key),stage=session.filterStages.get(key),row=datasetNode('section',undefined,'dataset-filter');
+  row.append(datasetNode('h4',field?.name||key),datasetSelect(`Filter type: ${field?.name||key}`,(capability?.kinds||[]).map(kind=>({value:kind,label:filterKindLabel[kind]})),filter.kind,value=>{session.changeFilterKind(key,value);change();},locked),datasetNode('p',datasetFilterSummary(filter),'metadata'));
+  row.append(datasetButton(`Remove filter: ${field?.name||key}`,()=>{session.removeFilter(key);change();},locked));
+  if(stage&&!lookup?.unknown)renderFilterInput(row,stage,{label:`Default for ${field?.name||key}`,lookup,disabled:locked,editPolicy:!!filter.column,onSearch:capability?.option_lookup&&canAllocate&&searchFilter?(search,cursor)=>searchFilter(key,search,cursor):undefined,onInspect:inspectFilter?action=>inspectFilter(key,action):undefined,onDone:value=>{session.commitFilter(key,value);change();},onCancel:()=>{session.cancelFilter(key);change();}});
+  else if(!stage)row.append(datasetButton(`Choose default: ${field?.name||key}`,()=>{session.beginFilter(key);change();},locked));
   if(stage&&lookup?.unknown)row.append(datasetNode('p','The default selection is kept locally. Settle this option lookup below before continuing.','metadata'));
   section.append(row);
  }

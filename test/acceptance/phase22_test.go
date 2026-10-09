@@ -51,12 +51,15 @@ type phase22Fixture struct {
 	bearer    string
 }
 
+const phase22MetricSQL = "SELECT id, sum(amount) AS amount FROM analytics.sales GROUP BY id ORDER BY id"
+
 func newPhase22Fixture(t *testing.T) *phase22Fixture {
 	t.Helper()
 	f := newPhase18Fixture(t)
 	f.model.embeddingMode.Store("fixed")
 	f.model.rerankMode.Store("fixed")
-	f.model.mode.Store(phase18RawResponse(t, "SELECT id, amount FROM analytics.sales ORDER BY id"))
+	// The question selects a reviewed SUM. Raw amount rows are not that metric.
+	f.model.mode.Store(phase18RawResponse(t, phase22MetricSQL))
 	query, published := newPhase18Service(t, f)
 	byo, _, _ := phase19Service(t, f, config.DefaultQueryBundles(), nil, f.service, nil)
 	options := config.DefaultCharts().ServiceOptions()
@@ -316,7 +319,7 @@ func TestPhase22(t *testing.T) {
 		if contextResult.Bundle == nil {
 			t.Fatal("no exact BYO context", contextResult)
 		}
-		submission := nlqbyo.SubmitRequest{Reference: contextResult.Bundle.Reference, Operation: "phase22-step", SQL: "SELECT id, amount FROM analytics.sales ORDER BY id", Parameters: []readexec.Parameter{}}
+		submission := nlqbyo.SubmitRequest{Reference: contextResult.Bundle.Reference, Operation: "phase22-step", SQL: phase22MetricSQL, Parameters: []readexec.Parameter{}}
 		step := phase22Call[nlqbyo.SubmitResult](t, client, "submit_sql", submission)
 		if !step.ValuesAvailable || step.Result == nil || len(step.Result.Rows) != 2 {
 			t.Fatal("real BYO step missing values", step)

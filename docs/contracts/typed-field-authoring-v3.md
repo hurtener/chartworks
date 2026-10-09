@@ -178,7 +178,10 @@ selections. Changing a selection is a deliberate execution; metadata reads and
 saved amendments do not query a source. Old declaration hashes remain unchanged.
 No new SQL or authority carrier is exposed to the browser.
 
-The native core is locally qualified. Physical option lookup is not yet advertised
-(`option_lookup=false`), and physical filter controls in the Builder/Consumer still
-require integration. Existing reviewed option search remains available. These
-pending surfaces and signed-in acceptance are tracked in the active goal.
+The native core and shared Builder/Consumer controls are locally qualified.
+Physical controls accept exact typed values, stage edits until Done and preserve
+saved values and temporal policy on Cancel. Date inputs display inclusive days;
+instant inputs require an explicit named timezone. Neither editing nor Done runs
+a source query. Physical option lookup is not yet advertised
+(`option_lookup=false`). Existing reviewed option search remains available.
+Physical option lookup and signed-in acceptance remain tracked in the active goal.

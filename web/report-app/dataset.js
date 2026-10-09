@@ -5,13 +5,25 @@ import {FilterOptionLookup,displayFilterRange,inclusiveFilterRange,selectionFilt
 import {filterInputState} from './filter-controls.js';
 import {checkFieldCatalog,typedFieldIntent} from './field-selection.js';
 import {sourceDatasetPin,sameSourceDataset,checkSource,checkRegisteredDataset,checkCatalogPage,catalogHistory} from './source-catalog.js';
+import {columnFilterKey,columnFromFilterKey,datasetFilterKey,columnFilterValue} from './column-filters.js';
 
 export const DATASET_CHART_KINDS=['bar','column','line','area','pie','donut','kpi','table'];
 export const DATASET_FILTER_KINDS=['select','multi_select','date_range'];
 const datasetFilterCompiler='reviewed-dataset-postgres-v2';
 const datasetFilterTypes={select:'dimension_value',multi_select:'dimension_set',date_range:'date_range'};
 const datasetKeys=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
-export function datasetFilterCapability(view,dimension){return view?.filter_compiler===datasetFilterCompiler?view.filter_capabilities?.find(c=>c.dimension===dimension):undefined;}
+export function datasetFilterCapability(view,key){
+ const id=columnFromFilterKey(key);
+ if(id!==null){const c=view?.fields?.columns.find(c=>c.id===id);return c?.filters?{...c.filters,column:id,supported:!!view.fields.supported&&c.supported,reason:c.reason||view.fields.reason,default_required:true}:undefined;}
+ return view?.filter_compiler===datasetFilterCompiler?view.filter_capabilities?.find(c=>c.dimension===key):undefined;
+}
+export function datasetFilterFields(view,physical=true){return [...view.dimensions,...(physical?(view.fields?.columns||[]).map(c=>({...c,id:columnFilterKey(c.id),column:c.id})):[])];}
+function datasetFilterParameter(view,filter){
+ if(!filter.column)return {type:datasetFilterTypes[filter.kind]};
+ const c=datasetFilterCapability(view,datasetFilterKey(filter));if(!c?.supported)throw appError(INVALID_REQUEST);
+ return {type:{select:'column_value',multi_select:'column_set',range:'column_range'}[filter.kind],column:{type:c.type,...(filter.calendar?{calendar:filter.calendar}:{}),...(filter.timezone?{timezone:filter.timezone}:{})}};
+}
+
 function checkDatasetFilterMetadata(view){
  if(view.filter_compiler===undefined&&view.filter_capabilities===undefined)return;
  // Go omitempty omits the empty capability list for measure-only datasets.
@@ -36,7 +48,16 @@ export function datasetFilterDefault(kind,value){
 function datasetFilters(view,filters){
  if(filters===undefined)return [];
  if(!Array.isArray(filters)||filters.length>4)throw appError(INVALID_REQUEST);
- const seen=new Set();return filters.map(filter=>{const capability=datasetFilterCapability(view,filter?.dimension);if(!datasetKeys(filter,['dimension','kind','default'])||!capability?.supported||!capability.kinds.includes(filter.kind)||seen.has(filter.dimension))throw appError(INVALID_REQUEST);seen.add(filter.dimension);return {dimension:filter.dimension,kind:filter.kind,default:datasetFilterDefault(filter.kind,filter.default)};});
+ const seen=new Set();return filters.map(filter=>{
+  const key=datasetFilterKey(filter),capability=datasetFilterCapability(view,key);
+  if(!capability?.supported||!capability.kinds.includes(filter.kind)||seen.has(key))throw appError(INVALID_REQUEST);seen.add(key);
+  if(filter.column){
+   if(!validID(filter.column)||Object.keys(filter).some(k=>!['column','kind','default','calendar','timezone'].includes(k)))throw appError(INVALID_REQUEST);
+   const parameter=datasetFilterParameter(view,filter);return {...copyData(filter),default:columnFilterValue(parameter,filter.default)};
+  }
+  if(!datasetKeys(filter,['dimension','kind','default']))throw appError(INVALID_REQUEST);
+  return {dimension:filter.dimension,kind:filter.kind,default:datasetFilterDefault(filter.kind,filter.default)};
+ });
 }
 const datasetHash=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const sameDatasetPin=(a,b)=>a?.topic===b?.topic&&a?.version===b?.version&&a?.digest===b?.digest;
@@ -83,15 +104,24 @@ export class DatasetSession {
  get hasUnsettledFilterLookups(){return [...this.filterLookups.values()].some(lookup=>lookup.pending||lookup.unknown);}
  get locked(){return this.pending||!!this.custody||this.closed||this.hasUnsettledFilterLookups;}
  resetFilters(){if(this.hasUnsettledFilterLookups)throw appError(BUSY);for(const lookup of this.filterLookups.values())lookup.close();this.filterLookups.clear();this.filterStages.clear();this.filterSelection={dimension:'',kind:''};delete this.draft.filters;}
- addFilter(dimension,kind){if(this.locked)throw appError(BUSY);const capability=datasetFilterCapability(this.view,dimension),filters=this.draft.filters||[];if(!capability?.supported||!capability.kinds.includes(kind)||filters.length>=4||filters.some(f=>f.dimension===dimension))throw appError(INVALID_REQUEST);this.draft.filters=[...filters,{dimension,kind,default:null}];this.filterSelection={dimension:'',kind:''};this.beginFilter(dimension);}
- removeFilter(dimension){if(this.locked)throw appError(BUSY);if(!this.draft.filters?.some(f=>f.dimension===dimension))throw appError(INVALID_REQUEST);this.draft.filters=this.draft.filters.filter(f=>f.dimension!==dimension);this.filterStages.delete(dimension);this.filterLookups.get(dimension)?.close();this.filterLookups.delete(dimension);}
- changeFilterKind(dimension,kind){if(this.locked)throw appError(BUSY);const filter=this.draft.filters?.find(f=>f.dimension===dimension),capability=datasetFilterCapability(this.view,dimension);if(!filter||!capability?.supported||!capability.kinds.includes(kind))throw appError(INVALID_REQUEST);if(filter.kind!==kind){filter.kind=kind;filter.default=null;}this.beginFilter(dimension);}
- beginFilter(dimension){if(this.locked)throw appError(BUSY);const filter=this.draft.filters?.find(f=>f.dimension===dimension);if(!filter)throw appError(INVALID_REQUEST);this.filterStages.set(dimension,filterInputState({type:datasetFilterTypes[filter.kind]},filter.default));return this.filterStages.get(dimension);}
- commitFilter(dimension,value){if(this.locked)throw appError(BUSY);const filter=this.draft.filters?.find(f=>f.dimension===dimension);if(!filter||!this.filterStages.has(dimension))throw appError(INVALID_REQUEST);filter.default=datasetFilterDefault(filter.kind,value);this.filterStages.delete(dimension);}
+ addFilter(key,kind){
+  if(this.locked)throw appError(BUSY);const capability=datasetFilterCapability(this.view,key),filters=this.draft.filters||[];
+  if(!capability?.supported||!capability.kinds.includes(kind)||filters.length>=4||filters.some(f=>datasetFilterKey(f)===key))throw appError(INVALID_REQUEST);
+  const column=columnFromFilterKey(key);if(column!==null&&!this.draft.fields)throw appError(INVALID_REQUEST);
+  this.draft.filters=[...filters,{...(column!==null?{column,...(capability.calendar_required?{calendar:'gregorian'}:{})}:{dimension:key}),kind,default:null}];this.filterSelection={dimension:'',kind:''};this.beginFilter(key);
+ }
+ removeFilter(key){if(this.locked)throw appError(BUSY);if(!this.draft.filters?.some(f=>datasetFilterKey(f)===key))throw appError(INVALID_REQUEST);this.draft.filters=this.draft.filters.filter(f=>datasetFilterKey(f)!==key);this.filterStages.delete(key);this.filterLookups.get(key)?.close();this.filterLookups.delete(key);}
+ changeFilterKind(key,kind){if(this.locked)throw appError(BUSY);const filter=this.draft.filters?.find(f=>datasetFilterKey(f)===key),capability=datasetFilterCapability(this.view,key);if(!filter||!capability?.supported||!capability.kinds.includes(kind))throw appError(INVALID_REQUEST);if(filter.kind!==kind){filter.kind=kind;filter.default=null;}this.beginFilter(key);}
+ beginFilter(key){if(this.locked)throw appError(BUSY);const filter=this.draft.filters?.find(f=>datasetFilterKey(f)===key);if(!filter)throw appError(INVALID_REQUEST);this.filterStages.set(key,filterInputState(datasetFilterParameter(this.view,filter),filter.default));return this.filterStages.get(key);}
+ commitFilter(key,value){
+  if(this.locked)throw appError(BUSY);const filter=this.draft.filters?.find(f=>datasetFilterKey(f)===key),stage=this.filterStages.get(key);if(!filter||!stage)throw appError(INVALID_REQUEST);
+  if(filter.column){const candidate={...filter};delete candidate.calendar;delete candidate.timezone;if(stage.column.calendar)candidate.calendar=stage.column.calendar;if(stage.column.timezone)candidate.timezone=stage.column.timezone;candidate.default=columnFilterValue(datasetFilterParameter(this.view,candidate),value);Object.assign(filter,candidate);}
+  else filter.default=datasetFilterDefault(filter.kind,value);this.filterStages.delete(key);
+ }
  cancelFilter(dimension){if(this.locked)throw appError(BUSY);this.filterStages.delete(dimension);}
  async searchFilter(dimension,newBlock,search='',cursor=''){
-  if(this.locked)throw appError(BUSY);const capability=datasetFilterCapability(this.view,dimension),filter=this.draft.filters?.find(f=>f.dimension===dimension);
-  if(!this.view?.supported||!capability?.supported||!capability.option_lookup||!filter||!['select','multi_select'].includes(filter.kind)||!validID(newBlock)||this.newBlock&&this.newBlock!==newBlock)throw appError(INVALID_REQUEST);
+  if(this.locked)throw appError(BUSY);const capability=datasetFilterCapability(this.view,dimension),filter=this.draft.filters?.find(f=>datasetFilterKey(f)===dimension);
+  if(filter?.column||!this.view?.supported||!capability?.supported||!capability.option_lookup||!filter||!['select','multi_select'].includes(filter.kind)||!validID(newBlock)||this.newBlock&&this.newBlock!==newBlock)throw appError(INVALID_REQUEST);
   this.newBlock=newBlock;const target={dataset:{topic:datasetPin(this.view.topic),dataset:this.view.dataset,dimension,new_block:newBlock}};let lookup=this.filterLookups.get(dimension);
   if(lookup&&JSON.stringify(stableDatasetValue(lookup.target))!==JSON.stringify(stableDatasetValue(target)))throw appError(STALE_VALIDATION);
   if(!lookup){lookup=new FilterOptionLookup(this.invoke,target,{locale:this.locale,...(this.optionOperation?{operation:this.optionOperation}:{})});this.filterLookups.set(dimension,lookup);}
