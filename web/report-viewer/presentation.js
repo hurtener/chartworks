@@ -1,6 +1,36 @@
 /* Static MCP Apps view. No tokens, network clients, remote code or persistent
  * analytical state. Every record arrives through an authorized provider tool. */
 export const VERSION = 'reporting-view-v1';
+// Presentation labels never change wire states, saved values or access decisions.
+export function reportStateLabel(state,locale='en') {
+  const labels=locale.startsWith('es')
+    ? {completed:'Listo',succeeded:'Listo',partial:'Faltan algunos datos',failed:'No se pudo actualizar',cancelled:'Cancelado',expired:'Ya no está disponible',queued:'En espera',running:'Actualizando',pending:'En espera'}
+    : {completed:'Ready',succeeded:'Ready',partial:'Some data is missing',failed:'Could not refresh',cancelled:'Cancelled',expired:'No longer available',queued:'Waiting',running:'Refreshing',pending:'Waiting'};
+  return labels[state]||(locale.startsWith('es')?'Estado no disponible':'Status unavailable');
+}
+export function reportDate(value,locale='en',timezone='UTC') {
+  const date=new Date(value);
+  if(!value||!Number.isFinite(date.getTime()))return locale.startsWith('es')?'Fecha no disponible':'Date unavailable';
+  try{return new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:timezone}).format(date);}
+  catch{return new Intl.DateTimeFormat('en',{dateStyle:'medium',timeStyle:'short',timeZone:'UTC'}).format(date)+' UTC';}
+}
+export function chartLabel(kind) {
+  return {area:'Area',bar:'Horizontal bars',column:'Columns',donut:'Donut',grouped_bar:'Grouped bars',heatmap:'Heatmap',kpi:'Summary number',line:'Line',pie:'Pie',scatter:'Scatter',stacked_bar:'Stacked bars',stacked_column:'Stacked columns',table:'Table',treemap:'Treemap'}[kind]||'Chart';
+}
+
+export function chartWarning(code,locale='en') {
+ const es=locale.toLowerCase().startsWith('es');
+ const messages={
+  truncated_result_not_full_source:['The data limit was reached. This result does not include all data.','Se alcanzó el límite de datos. Este resultado no incluye todos los datos.'],
+  null_coordinates_omitted:['Rows with missing positions cannot be drawn. Open View data to see them.','Las filas sin posición no se pueden dibujar. Abre Ver datos para consultarlas.'],
+  zero_size_not_drawn:['Zero-size values are included in View data but are not visible as bubbles.','Los valores de tamaño cero se incluyen en Ver datos, pero no son visibles como burbujas.'],
+  missing_values_preserved:['Some values are missing. They are not treated as zero.','Faltan algunos valores. No se consideran iguales a cero.'],
+  missing_series_observations_are_gaps:['Gaps in the chart indicate missing data.','Los espacios en el gráfico indican datos faltantes.'],
+  zero_area_nodes_not_drawn:['Groups with zero size are included in View data but are not visible in the chart.','Los grupos de tamaño cero se incluyen en Ver datos, pero no son visibles en el gráfico.']
+ };
+ return messages[code]?.[es?1:0]||(es?'Algunos datos podrían no mostrarse correctamente. Revisa los valores antes de usar este gráfico.':'Some data may not be shown correctly. Review the values before using this chart.');
+}
+
 export const KINDS = Object.freeze(['area','bar','column','donut','grouped_bar','heatmap','kpi','line','pie','scatter','stacked_bar','stacked_column','table','treemap']);
 const NS = 'http://www.w3.org/2000/svg';
 const MAX_MESSAGE = 16 * 1024 * 1024;
@@ -9,11 +39,91 @@ const MAX_POINTS = 10000;
 const TOOLS = new Set(['reporting_search','reporting_describe','reporting_run','reporting_runs','reporting_view']);
 const ERRORS = new Set(['output_selection_empty','output_duplicate','output_unknown','output_disabled','output_not_selected','narrative_policy_unsupported','invalid_request','unauthorized','unauthenticated','forbidden','not_found','conflict','stale_validation','incomplete','expired','limit_exceeded','invalid_query','busy','unavailable','cancelled_or_timed_out']);
 const words = {
-  en: {loading:'Opening retained report…',error:'Report unavailable',expired:'Retained values have expired. Opening this report does not regenerate them.',empty:'No values in this retained output.',private:'Private preview',partial:'Partial result',pages:'Page',widgets:'Widget',outputs:'Output',previous:'Previous',next:'Next',values:'Exact retained values',null:'Missing',filters:'Run with different filters',apply:'Run with these filters',consent:'Running queries may incur cost and creates a new artifact. This does not alter the retained result.',dynamic:'Allow dynamic query generation',narrative:'Allow narrative generation',refresh:'Read status again',host:'Open this viewer through an authorized MCP Apps host.',unknown:'The operation outcome is unknown. Inspect its run history before submitting another run.',geometry:'Drawing coordinates are approximate. Display values use the saved format, which may round; unrounded values remain available in retained values.',default:'Use the published default',observed:'Observed',retained:'Retained until',trust:'Publication / certification / current health',redacted:'Some content is not visible under the current authority.',noscript:'The host did not provide a supported reporting result.',scope:'Total scope',table:'Table page',run:'Run',state:'State',limits:'Accepted query ceilings',disabled:'Disabled',omitted:'Not included in this run'},
-  es: {loading:'Abriendo el informe guardado…',error:'Informe no disponible',expired:'Los valores guardados vencieron. Abrir el informe no los vuelve a generar.',empty:'No hay valores en esta salida guardada.',private:'Vista previa privada',partial:'Resultado parcial',pages:'Página',widgets:'Componente',outputs:'Salida',previous:'Anterior',next:'Siguiente',values:'Valores exactos guardados',null:'Sin dato',filters:'Ejecutar con otros filtros',apply:'Ejecutar con estos filtros',consent:'La ejecución puede generar costos y crea un nuevo resultado. No modifica el resultado guardado.',dynamic:'Permitir generación de consultas dinámicas',narrative:'Permitir generación narrativa',refresh:'Leer el estado nuevamente',host:'Abrí este visor desde un host MCP Apps autorizado.',unknown:'El resultado de la operación es incierto. Revisá su historial antes de ejecutar nuevamente.',geometry:'Las coordenadas del gráfico son aproximadas. Los valores usan el formato guardado, que puede redondear; los valores sin redondear están disponibles en los valores guardados.',default:'Usar el valor predeterminado publicado',observed:'Observado',retained:'Guardado hasta',trust:'Publicación / certificación / estado actual',redacted:'Parte del contenido no es visible con la autorización actual.',noscript:'El host no proporcionó un resultado compatible.',scope:'Alcance del total',table:'Página de tabla',run:'Ejecución',state:'Estado',limits:'Límites aceptados de consulta',disabled:'Deshabilitada',omitted:'No incluida en esta ejecución'}
+  "en": {
+    "loading": "Opening report…",
+    "error": "Report unavailable",
+    "expired": "This saved copy is no longer available. Refresh the report to load current data.",
+    "empty": "No data to show.",
+    "private": "Draft preview",
+    "partial": "Some data is missing",
+    "pages": "Page",
+    "widgets": "Item",
+    "outputs": "Chart",
+    "previous": "Previous",
+    "next": "Next",
+    "values": "View data",
+    "null": "Missing",
+    "filters": "Change filters",
+    "apply": "Refresh with these filters",
+    "consent": "Refreshing loads data and saves a new copy. It may incur data processing costs. This saved copy stays unchanged.",
+    "dynamic": "Use AI to update the query",
+    "narrative": "Include an AI summary",
+    "refresh": "Check progress",
+    "host": "Open this report from your workspace.",
+    "unknown": "We could not confirm the update. Check report history before trying again.",
+    "geometry": "Charts may round values for display. Open View data for the original values.",
+    "default": "Use saved default",
+    "observed": "Data updated",
+    "retained": "Available until",
+    "trust": "Data status",
+    "redacted": "You do not have access to some of this report’s content.",
+    "noscript": "This report could not be opened.",
+    "scope": "Data included",
+    "table": "Data",
+    "run": "Report",
+    "state": "Status",
+    "limits": "Data limits",
+    "disabled": "Unavailable",
+    "omitted": "Not included",
+    "about": "About this data",
+    "mixed": "Some charts were updated at different times.",
+    "sourceWarning": "The data source may need attention. These are the last saved values.",
+    "savedNote": "Opening this copy does not refresh the data."
+  },
+  "es": {
+    "loading": "Abriendo el informe…",
+    "error": "Informe no disponible",
+    "expired": "Esta copia guardada ya no está disponible. Actualiza el informe para cargar datos actuales.",
+    "empty": "No hay datos para mostrar.",
+    "private": "Vista previa del borrador",
+    "partial": "Faltan algunos datos",
+    "pages": "Página",
+    "widgets": "Elemento",
+    "outputs": "Gráfico",
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "values": "Ver datos",
+    "null": "Sin dato",
+    "filters": "Cambiar filtros",
+    "apply": "Actualizar con estos filtros",
+    "consent": "Actualizar carga datos y guarda una nueva copia. Puede generar costos de procesamiento. Esta copia guardada no cambia.",
+    "dynamic": "Usar IA para actualizar la consulta",
+    "narrative": "Incluir un resumen con IA",
+    "refresh": "Ver progreso",
+    "host": "Abre este informe desde tu espacio de trabajo.",
+    "unknown": "No se pudo confirmar la actualización. Revisa el historial antes de volver a intentarlo.",
+    "geometry": "Los gráficos pueden redondear los valores. Abre Ver datos para consultar los valores originales.",
+    "default": "Usar valor guardado",
+    "observed": "Datos actualizados",
+    "retained": "Disponible hasta",
+    "trust": "Estado de los datos",
+    "redacted": "No tienes acceso a parte del contenido de este informe.",
+    "noscript": "No se pudo abrir este informe.",
+    "scope": "Datos incluidos",
+    "table": "Datos",
+    "run": "Informe",
+    "state": "Estado",
+    "limits": "Límites de datos",
+    "disabled": "No disponible",
+    "omitted": "No incluido",
+    "about": "Acerca de estos datos",
+    "mixed": "Algunos gráficos se actualizaron en distintos momentos.",
+    "sourceWarning": "La fuente de datos puede necesitar atención. Estos son los últimos valores guardados.",
+    "savedNote": "Abrir esta copia no actualiza los datos."
+  }
 };
-Object.assign(words.en, {row:'Returned row',series:'Series',seriesID:'Series identity',measure:'Measure',category:'Category',value:'Value',path:'Hierarchy path',depth:'Level',aggregation:'Aggregation',members:'Contributing returned rows',seriesValues:'Exact series observations',hierarchyValues:'Exact hierarchy aggregates',independent:'Independent scale',unitless:'No declared unit',missingValues:'Missing measure values',gaps:'Absent observations',omittedRows:'Undrawn returned rows',zeroSize:'Zero-area bubbles',grain:'Time grain / order',resolution:'Zero or subpixel geometry may be invisible; the exact values below are retained.'});
-Object.assign(words.es, {row:'Fila devuelta',series:'Serie',seriesID:'Identidad de serie',measure:'Medida',category:'Categoría',value:'Valor',path:'Ruta jerárquica',depth:'Nivel',aggregation:'Agregación',members:'Filas devueltas contribuyentes',seriesValues:'Observaciones exactas por serie',hierarchyValues:'Agregados jerárquicos exactos',independent:'Escala independiente',unitless:'Sin unidad declarada',missingValues:'Valores de medida faltantes',gaps:'Observaciones ausentes',omittedRows:'Filas devueltas no dibujadas',zeroSize:'Burbujas de área cero',grain:'Grano temporal / orden',resolution:'La geometría nula o inferior a un píxel puede no verse; abajo se conservan los valores exactos.'});
+Object.assign(words.en, {row:'Returned row',series:'Series',seriesID:'Series identity',measure:'Measure',category:'Category',value:'Value',path:'Hierarchy path',depth:'Level',aggregation:'Aggregation',members:'Contributing returned rows',seriesValues:'Values by series',hierarchyValues:'Values by group',independent:'Independent scale',allRows:'All returned rows',someRows:'Some returned rows',unitless:'No unit specified',missingValues:'Missing measure values',gaps:'Absent observations',omittedRows:'Undrawn returned rows',zeroSize:'Zero-area bubbles',grain:'Date grouping / order',resolution:'Very small or zero values may not be visible in the chart. They are included in View data.'});
+Object.assign(words.es, {row:'Fila devuelta',series:'Serie',seriesID:'Identidad de serie',measure:'Medida',category:'Categoría',value:'Valor',path:'Ruta jerárquica',depth:'Nivel',aggregation:'Agregación',members:'Filas devueltas contribuyentes',seriesValues:'Valores por serie',hierarchyValues:'Valores por grupo',independent:'Escala independiente',allRows:'Todas las filas recibidas',someRows:'Algunas filas recibidas',unitless:'Sin unidad especificada',missingValues:'Valores de medida faltantes',gaps:'Observaciones ausentes',omittedRows:'Filas devueltas no dibujadas',zeroSize:'Burbujas de área cero',grain:'Agrupación de fechas / orden',resolution:'Los valores muy pequeños o iguales a cero pueden no verse en el gráfico. Se incluyen en Ver datos.'});
 const fail = code => { const e = new Error(ERRORS.has(code) ? code : 'unavailable'); e.code = e.message; return e; };
 const text = x => typeof x === 'string' ? x : '';
 const array = x => Array.isArray(x) ? x : [];
@@ -106,8 +216,10 @@ function formatDecimal(raw,digits,locale) {
 }
 function formatDate(raw,pattern,locale,timezone) {
   let m=/^(\d{4})-(\d{2})(?:-(\d{2})(?:[T ](\d{2}):(\d{2}))?)?/.exec(raw); if(!m||pattern!=='year_month'&&!m[3])return raw;
-  if (/(?:Z|[+-]\d{2}:\d{2})$/.test(raw)) {
-    const instant=new Date(raw); if(!Number.isFinite(instant.valueOf()))return raw;
+  if (/[T ]\d{2}:\d{2}.*(?:Z|[+-]\d{2}(?::\d{2})?)$/.test(raw)) {
+    // PostgreSQL emits +00 for whole-hour offsets. Normalize only for display;
+    // the saved cell and View data keep their original spelling and precision.
+    const instant=new Date(raw.replace(' ','T').replace(/([+-]\d{2})$/,'$1:00')); if(!Number.isFinite(instant.valueOf()))return raw;
     try {
       const values=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(instant).map(p=>[p.type,p.value]));
       m=['',values.year,values.month,values.day,values.hour,values.minute];
@@ -161,7 +273,7 @@ function renderTable(parent, columns, rows, w, caption, totals = [], rowIndices 
   table.append(body); scroll.append(table); parent.append(scroll);
   for (const total of totals) {
     const c = columns.find(c => c.id === total.column);
-    if (c) {parent.append(element('p',`${columnLabel(c)}: ${exact(total.value,c,w.null,timezone)} — ${w.scope}: ${text(total.scope)}`,'metadata'));appendRawPrecision(parent,total.value,c,w);}
+    if (c) {parent.append(element('p',`${columnLabel(c)}: ${exact(total.value,c,w.null,timezone)} — ${w.scope}: ${total.scope==='complete_result'?w.allRows:w.someRows}`,'metadata'));appendRawPrecision(parent,total.value,c,w);}
   }
 }
 
@@ -192,14 +304,14 @@ function accessiblePoints(parent, chart, w) {
       const def = defs.get(p.series_id), column = columns.find(c => c.id === def?.measure);
       return [cell(def?.name || ''),cell(p.series_id),cell(column?.name || ''),p.category || missing(),
         cell(exact(chart.kind === 'scatter' ? p.y : p.value,column,w.null)),p.row < 0 ? missing() : cell(p.row+1),
-        cell(p.row < 0 ? 'absent_observation' : p.value?.null && chart.kind !== 'scatter' ? 'missing_value' : 'retained_observation')];
+        cell(p.row < 0 ? w.gaps : p.value?.null && chart.kind !== 'scatter' ? w.missingValues : w.observed)];
     });
     pagedValues(parent,headers,rows,w,w.seriesValues,[],[],'series-values');
   }
   if (rich && array(chart.hierarchy).length) {
     const headers = [w.depth,w.path,w.value,w.aggregation,w.scope,w.members].map((name,i) => ({id:'hierarchy-'+i,name}));
     const rows = chart.hierarchy.map(n => [cell(n.depth+1),cell(n.path.map(p=>cellValue(p,w.null)).join(' / ')),
-      cell(exact(n.value,columnFor(chart,'value'),w.null)),cell(n.aggregation),cell(n.scope),cell(n.rows.map(i=>i+1).join(', '))]);
+      cell(exact(n.value,columnFor(chart,'value'),w.null)),cell(n.aggregation),cell(n.scope==='complete_result'?w.allRows:w.someRows),cell(n.rows.map(i=>i+1).join(', '))]);
     pagedValues(parent,headers,rows,w,w.hierarchyValues,[],[],'hierarchy-values');
   }
 }
@@ -420,7 +532,7 @@ function renderHierarchy(parent,c,w) {
       const rect = depth%2 ? {x:box.x,y:box.y+offset,width:box.width,height:box.height*fraction} : {x:box.x+offset,y:box.y,width:box.width*fraction,height:box.height};
       offset += depth%2 ? rect.height : rect.width;
       const shade = depth === 0 ? i : color, branch = children.has(node.id), path = node.path.map(p=>cellValue(p,w.null)).join(' / ');
-      const title = `${path}: ${exact(node.value,columnFor(c,'value'),w.null)} · ${node.aggregation} · ${node.scope}`;
+      const title = `${path}: ${exact(node.value,columnFor(c,'value'),w.null)} · ${node.aggregation} · ${node.scope==='complete_result'?w.allRows:w.someRows}`;
       root.append(svg('rect',{...rect,class:`swatch-${shade%8} ${branch ? 'hierarchy-branch' : 'hierarchy-leaf'}`,'data-depth':depth,'data-node-id':node.id},title));
       if (rect.width > 55 && rect.height > 24) { const label = svg('text',{x:rect.x+4,y:rect.y+15}); label.textContent = shorten(cellValue(node.path.at(-1),w.null),Math.max(1,Math.floor(rect.width/8)-1)); label.append(svg('title',{},title)); root.append(label); }
       if (branch) draw(node.id,{x:rect.x+Math.min(3,rect.width/4),y:rect.y+Math.min(20,rect.height/4),width:Math.max(0,rect.width-6),height:Math.max(0,rect.height-23)},depth+1,shade);
@@ -436,7 +548,7 @@ export function renderChart(parent, chart, language='en', timezone='UTC', contex
   chart={...chart,columns:array(chart.columns).map(column=>({...column,display_timezone:timezone}))};
   if(chart.mapping?.options?.title&&chart.mapping.options.title!==contextTitle)parent.append(element('h2',chart.mapping.options.title));
   const ready = chart.state === 'ready';
-  if(!ready)parent.append(element('p',`${w.empty} ${text(chart.state)}`,'notice'));
+  if(!ready)parent.append(element('p',w.empty,'notice'));
   if(chart.kind==='table'){renderTable(parent,array(chart.columns),array(chart.rows),w,w.values,array(chart.totals),[],timezone);return;}
   if(ready && chart.kind==='kpi'){
     const valueColumn=columnFor(chart,'value'),targetColumn=columnFor(chart,'target'),percentColumn={type:'decimal',format:{percent:'whole'}},k=chart.kpi_result;
@@ -455,10 +567,10 @@ export function renderChart(parent, chart, language='en', timezone='UTC', contex
   if (chart.version === 2) {
     const t = chart.transformation;
     if(t.missing_points||t.gap_points||chart.omitted_rows)parent.append(element('p',`${w.missingValues}: ${t.missing_points} · ${w.gaps}: ${t.gap_points} · ${w.omittedRows}: ${chart.omitted_rows}`,'notice output-warning'));
-    diagnostics.append(element('p',`${w.missingValues}: ${t.missing_points} · ${w.gaps}: ${t.gap_points} · ${w.omittedRows}: ${chart.omitted_rows} / ${chart.input_rows} · ${w.zeroSize}: ${t.zero_size_points} · ${w.scope}: ${t.scope}`,'transformation'),element('p',`${t.method} · ${t.null_policy} · ${t.duplicate_policy}`,'metadata'),element('p',w.resolution,'metadata'));
+    diagnostics.append(element('p',`${w.missingValues}: ${t.missing_points} · ${w.gaps}: ${t.gap_points} · ${w.omittedRows}: ${chart.omitted_rows} / ${chart.input_rows} · ${w.zeroSize}: ${t.zero_size_points}`,'transformation'),element('p',w.resolution,'metadata'));
     if (['line','area'].includes(chart.kind)) diagnostics.append(element('p',`${columnFor(chart,'category')?.name} · ${w.grain}: ${columnFor(chart,'category')?.grain || 'unspecified'} / ${chart.mapping.order[0]?.direction}`,'metadata'));
   }
-  for(const warning of array(chart.warnings))if(warning!=='geometry_approximate_labels_exact')parent.append(element('p',text(warning),'notice output-warning'));
+  for(const warning of array(chart.warnings))if(warning!=='geometry_approximate_labels_exact')parent.append(element('p',chartWarning(warning,language),'notice output-warning'));
   accessiblePoints(parent,chart,w);if(chart.kind!=='kpi'||chart.version===2)parent.append(diagnostics);
 }
 
@@ -515,12 +627,12 @@ export function renderRetainedOutput(content,v,{locale='en',onPage=null,contextT
   validateRetainedView(v);
   const language=locale.toLowerCase().startsWith('es')?'es':'en',w=words[language];
   if(v.text){content.append(element('p',text(v.text.content??v.text.text),'narrative'));return;}
-  if(v.output?.state!=='succeeded'){content.append(element('p',`${text(v.output?.state)||text(v.summary.state)} ${text(v.output?.code)}`,'notice'));return;}
+  if(v.output?.state!=='succeeded'){content.append(element('p',reportStateLabel(v.output?.state||v.summary.state,language),'notice'));return;}
   if(v.output.table){
     const t=v.output.table;
     renderTable(content,array(t.columns),array(t.rows),w,w.table,array(t.totals),array(t.row_indices),v.timezone);
-    if(t.completeness?.status){const line=element('p',`Result completeness: ${text(t.completeness.status)}${t.completeness.reason?' · '+text(t.completeness.reason):''}`,t.completeness.status==='complete_result'?'metadata':'notice output-warning');if(t.completeness.status==='complete_result'){const details=element('details',undefined,'result-details');details.append(element('summary',language==='es'?'Resultado completo':'Complete returned result'),line);content.append(details);}else content.append(line);}
-    for(const warning of array(t.warnings))content.append(element('p',text(warning),'notice output-warning'));
+    if(t.completeness?.status){const line=element('p',t.completeness.status==='complete_result'?(language==='es'?'Se muestran todos los datos devueltos por esta consulta.':'All data returned by this query is included.'):(language==='es'?'Se alcanzó el límite de datos. Este resultado no incluye todos los datos.':'The data limit was reached. This result does not include all data.'),t.completeness.status==='complete_result'?'metadata':'notice output-warning');if(t.completeness.status==='complete_result'){const details=element('details',undefined,'result-details');details.append(element('summary',language==='es'?'Acerca de estos datos':'About this data'),line);content.append(details);}else content.append(line);}
+    for(const warning of array(t.warnings))content.append(element('p',chartWarning(warning,language),'notice output-warning'));
     const b=v.page_bounds,pager=element('div',undefined,'pager');
     pager.append(element('span',`${b.offset+Math.min(1,array(t.rows).length)}–${b.offset+array(t.rows).length} / ${b.total}`));
     const prev=button(w.previous,()=>onPage?.(Math.max(0,b.offset-b.limit)));prev.disabled=!onPage||b.offset===0;
@@ -530,7 +642,7 @@ export function renderRetainedOutput(content,v,{locale='en',onPage=null,contextT
   else if(v.output.narrative){
     content.append(element('p',text(v.output.narrative.text),'narrative'));
     for(const caveat of array(v.output.narrative.caveats))content.append(element('p',text(caveat),'notice'));
-    content.append(element('p',`${text(v.output.narrative.model_version)} · ${text(v.output.narrative.prompt_version)} · ${text(v.output.narrative.locale)}`,'metadata'));
+    content.append(element('p',language==='es'?'Resumen generado con IA':'AI-generated summary','metadata'));
   }
   for(const lines of amountDisclosureGroups(v.output.amount_completeness,language)){const panel=element('div',undefined,'amount-disclosure'),evidence=element('details',undefined,'amount-evidence');evidence.append(element('summary',language==='es'?'Evidencia del importe':'Amount evidence'));lines.forEach((line,index)=>{const secondary=index===1||index===2;(secondary?evidence:panel).append(element('p',line,secondary?'metadata':'amount-warning'));});panel.append(evidence);content.append(panel);}
 }

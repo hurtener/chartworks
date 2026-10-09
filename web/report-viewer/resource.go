@@ -44,7 +44,7 @@ func Assets() (javascript, css string) { return presentationScript, styles }
 // Keep the data-free viewer self-contained while sharing one presentation module
 // with the report canvas. Only this resource includes viewer host/controller code.
 func compiledViewer() string {
-	const exports = "VERSION, KINDS, boundedJSON, exact, renderChart, amountDisclosureLines, validateRetainedView, renderRetainedOutput, viewerInternals"
+	const exports = "VERSION, KINDS, boundedJSON, exact, renderChart, amountDisclosureLines, validateRetainedView, renderRetainedOutput, reportStateLabel, reportDate, viewerInternals"
 	out := "const {" + exports + "}=(()=>{\n" + strings.ReplaceAll(presentationScript, "export ", "") + "\nreturn {" + exports + "};\n})();\n"
 	for _, line := range strings.Split(hostScript, "\n") {
 		if !strings.HasPrefix(line, "import ") && !strings.HasPrefix(line, "export {") {

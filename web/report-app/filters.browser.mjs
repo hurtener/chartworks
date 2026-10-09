@@ -216,7 +216,7 @@ async function escapeFilter(label,mode='default') {
   await ready();await filterReturned(label,mode,'Escape');
 }
 async function compactInspector(label) {
-  await check(`(()=>{const p=${root}.querySelector('.component-panel'),e=${inspector};return !!p&&p.children.length===1&&p.firstElementChild===e&&${root}.querySelectorAll('.filter-value-editor').length===1&&!p.querySelector('.component-library,.selected-panel,.panel-tabs,.filter-editor,.output-library,.catalog-search')&&!Array.from(p.querySelectorAll('button')).some(b=>['Add heading','Add published output','Create from dataset'].includes(b.textContent));})()`,label+' has one focused rail without a palette, catalog, selected-widget panel or duplicate filter summaries');
+  await check(`(()=>{const p=${root}.querySelector('.component-panel'),e=${inspector};return !!p&&p.children.length===1&&p.firstElementChild===e&&${root}.querySelectorAll('.filter-value-editor').length===1&&!p.querySelector('.component-library,.selected-panel,.panel-tabs,.filter-editor,.output-library,.catalog-search')&&!Array.from(p.querySelectorAll('button')).some(b=>['Add heading','Use a saved chart','Create chart'].includes(b.textContent));})()`,label+' has one focused rail without a palette, catalog, selected-widget panel or duplicate filter summaries');
   const geometry=await evaluate(`(()=>{const r=${root}.getBoundingClientRect(),p=${root}.querySelector('.component-panel').getBoundingClientRect(),i=${inspector},ir=i.getBoundingClientRect(),e=${editor},er=e.getBoundingClientRect();return {viewportWidth:innerWidth,viewportHeight:innerHeight,rootHeight:r.height,rootWidth:r.width,panelWidth:p.width,panelHeight:p.height,inspectorHeight:ir.height,editorHeight:er.height,inspectorTopOffset:ir.top-p.top,panelLeft:p.left,panelRight:p.right,editorLeft:er.left,editorRight:er.right,editorWidth:er.width,inspectorScrollWidth:i.scrollWidth,inspectorClientWidth:i.clientWidth,editorScrollWidth:e.scrollWidth,editorClientWidth:e.clientWidth};})()`);
   assert(filterInspectorFits(geometry),label+' compact geometry at 1440×1000: '+JSON.stringify(geometry));assertions.push(label+' fits compact rail and document upper bounds at 1440×1000 without horizontal overflow');inspectorGeometry.push({label,...geometry});
 }
@@ -248,9 +248,9 @@ async function filterJourney() {
   const nativeWidget=data.initial_report.definition.report_pages[0].widgets[0].id;
   await noCalls('Selecting the native widget and typing an unsent component catalog query invokes no tool',async()=>{
     await clickElement(`Array.from(${root}.querySelectorAll('.editing-canvas .widget-card')).find(e=>e.dataset.widget===${JSON.stringify(nativeWidget)}).querySelector('.widget-select')`);
-    await click('Components');await setInput('Find blocks','Synthetic approved outputs');
+    await click('Components');await setInput('Find charts','Synthetic approved outputs');
   });
-  const builderContext=await evaluate(`({selection:${root}.dataset.selection,query:${field('Find blocks')}.value})`);
+  const builderContext=await evaluate(`({selection:${root}.dataset.selection,query:${field('Find charts')}.value})`);
   equal(builderContext.selection,nativeWidget,'The native Analysis widget is selected before the filter suspend/resume journey');
   await noSource('Search typing, selection removal and Cancel are local',async()=>{
     await openFilter('Region');await setInput('Find values','East');await click('South · remove');await finishFilter('Cancel','Region');
@@ -271,7 +271,7 @@ async function filterJourney() {
     await choose('East');await setInput('Find values','Eas');await click('Back to Components');
     await check(`${inspector}===null&&${editor}===null&&${root}.querySelector('.component-library')?.hidden===false&&${button('Components')}?.getAttribute('aria-pressed')==='true'&&${button('Resume filter edits')}?.getClientRects().length>0`,'Back suspends the editor and restores Components with an explicit Resume action');
     await check(`${root}.querySelector('.filter-editor')?.open===true&&${card('Region')}.textContent.includes('Saved: North, South')&&${button('Save report')}.disabled===true`,'Back preserves expanded Business filters and leaves saved defaults and dirty state unchanged');
-    equal(await evaluate(`({selection:${root}.dataset.selection,query:${field('Find blocks')}.value})`),builderContext,'Back preserves the selected native widget and unsent component catalog query');
+    equal(await evaluate(`({selection:${root}.dataset.selection,query:${field('Find charts')}.value})`),builderContext,'Back preserves the selected native widget and unsent component catalog query');
     equal(snapshot(),original,'Back does not mutate native report, published definition or chart');
     await capture(screenshotPath.replace(/\.png$/,'.components.png'));
     await click('Resume filter edits');
@@ -284,7 +284,7 @@ async function filterJourney() {
   await noSource('Selecting exact values and Done change the editor only',async()=>{
     await click('South · remove');await choose('East');await finishFilter('Done','Region');
     await openDefaults();await check(`${card('Region')}.textContent.includes('Saved: North, East')&&${button('Save report')}.disabled===false`,'Done stages the distinct saved default for explicit Save');
-    equal(await evaluate(`({selection:${root}.dataset.selection,query:${field('Find blocks')}.value})`),builderContext,'Done retains the original selected widget and unsent component catalog query');
+    equal(await evaluate(`({selection:${root}.dataset.selection,query:${field('Find charts')}.value})`),builderContext,'Done retains the original selected widget and unsent component catalog query');
     equal(snapshot(),original,'Done does not persist metadata');
     await openFilter('Day');await setDate('2026-01-02','2026-01-31');await capture(screenshotPath.replace(/\.png$/,'.dates.png'));await compactInspector('Day');await finishFilter('Done','Day');
     await openDefaults();await check(`${card('Day')}.textContent.includes('2026-01-02 until 2026-02-01 (exclusive)')`,'Done converts inclusive January 31 to native February 1 exclusive');
@@ -309,7 +309,7 @@ async function filterJourney() {
   // metadata check restores only the native captured fresh evidence.
   await click('Selected');await noSource('Checking native chart validation is metadata-only',()=>click('Check chart status'));
   await arm(fixture.privateRun.preview_request,'preview');await click('Private preview');
-  await check(`${root}.querySelector('.preview-provenance')?.textContent.includes('Private')&&${root}.textContent.includes('1.250')&&!${root}.textContent.includes('Retained output unavailable.')`,'Explicit preview displays a native actor-private retained result');
+  await check(`${root}.querySelector('.preview-provenance')?.textContent.includes('Private')&&${root}.textContent.includes('1.250')&&!${root}.textContent.includes('This chart could not be opened. Try reopening the report.')`,'Explicit preview displays a native actor-private retained result');
   equal(fixture.counts(),{optionSearches:2,privateExecutions:1,publishedRuns:0,nativeSourceReadsRepresented:3},'Private preview executes one native-backed source attempt, retained reads execute none');
   equal(snapshot(),saved,'Preview preserves exact saved defaults and block defaults');
   await noSource('Clearing temporary preview selections restores saved defaults without a run',async()=>{
@@ -327,8 +327,8 @@ async function filterJourney() {
   await noSource('Consumer Done and inclusive dates do not run',async()=>{
     await click('Done');await click('Choose Day');await setDate('2026-01-01','2026-01-01');await click('Done');
   });
-  await arm(fixture.publicRun.run_request,'run');await click('Run with these filters');
-  await check(`${root}.querySelector('.preview-provenance')?.textContent.includes('Retained report')&&${root}.textContent.includes('1.250')&&!${root}.textContent.includes('Retained output unavailable.')`,'Consumer displays the native public retained result');
+  await arm(fixture.publicRun.run_request,'run');await click('Apply filters');
+  await check(`${root}.querySelector('.preview-provenance')?.textContent.includes('About this data')&&${root}.textContent.includes('1.250')&&!${root}.textContent.includes('This chart could not be opened. Try reopening the report.')`,'Consumer displays the native public retained result');
   equal(fixture.counts(),{optionSearches:3,privateExecutions:1,publishedRuns:1,nativeSourceReadsRepresented:5},'Three explicit lookups and two deliberate executions account for all represented native source reads');
   await capture(screenshotPath.replace(/\.png$/,'.published.png'));
   await noSource('Reopening retained controls, Cancel and clear change only future invocation inputs',async()=>{

@@ -1,4 +1,4 @@
-import {VERSION, KINDS, boundedJSON, exact, renderChart, amountDisclosureLines, validateRetainedView, renderRetainedOutput, viewerInternals} from './presentation.js';
+import {VERSION, KINDS, boundedJSON, exact, renderChart, amountDisclosureLines, validateRetainedView, renderRetainedOutput, reportStateLabel, reportDate, viewerInternals} from './presentation.js';
 export {VERSION, KINDS, boundedJSON, exact, renderChart, amountDisclosureLines, validateRetainedView, renderRetainedOutput} from './presentation.js';
 const {MAX_MESSAGE, MAX_DATA, TOOLS, ERRORS, words, fail, text, array, id, integer, element, button, retainedRunOutputs}=viewerInternals;
 
@@ -59,9 +59,9 @@ function periodValue(raw){let p;try{p=JSON.parse(raw);}catch{throw fail('invalid
 export class Viewer {
   constructor(root,bridge,options={}){this.allowRun=options.allowRun!==false;this.allowGenerated=options.allowGenerated!==false;this.root=root;this.bridge=bridge;this.locale='en';this.value=null;this.generation=0;this.mutationPending=false;this.timer=null;this.closed=false;this.lastSize='';bridge.onresult=result=>this.accept(result);bridge.oninput=()=>this.loading();bridge.oncontext=context=>this.context(context);bridge.onfailure=e=>this.error(e);bridge.onclose=()=>this.close();this.observer=typeof ResizeObserver==='function'?new ResizeObserver(()=>{const box=root.getBoundingClientRect(),key=Math.ceil(box.width)+':'+Math.ceil(box.height);if(key!==this.lastSize){this.lastSize=key;bridge.resize(box.width,box.height);}}):null;this.observer?.observe(root);this.loading();}
   get w(){return words[this.locale];}
-  clear(){clearTimeout(this.timer);this.timer=null;this.value=null;this.root.replaceChildren();}
+  clear(){clearTimeout(this.timer);this.timer=null;this.value=null;delete this.root.dataset.target;this.root.replaceChildren();}
   loading(){this.generation++;this.clear();const p=element('p',this.w.loading,'notice');p.setAttribute('role','status');this.root.append(p);}
-  error(e,mutation=false){this.generation++;this.clear();const p=element('p',`${this.w.error}: ${ERRORS.has(e?.code)?e.code:'unavailable'}`,'notice error');p.setAttribute('role','alert');this.root.append(p);if(mutation||e?.unknown)this.root.append(element('p',this.w.unknown));}
+  error(e,mutation=false){this.generation++;this.clear();const p=element('p',this.w.error,'notice error');p.setAttribute('role','alert');this.root.append(p);if(mutation||e?.unknown)this.root.append(element('p',this.w.unknown));}
   context(c){try{boundedJSON(c,65536);document.documentElement.dataset.theme=c?.theme==='dark'?'dark':'light';if(typeof c?.locale==='string'&&c.locale.length<=64){try{const canonical=Intl.getCanonicalLocales(c.locale)[0];document.documentElement.lang=canonical;this.locale=canonical.toLowerCase().startsWith('es')?'es':'en';}catch{/* Ignore malformed optional host locale. */}}if(this.value)this.draw();}catch(e){this.error(e);}}
   accept(result){if(this.closed)return;try{const v=unwrap(result);if(v.selection&&v.summary)this.show(v);else if(id(v.run)&&['block','report','dashboard'].includes(v.kind))void this.read({kind:v.kind,run:v.run,page:'',widget:'',output:'',offset:0,limit:0});else throw fail('unavailable');}catch(e){this.error(e);}}
   show(v){
@@ -73,19 +73,15 @@ export class Viewer {
   async read(selection){this.loading();const generation=this.generation;try{const result=await this.bridge.call('reporting_view',selection);if(generation!==this.generation||this.closed)return;this.show(unwrap(result));}catch(e){if(generation===this.generation&&!this.closed)this.error(e);}}
   navigate(change){if(this.value)void this.read({...this.value.selection,...change});}
   draw(){
-    const v=this.value;if(!v||this.closed)return;this.root.replaceChildren();const w=this.w;
-    this.root.append(element('p','Chartworks · '+w.run,'eyebrow'),element('h1',text(v.summary.target?.id)),element('p',`${w.state}: ${text(v.summary.state)} · ${text(v.summary.kind)} · ${v.summary.target?.revision??''}`,'metadata'));
+    const v=this.value;if(!v||this.closed)return;this.root.replaceChildren();const w=this.w;this.root.dataset.target=text(v.summary.target?.id);
+    this.root.append(element('p','Chartworks','eyebrow'),element('h1',text(v.summary.title)||w.run));
     if(v.summary.private)this.root.append(element('span',w.private,'badge'));
-    if(v.summary.state==='partial')this.root.append(element('span',w.partial,'badge'));
+    if(!['completed','succeeded'].includes(v.summary.state))this.root.append(element('p',reportStateLabel(v.summary.state,this.locale),'notice'));
     if(v.redacted)this.root.append(element('p',w.redacted,'notice'));
-    const meta=element('div',undefined,'metadata');
-    if(v.observed_at)meta.append(element('p',`${w.observed}: ${v.observed_at}`));
-    meta.append(element('p',`${w.retained}: ${v.summary.expires_at} · ${text(v.locale)} · ${text(v.timezone)}`));
-    if(v.trust)meta.append(element('p',`${w.trust}: ${text(v.trust.publication)} / ${text(v.trust.certification)} / ${text(v.trust.health?.status)}`));
-    if(v.query_limits)meta.append(element('p',`${w.limits}: ${v.query_limits.max_rows} rows · ${v.query_limits.max_bytes} bytes · ${v.query_limits.timeout_ms} ms · ${v.query_limits.query_attempts} attempts`));
-    if(v.mixed_freshness)meta.append(element('p','mixed_freshness'));
-    if(v.summary.scheduled){const s=v.summary.scheduled;meta.append(element('p',`${text(s.schedule_id)} · ${text(s.due_at)} · [${text(s.window_start)}, ${text(s.window_end)})`),element('p',`query: ${text(s.query)} · artifact: ${text(s.artifact)} · catalog: ${text(s.catalog)} · notification: ${text(s.notification)}`));}
-    if(v.summary.code)meta.append(element('p',text(v.summary.code)));this.root.append(meta);
+    if(v.observed_at)this.root.append(element('p',`${w.observed}: ${reportDate(v.observed_at,this.locale,v.timezone)}`,'metadata'));
+    if(v.mixed_freshness)this.root.append(element('p',w.mixed,'notice'));
+    if(v.trust?.health?.status&&v.trust.health.status!=='healthy')this.root.append(element('p',w.sourceWarning,'notice'));
+    const meta=element('details',undefined,'metadata');meta.append(element('summary',w.about),element('p',`${w.retained}: ${reportDate(v.summary.expires_at,this.locale,v.timezone)} · ${text(v.timezone)}`),element('p',w.savedNote));this.root.append(meta);
     const toolbar=element('div',undefined,'toolbar');
     if(v.pages?.length)toolbar.append(selectControl(w.pages,v.pages,v.selection.page,page=>this.navigate({page,widget:'',output:'',offset:0})));
     const page=array(v.pages).find(p=>p.id===v.selection.page);

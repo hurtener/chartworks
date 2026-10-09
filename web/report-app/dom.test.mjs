@@ -39,13 +39,13 @@ test('shared nodes and buttons preserve text, class, disabled state and explicit
 
 test('shared selects keep exact values, option availability and change-only dispatch', t => {
   installDOM(t);
-  const events = [], field = selectField('Reviewed measure', [
+  const events = [], field = selectField('Saved calculation', [
     {value: '', label: 'Choose field'},
     {value: 'amount', label: '<b>Amount</b>'},
     {value: 'blocked', label: 'Unavailable', disabled: true},
   ], 'amount', value => events.push(value), true), select = field.children[0];
-  assert.equal(field.textContent, 'Reviewed measure');
-  assert.equal(select.attributes['aria-label'], 'Reviewed measure');
+  assert.equal(field.textContent, 'Saved calculation');
+  assert.equal(select.attributes['aria-label'], 'Saved calculation');
   assert.equal(select.disabled, true);
   assert.deepEqual(select.children.map(option => [option.value, option.selected, option.disabled]), [
     ['', false, false], ['amount', true, false], ['blocked', false, true],
@@ -59,7 +59,7 @@ test('shared selects keep exact values, option availability and change-only disp
 
 test('shared fields retain distinct text-length and numeric bounds plus edit defaults', t => {
   installDOM(t);
-  const events = [], field = textField('Table page size', 100, value => events.push(value), {
+  const events = [], field = textField('Rows per page', 100, value => events.push(value), {
     type: 'number', maxLength: 4, min: 1, max: 1000, disabled: true,
   }), input = field.children[0];
   assert.equal(input.tagName, 'input');
@@ -70,7 +70,7 @@ test('shared fields retain distinct text-length and numeric bounds plus edit def
   assert.equal(input.min, 1);
   assert.equal(input.max, 1000);
   assert.equal(input.disabled, true);
-  assert.equal(input.attributes['aria-label'], 'Table page size');
+  assert.equal(input.attributes['aria-label'], 'Rows per page');
   input.value = '20';
   assert.deepEqual(events, []);
   input.listeners.change();

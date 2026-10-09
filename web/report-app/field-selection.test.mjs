@@ -28,7 +28,7 @@ test('schema-driven selection supports three groups and three measures without a
 test('multiple numeric measures bind actual rich chart slots and keep the category explicit',()=>{
  const {view,draft}=fixture();draft.kind='bar';draft.fields.dimensions.splice(1);
  assert.deepEqual(typedFieldIntent(view,draft).mapping.bindings,{category:'group_1',values:['value_1','value_2','value_3']});
- draft.kind='line';assert.match(fieldSelectionIssue(view,draft),/date or timestamp/);
+ draft.kind='line';assert.match(fieldSelectionIssue(view,draft),/contain dates/);
  draft.fields.dimensions=[{kind:'column',field:'time'}];assert.deepEqual(typedFieldIntent(view,draft).mapping.order,[{column:'group_1',direction:'asc'}]);
  draft.kind='pie';assert.throws(()=>typedFieldIntent(view,draft),/invalid_request/);
 });
@@ -49,7 +49,7 @@ test('type, date, reviewed aggregation and capacity errors are caught without ch
   d=>{d.fields.measures[0].aggregation='arbitrary()';},
   d=>{d.fields.dimensions.push({...d.fields.dimensions[0]});},
  ]){const {view,draft}=fixture();change(draft);const before=datasetClone(draft);assert.throws(()=>typedFieldIntent(view,draft),/invalid_request/);assert.deepEqual(draft,before);}
- const {view,draft}=fixture();view.fields.max_columns=5;assert.throws(()=>typedFieldIntent(view,draft),/invalid_request/);assert.match(fieldSelectionIssue(view,draft),/5 result columns/);
+ const {view,draft}=fixture();view.fields.max_columns=5;assert.throws(()=>typedFieldIntent(view,draft),/invalid_request/);assert.match(fieldSelectionIssue(view,draft),/5 fields/);
 });
 
 test('instant grouping has an explicit zone and reviewed calendar cannot be overridden',()=>{

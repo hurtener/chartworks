@@ -27,3 +27,11 @@ test('numeric display preserves exact precision and native rational spelling',()
  assert.equal(exact({value:'1e4097'},{type:'decimal',format:{fraction_digits:2}}),'1e4097');
  assert.equal(exact({null:true,value:'1.23'},{type:'decimal',format:{fraction_digits:2}}),'Missing');
 });
+
+test('PostgreSQL short offsets obey the saved display timezone without changing original cells',()=>{
+ const column={type:'temporal',format:{date_pattern:'datetime_short',locale:'en-US'}};
+ for(const [raw,want] of [['2026-03-08 05:00:00+00','Mar 08, 2026 00:00'],['2026-03-09 04:00:00+00','Mar 09, 2026 00:00'],['2026-03-08 02:00:00-03','Mar 08, 2026 00:00']]){
+  const cell={value:raw};assert.equal(exact(cell,column,'Missing','America/New_York'),want);assert.equal(cell.value,raw);
+ }
+ assert.equal(exact({value:'2026-03-08'},{type:'temporal',format:{date_pattern:'date_short',locale:'en-US'}},'Missing','America/New_York'),'03/08/2026','civil dates are not converted to another timezone');
+});

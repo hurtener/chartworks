@@ -96,7 +96,7 @@ async function finishCatalog(frame) {
   assert(catalog, 'Catalog read missing from compiled app');
   frame.reply(catalog, wrapped({version: 'reporting-view-v1', items: [{target: {kind: 'report', id: 'report-a', revision: 4}, title: '<script>inert report title</script>'}], next: ''}));
   await flush();
-  assert(frame.root.textContent.includes('Choose a published report'));
+  assert(frame.root.textContent.includes('Choose a report'));
   assert(frame.root.textContent.includes('<script>inert report title</script>'));
   assert.equal(frame.root.querySelectorAll('script').length, 0);
 }
@@ -106,7 +106,7 @@ test('production IIFE evaluates without module imports, globals, or runtime code
   new vm.Script(script).runInContext(context, {timeout: 2000});
   assert.deepEqual(Object.keys(context), []);
   const frame = harness({topLevel: true});
-  assert.equal(frame.root.textContent, 'Open this report app through an authorized host.');
+  assert.equal(frame.root.textContent, 'Open this report from your workspace.');
   assert.equal(frame.sent.length, 0);
   assert.equal(frame.timers.size, 0);
 });
@@ -137,7 +137,7 @@ test('compiled source preserves fail-closed empty host inventory and delayed tea
   const denied = harness();
   await initializeMCP(denied, {version: 'chartworks-host-tools-v1', names: []});
   assert.equal(denied.sent.filter(item => item.message.method === 'tools/call').length, 0);
-  assert(denied.root.textContent.includes('No report actions are available'));
+  assert(denied.root.textContent.includes('You do not have access to reports here yet'));
   denied.close();
 
   const delayed = harness();
@@ -155,7 +155,7 @@ test('literal embedded prefix selects registered bootstrap with no MCP fallback'
   const frame = harness({embedded: true});
   const bootstrap = {protocol: 'chartworks-report-app-v1', method: 'bootstrap', frame: 'frame-a', generation: 2, params: {challenge: 'synthetic-challenge-001'}};
   try {
-    assert(frame.root.textContent.includes('Waiting for the registered embedded host'));
+    assert(frame.root.textContent.includes('Opening your workspace'));
     assert.equal(frame.sent.length, 0);
     frame.emit(bootstrap, {origin: 'https://wrong.example'});
     frame.emit(bootstrap, {source: {}});
@@ -257,12 +257,12 @@ for(const embedded of [false,true])test(`actual ${embedded?'embedded':'MCP'} bun
  try{
   if(embedded){const bootstrap={protocol:'chartworks-report-app-v1',method:'bootstrap',frame:'publication-frame',generation:1,params:{challenge:'synthetic-publication-challenge'}};frame.emit(bootstrap);frame.reply(frame.sent[0],{challenge:bootstrap.params.challenge,tools:true,capabilities:{supported_tools:names},context:{locale:'en-US'}});}else await initializeMCP(frame,names);
   await drain();await click('Build');await click('Lifecycle report');
-  const panel=frame.root.querySelectorAll('details').find(n=>n.getAttribute('aria-label')==='Publication and review');assert.equal(panel.open,false);panel.open=true;panel.listeners.get('toggle')();await click('Inspect publication status');
-  assert.equal(button('Publish entire chart revision').disabled,true);assert(frame.root.textContent.includes('other · table'));
-  confirm('I confirm publishing the entire chart revision and all listed outputs.');await click('Publish entire chart revision');assert.equal(native.blocks.get('chart-a:2').block.private,false);assert.equal(native.report().definition.report_pages[0].widgets[0].block.policy,'private_preview');
-  confirm('Summary / first · first · chart-a revision 2');confirm('Summary / second · second · chart-a revision 2');assert.equal(button('Rebind selected widgets').disabled,true);confirm('I confirm rebinding only the selected widgets to their exact published chart revisions.');await click('Rebind selected widgets');assert(native.report().definition.report_pages[0].widgets.every(w=>w.block.policy==='published'));assert.equal(native.state().published_revision,0);
-  assert.equal(button('Submit report for review').disabled,true);confirm('I confirm submitting this exact report revision for review.');await click('Submit report for review');assert.equal(native.state().draft_revision,0);assert.equal(native.state().review_revision,2);assert(frame.root.textContent.includes('Pending review'));
-  assert.equal(button('Publish reviewed report').disabled,true);confirm('I confirm publishing this exact reviewed report revision.');await click('Publish reviewed report');assert.equal(native.state().published_revision,2);assert.equal(native.state().review_revision,0);assert.equal(native.report(2).private,false);
+  const panel=frame.root.querySelectorAll('details').find(n=>n.getAttribute('aria-label')==='Publication and review');assert.equal(panel.open,false);panel.open=true;panel.listeners.get('toggle')();await click('Check report');
+  assert.equal(button('Publish chart').disabled,true);assert(frame.root.textContent.includes('Table'));
+  confirm('Publish this chart and every item listed above.');await click('Publish chart');assert.equal(native.blocks.get('chart-a:2').block.private,false);assert.equal(native.report().definition.report_pages[0].widgets[0].block.policy,'private_preview');
+  confirm('Summary / first');confirm('Summary / second');assert.equal(button('Update selected charts').disabled,true);confirm('Update only the selected items with the published charts.');await click('Update selected charts');assert(native.report().definition.report_pages[0].widgets.every(w=>w.block.policy==='published'));assert.equal(native.state().published_revision,0);
+  assert.equal(button('Request review').disabled,true);confirm('Send this saved draft for review.');await click('Request review');assert.equal(native.state().draft_revision,0);assert.equal(native.state().review_revision,2);assert(frame.root.textContent.includes('Pending review'));
+  assert.equal(button('Publish report').disabled,true);confirm('Publish the reviewed report.');await click('Publish report');assert.equal(native.state().published_revision,2);assert.equal(native.state().review_revision,0);assert.equal(native.report(2).private,false);
   await click('Browse');assert(frame.root.textContent.includes('Lifecycle report'));const mutations=native.calls.filter(c=>['reporting_authoring_block_publish_v1','reporting_authoring_rebind_published_v1','reporting_authoring_report_transition_v1'].includes(c.name));assert.equal(mutations.length,4);assert.deepEqual(mutations.map(c=>c.args.operation||c.name),['reporting_authoring_block_publish_v1','reporting_authoring_rebind_published_v1','review','publish']);assert(!native.calls.some(c=>/prepare|validate|execute|options|^reporting_run$/.test(c.name)));
  }finally{frame.close();}await flush();assert.equal(frame.timers.size,0);
 });
@@ -288,7 +288,7 @@ for(const embedded of [false,true])test(`compiled ${embedded?'embedded':'MCP'} m
   if(embedded){frame.emit({protocol:'chartworks-report-app-v1',method:'bootstrap',frame:'authoring-frame',generation:1,params:{challenge:'synthetic-authoring-challenge'}});frame.reply(frame.sent[0],{challenge:'synthetic-authoring-challenge',tools:true,capabilities:{supported_tools:names},context:{locale:'en-US'}});}else await initializeMCP(frame,names);
   await drain();const before=calls.length;change('input','Find reports','Revenue','input');assert.equal(calls.length,before);await click('Search reports');assert.equal(calls.at(-1).args.query,'Revenue');assert(frame.root.textContent.includes('More reports may contain matches'));await click('More reports');assert.equal(calls.at(-1).args.after,'scan-next');assert(frame.root.textContent.includes('Synthetic approved metadata preview'));await click('Clear reports search');assert.equal(calls.at(-1).args.query,'');
   await click('Build');await click('Editable report');const sibling=mapClone(definition.report_pages[1]),beforeSettings=calls.length;change('select','Page locale','es-AR');change('select','Page timezone','America/Argentina/Buenos_Aires');assert.equal(calls.length,beforeSettings);await click('Save report');assert.equal(definition.report_pages[0].locale,'es-AR');assert.equal(definition.report_pages[0].timezone,'America/Argentina/Buenos_Aires');assert.deepEqual(definition.report_pages[1],sibling);await click('Reload latest');assert.equal(field('select','Page locale').children.find(o=>o.selected).value,'es-AR');change('select','Page locale','');await click('Save report');assert(!Object.hasOwn(definition.report_pages[0],'locale'));assert.equal(definition.locale,'en-US');
-  change('input','Find blocks','Revenue','input');const beforeSearch=calls.length;assert.equal(calls.length,beforeSearch);await click('Search blocks');assert(frame.root.textContent.includes('More blocks may contain matches'));await click('More blocks');assert.equal(calls.at(-1).args.kind,'block');assert.equal(calls.at(-1).args.after,'scan-next');
+  change('input','Find charts','Revenue','input');const beforeSearch=calls.length;assert.equal(calls.length,beforeSearch);await click('Search charts');assert(frame.root.textContent.includes('Try the next page'));await click('More charts');assert.equal(calls.at(-1).args.kind,'block');assert.equal(calls.at(-1).args.after,'scan-next');
   await click('Selected');await click('Edit chart');const beforeDisplay=calls.length;change('input','Chart title','Reviewed total');change('select','Legend position','right');change('input','Maximum displayed label characters','24');assert.equal(calls.length,beforeDisplay);assert(frame.root.textContent.includes('Use Field formatting separately'));await click('Save chart');const saved=calls.find(c=>c.name==='reporting_authoring_block_mapping_v1');assert.equal(saved.args.mapping.options.title,'Reviewed total');assert.equal(saved.args.mapping.options.legend.position,'right');assert.equal(saved.args.mapping.options.label_max_runes,24);assert(!Object.hasOwn(saved.args.mapping,'columns'));assert.equal(block.block.validation,undefined);await click('Save report');await click('Edit chart');assert.equal(field('input','Chart title').value,'Reviewed total');assert.equal(field('select','Legend position').children.find(o=>o.selected).value,'right');assert.equal(Number(field('input','Maximum displayed label characters').value),24);await click('Cancel chart edits');assert(!calls.some(c=>/validate|prepare|execute|^reporting_run$/.test(c.name)));
  }finally{frame.close();}await flush();assert.equal(frame.timers.size,0);assert(frame.root.textContent.includes('closed'));
 });

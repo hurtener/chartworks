@@ -61,10 +61,10 @@ for(const embedded of [false,true])test(`compiled ${embedded?'embedded':'MCP'} n
     await f.click('Save report');assert.deepEqual(f.fixture.calls.find(c=>c.name==='reporting_authoring_save_v1').args,d.save_request);await f.click('Reload latest');
     await f.click('Change saved default',1);f.input('Find values','East');f.arm(d.private_option_request);await f.click('Search options');await f.click('Cancel');assert.equal(counts(),2);
     await f.click('Choose temporary preview value',1);await f.click('East · remove');await f.click('Done');await f.click('Choose temporary preview value',0);f.input('Start date','2026-01-01');f.input('End date · inclusive','2026-01-01');await f.click('Done');assert.equal(counts(),2);
-    await f.click('Selected');await f.click('Check chart status');f.arm(f.fixture.privateRun.preview_request,'preview');await f.click('Private preview');assert.equal(counts(),3);assert(f.root.textContent.includes('Private preview'));assert(!f.root.textContent.includes('Retained output unavailable.'));
-    await f.click('Use saved default for preview',0);await f.click('Use saved default for preview',0);assert.equal(counts(),3);assert(f.root.textContent.includes('Preview is stale.'));
+    await f.click('Selected');await f.click('Check chart status');f.arm(f.fixture.privateRun.preview_request,'preview');await f.click('Private preview');assert.equal(counts(),3);assert(f.root.textContent.includes('Private preview'));assert(!f.root.textContent.includes('This chart could not be opened. Try reopening the report.'));
+    await f.click('Use saved default for preview',0);await f.click('Use saved default for preview',0);assert.equal(counts(),3);assert(f.root.textContent.includes('Your changes are not in this preview yet.'));
     await f.click('Browse');await f.click(d.published_catalog.items[0].title);await f.click('Choose Region');await f.click('East · remove');f.input('Find values','East');f.arm(d.published_option_request);await f.click('Search options');await f.click('Done');assert.equal(counts(),4);
-    await f.click('Choose Day');f.input('Start date','2026-01-01');f.input('End date · inclusive','2026-01-01');await f.click('Done');f.arm(f.fixture.publicRun.run_request,'run');await f.click('Run with these filters');assert.equal(counts(),5);assert(f.root.textContent.includes('Retained report'));assert(!f.root.textContent.includes('Retained output unavailable.'));
+    await f.click('Choose Day');f.input('Start date','2026-01-01');f.input('End date · inclusive','2026-01-01');await f.click('Done');f.arm(f.fixture.publicRun.run_request,'run');await f.click('Refresh report');assert.equal(counts(),5);assert(f.root.textContent.includes('About this data'));assert(!f.root.textContent.includes('This chart could not be opened. Try reopening the report.'));
     const disclosure=()=>f.all('details').find(e=>e.className==='consumer-tools');
     // Simulate the browser's native summary toggle, then deliver the actual
     // toggle event. Clicking hidden descendant buttons would miss this defect.
@@ -74,7 +74,7 @@ for(const embedded of [false,true])test(`compiled ${embedded?'embedded':'MCP'} n
     await f.click('Choose Region');assert.equal(disclosure().open,true,'post-run filter editor must remain visible');
     assert(f.all('legend').some(e=>e.textContent==='Region · temporary selection'));
     f.input('Find values','North');await f.click('Cancel');assert.equal(disclosure().open,true,'Cancel must preserve the user-opened disclosure');
-    await f.click('Use published default');assert.equal(disclosure().open,true,'second Clear must remain visible without reopening');assert.equal(counts(),5);assert(f.root.textContent.includes('These retained values use earlier filter selections.'));
+    await f.click('Use published default');assert.equal(disclosure().open,true,'second Clear must remain visible without reopening');assert.equal(counts(),5);assert(f.root.textContent.includes('Your filters have changed. Refresh the report to apply them.'));
     assert.deepEqual(f.fixture.snapshot().report,d.private_report);assert.equal(f.fixture.calls.filter(c=>c.name==='reporting_authoring_save_v1').length,1);
   }finally{f.close();}
 });
@@ -86,12 +86,12 @@ for(const embedded of [false,true])test(`compiled ${embedded?'embedded':'MCP'} s
  const input=label=>f.all('input').find(e=>e.getAttribute('aria-label')===label);
  try{
   await f.click('Build');await f.click(d.initial_report.definition.metadata[0].title);
-  f.input('Find blocks','Synthetic paused catalog');const before=f.fixture.snapshot(),calls=f.fixture.calls.length,selection=f.root.dataset.selection;
+  f.input('Find charts','Synthetic paused catalog');const before=f.fixture.snapshot(),calls=f.fixture.calls.length,selection=f.root.dataset.selection;
   await f.click('Change saved default',1);
   assert(byClass('section','filter-inspector'));assert.equal(byClass('section','component-library'),undefined);assert.equal(byClass('details','filter-editor'),undefined);
   assert.equal(f.document.activeElement,input('Find values'));f.input('Find values','East');
   await f.click('Back to Components');assert(byClass('section','component-library'));assert.equal(byClass('details','filter-editor').open,true);
-  assert.equal(input('Find blocks').value,'Synthetic paused catalog');assert.equal(f.root.dataset.selection,selection);assert.equal(f.document.activeElement,button('Change saved default',1));
+  assert.equal(input('Find charts').value,'Synthetic paused catalog');assert.equal(f.root.dataset.selection,selection);assert.equal(f.document.activeElement,button('Change saved default',1));
   await f.click('Resume filter edits');assert.equal(input('Find values').value,'East');assert.equal(f.document.activeElement,input('Find values'));
   const inspector=byClass('section','filter-inspector');let prevented=false,stopped=false;
   inspector.listeners.keydown({key:'Escape',preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});await f.pump();

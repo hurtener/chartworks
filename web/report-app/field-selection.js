@@ -37,16 +37,16 @@ export function fieldSelectionIssue(view,draft){
  const f=draft.fields;if(!f)return '';
  if(!view.fields?.supported)return 'This dataset is unavailable for field selection.';
  if(!f.dimensions.length&&!f.measures.length)return 'Add fields or a row count to define the result.';
- if(f.dimensions.length+f.measures.length>view.fields.max_columns)return `This source accepts up to ${view.fields.max_columns} result columns. Remove a field to continue.`;
- if(f.mode==='rows'&&(draft.kind!=='table'||f.measures.length))return 'Raw rows use a table with columns and no aggregates.';
- for(const m of f.measures)if(m.kind==='column'&&!m.aggregation)return `Choose an aggregation for ${view.fields.columns.find(c=>c.id===m.field)?.name||m.field}.`;
- for(const d of f.dimensions){const {column,dimension,label}=groupingMetadata(view,d);if(dimension?.temporal&&!d.grain)return `Choose the reviewed date grain for ${label}, or use its physical column for original values.`;if(d.grain&&fieldInstant(column)&&!d.timezone)return `Choose a timezone for ${label}.`;}
+ if(f.dimensions.length+f.measures.length>view.fields.max_columns)return `This source accepts up to ${view.fields.max_columns} fields. Remove a field to continue.`;
+ if(f.mode==='rows'&&(draft.kind!=='table'||f.measures.length))return 'Individual rows use a table. Remove calculations to show the original values.';
+ for(const m of f.measures)if(m.kind==='column'&&!m.aggregation)return `Choose a calculation for ${view.fields.columns.find(c=>c.id===m.field)?.name||m.field}.`;
+ for(const d of f.dimensions){const {column,dimension,label}=groupingMetadata(view,d);if(dimension?.temporal&&!d.grain)return `Choose how to group dates for ${label}, or select the original column to show each date.`;if(d.grain&&fieldInstant(column)&&!d.timezone)return `Choose a timezone for ${label}.`;}
  if(draft.kind==='table')return '';
- if(draft.kind==='kpi')return f.dimensions.length||f.measures.length!==1?'A single-value card needs one measure and no grouping. Use a table or chart to show more fields.':'';
- if(!f.measures.length||!f.dimensions.length)return 'Choose a grouping field and at least one measure for this chart.';
- if(['pie','donut'].includes(draft.kind)&& (f.dimensions.length!==1||f.measures.length!==1))return 'This chart uses one category and one measure. A table or bar chart can show more fields.';
- if(f.dimensions.length>2)return 'This chart has category and series slots. Use a table to display all selected grouping fields.';
- if(['line','area'].includes(draft.kind)&&!fieldTemporal(groupingMetadata(view,f.dimensions[0]).column))return 'The first field of a line or area chart must have a date or timestamp type.';
+ if(draft.kind==='kpi')return f.dimensions.length||f.measures.length!==1?'A summary number needs one calculation and no grouping. Use a table or chart to show more fields.':'';
+ if(!f.measures.length||!f.dimensions.length)return 'Choose a grouping field and at least one calculation for this chart.';
+ if(['pie','donut'].includes(draft.kind)&& (f.dimensions.length!==1||f.measures.length!==1))return 'This chart uses one category and one calculation. A table or bar chart can show more fields.';
+ if(f.dimensions.length>2)return 'This chart can group by two fields. Use a table to show more grouping fields.';
+ if(['line','area'].includes(draft.kind)&&!fieldTemporal(groupingMetadata(view,f.dimensions[0]).column))return 'The first field of a line or area chart must contain dates.';
  return '';
 }
 

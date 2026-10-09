@@ -94,14 +94,14 @@ export function formattingPreview(view,output,draft){
 }
 export function renderFormattingFields(parent,session,change){
  const output=session.view.block.outputs.find(o=>o.id===session.output),columns=formattingColumns(output),name=c=>c.display_label||c.name||c.id;
- parent.append(node('p','Edit supported headers and precision. Units, currency, percent scale, physical fields and exact values stay reviewed. Reset inherits the reviewed field.','metadata'));
- if(!columns.length){parent.append(node('p','Field formatting is unavailable for this output. Missing or unsupported metadata, legacy KPIs, percent precision and date formats cannot be edited.','notice'));return;}
+ parent.append(node('p','Change column headings and decimal places. Calculations, units, and original values stay the same. Reset restores the saved format.','metadata'));
+ if(!columns.length){parent.append(node('p','Some formats cannot be changed here. You can still edit the chart title and style.','notice'));return;}
  const index=Math.max(0,columns.findIndex(c=>c.column.id===session.formattingColumn)),{column,role,fields}=columns[index],row=session.draft.fields[index],section=node('section',undefined,'mapping-column-list');
  parent.append(selectField('Format field',columns.map(({column})=>({value:column.id,label:name(column)})),column.id,value=>{if(!session.closed){session.formattingColumn=value;change();}}));
  section.append(node('p',[role.replaceAll('_',' '),column.type,column.format?.currency,column.format?.unit].filter(Boolean).join(' · '),'metadata'));
  for(const field of fields){
   const label=(field==='display_label'?'Table header':'Fraction digits')+' · '+name(column),present=Object.hasOwn(row,field),reviewed=base(column,field),edit=fn=>{session.edit(d=>fn(d.fields[index]));change();},control=textField(label,present?row[field]:reviewed,value=>edit(d=>{d[field]=field==='fraction_digits'?(value.trim()===''?null:Number(value)):value;}),field==='fraction_digits'?{type:'number',min:0,max:20}:{maxLength:256});
-  section.append(control,node('p',present?`Override · Reviewed: ${reviewed===null?'Unrounded retained value':reviewed===''?'(empty)':reviewed}`:reviewed===null?'Unrounded retained value · Enter fraction digits to round explicitly':'Inherited from reviewed field','metadata'),button('Reset '+label,()=>{control.children[0].focus?.({preventScroll:true});edit(d=>{delete d[field];});},!present));
+  section.append(control,node('p',present?`Override · Reviewed: ${reviewed===null?'Full precision':reviewed===''?'(empty)':reviewed}`:reviewed===null?'Full precision · Choose decimal places to round':'Using the saved format','metadata'),button('Reset '+label,()=>{control.children[0].focus?.({preventScroll:true});edit(d=>{delete d[field];});},!present));
  }
  parent.append(section);
 }

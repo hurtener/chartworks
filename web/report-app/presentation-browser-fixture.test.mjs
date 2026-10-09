@@ -106,7 +106,7 @@ test('hosted journey is source-only, captures both inspectors and retained layou
 
 test('late-reply journey expects the actual complete closed-app state',async()=>{
  const [app,journey]=await Promise.all(['app.js','presentation.browser.mjs'].map(file=>readFile(new URL('./'+file,import.meta.url),'utf8')));
- const message='This report app is closed. Reopen it through your authorized host.';
+ const message='This report is closed. Reopen it from your workspace.';
  assert(app.includes(message));assert(journey.includes(`textContent===${JSON.stringify(message).replaceAll('"',"'")}`));
  assert(journey.includes('&&!${inspector}'),'Late replies cannot restore inspector');
 });

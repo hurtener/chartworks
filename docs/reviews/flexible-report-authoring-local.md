@@ -47,3 +47,29 @@ public DTOs, with no credentials or live mutation relay. The authenticated brows
 journey is pending the user's local certificate hand-off. Hosted CI is billing
 blocked. Final service cleanup and goal closure remain pending; do not interpret
 this checkpoint as release approval.
+
+## Client experience checkpoint
+
+The reader, chart setup, formatting, publication and recovery controls now use
+plain language. Readers get a visible Refresh report action, filters/history
+before the canvas, and optional details instead of raw status codes, revision
+coordinates or validation identifiers. Data warnings, draft privacy, original
+numeric values and uncertain-action fences remain. Pengui sharing explains data
+prerequisites and separately granted access in English and Spanish. Field choices
+remain schema-driven; useful source field names still distinguish display labels.
+
+A composed synthetic report was created through the public services, published
+by an independent reviewer, shared with a Team and read through both HTTP and
+restricted MCP. It contains text, a summary number, bars, a daily line and a table
+on two pages. This is authenticated API evidence, not signed-in visual acceptance.
+The date chart exposed PostgreSQL's abbreviated whole-hour timezone offsets; the
+temporal parser now accepts those actual source values without rewriting retained
+cells. Native line/area regressions and browser-formatting checks cover those
+offsets and the daylight-saving boundary.
+
+Local module/compiled-resource checks, chart race tests, Pengui sharing tests and
+the console build pass. Browser fixtures have updated expectations but the new
+visual pass remains open: Chrome displayed ERR_BLOCKED_BY_CLIENT when reopening
+the app. The owner was asked to restore the browser page. FA09/FA10, desktop/mobile
+visual sign-off, the refreshed walkthrough and final service cleanup remain open;
+this checkpoint does not establish predecessor visual parity or goal completion.

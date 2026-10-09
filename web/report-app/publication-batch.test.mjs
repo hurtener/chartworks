@@ -20,7 +20,7 @@ test('changing any reviewed output, version, evidence, report or eligible set in
 
 test('a second uncertain result stops the batch, preserving first confirmation and only sent custody',async()=>{
   let writes=0;const {fixture:f,session:s}=await setup(fn=>async(name,args)=>{if(name===authoringTool('block_publish')&&++writes===2)throw appError('unavailable',true);return fn(name,args);});s.confirmChartBatch(true);
-  await assert.rejects(s.publishChartBatch());const records=s.records('report-a');assert.equal(writes,2);assert.equal(records.length,2);assert.equal(records[0].status,'confirmed');assert.equal(records[1].status,'unknown');assert.equal(s.view,null);assert.match(s.message,/1 of 12 chart revisions confirmed/);assert.match(s.message,/remaining charts were not sent/);assert.equal(s.blocked('report-a'),true);assert.equal(f.blocks.get('chart-3:2').block.private,true);
+  await assert.rejects(s.publishChartBatch());const records=s.records('report-a');assert.equal(writes,2);assert.equal(records.length,2);assert.equal(records[0].status,'confirmed');assert.equal(records[1].status,'unknown');assert.equal(s.view,null);assert.match(s.message,/1 of 12 charts confirmed/);assert.match(s.message,/remaining charts were not sent/);assert.equal(s.blocked('report-a'),true);assert.equal(f.blocks.get('chart-3:2').block.private,true);
   await s.inspectOperation(records[1]);assert.equal(records[1].status,'unknown');assert.equal(s.retryConfirmed(records[1]),false);assert.equal(writes,2);
 });
 

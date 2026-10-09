@@ -52,7 +52,7 @@ function renderColumnInput(box,state,{disabled,editPolicy,changed,redraw}){
   field.addEventListener('input',()=>{state[key]=field.value;changed();});row.append(field);box.append(row);return field;
  };
  if(temporal){
-  box.append(filterNode('p',kind==='instant'?'Gregorian calendar. Times use the selected timezone; ambiguous or nonexistent local times are rejected when preparing or running.':'Gregorian calendar. Civil dates and times have no timezone conversion.'));
+  box.append(filterNode('p',kind==='instant'?'Dates use the Gregorian calendar and your selected timezone. Times that do not exist or occur twice during a clock change cannot be used.':'Gregorian calendar. Civil dates and times have no timezone conversion.'));
   if(kind==='instant'){
    if(editPolicy){const row=filterNode('label','Filter timezone'),zone=filterNode('input');zone.value=state.column.timezone||'';zone.maxLength=128;zone.placeholder='Choose an IANA timezone';zone.setAttribute('aria-label','Filter timezone');zone.addEventListener('input',()=>{state.column.timezone=zone.value;changed();});row.append(zone);box.append(row);}
    else box.append(filterNode('p','Timezone: '+state.column.timezone));
@@ -92,7 +92,7 @@ function renderOptionSearch(box,state,{multiple,selected,onSelect,lookup,disable
    for(const option of lookup.values){const row=filterNode('label'),choice=filterNode('input');choice.type=multiple?'checkbox':'radio';choice.name=group;choice.value=option.value;choice.checked=selected.includes(option.value);choice.disabled=disabled||multiple&&!choice.checked&&selected.length>=16;choice.addEventListener('change',()=>{onSelect(multiple?(choice.checked?[...selected,option.value]:selected.filter(x=>x!==option.value)):[option.value]);render(option.value);});row.append(choice,filterNode('span',option.value===''?'Empty text':option.label));choices.append(row);}box.append(choices);
    if(!lookup.result.complete)box.append(filterAction('Next options',()=>onSearch?.(lookup.request.search,lookup.result.next),disabled||!lookup.canSearch()));
   }else if(lookup?.request&&!lookup.pending){
-   box.append(filterNode('p',lookup.result?.status==='unsupported'?'This approved binding does not support option search.':lookup.result?.status==='failed'&&lookup.result?.new_operation_allowed?`Option lookup failed (${lookup.result.code||UNAVAILABLE}). No values were applied. Check the field or narrow the search before another explicit read.`:lookup.result?.new_operation_allowed?'This lookup finished, but its values are not retained. Search again explicitly for a new page.':'The lookup outcome is unconfirmed. Inspect or reconcile it before starting another search.'));
-   for(const [action,title]of [['','Inspect lookup'],['cancel','Cancel lookup'],['reconcile','Reconcile lookup']])if(onInspect)box.append(filterAction(title,()=>onInspect(action),disabled||lookup.pending));
+   box.append(filterNode('p',lookup.result?.status==='unsupported'?'This approved binding does not support option search.':lookup.result?.status==='failed'&&lookup.result?.new_operation_allowed?`Option lookup failed (${lookup.result.code||UNAVAILABLE}). No values were applied. Check the field or narrow the search before another explicit read.`:lookup.result?.new_operation_allowed?'These search results are no longer available. Search again to load new results.':'This search has not finished. Check its status before searching again.'));
+   for(const [action,title]of [['','Check search'],['cancel','Cancel search'],['reconcile','Resolve search']])if(onInspect)box.append(filterAction(title,()=>onInspect(action),disabled||lookup.pending));
   }
 }

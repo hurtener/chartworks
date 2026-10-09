@@ -1,7 +1,7 @@
 import {INVALID_REQUEST, UNAVAILABLE, BUSY} from './error-codes.js';
 import {appError,copyData,validID} from './model.js';
 export const TARGET_ALLOCATION_VERSION='report-app-allocation-v1';
-export const TARGET_ALLOCATION_UNAVAILABLE='Creation is unavailable in this host. You can still open existing reports and charts.';
+export const TARGET_ALLOCATION_UNAVAILABLE='You cannot create reports here yet. You can still open reports and charts shared with you.';
 const allocationKeys=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const allocationSource=v=>allocationKeys(v,['block','revision','expected_version','digest','output'])&&validID(v.block)&&validID(v.output)&&Number.isSafeInteger(v.revision)&&v.revision>0&&v.revision<=256&&Number.isSafeInteger(v.expected_version)&&v.expected_version>0&&typeof v.digest==='string'&&/^[a-f0-9]{64}$/.test(v.digest);
 // The host display hint is narrower than a native chart title. Never rewrite

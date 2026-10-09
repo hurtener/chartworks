@@ -13,6 +13,15 @@ column name, assume a sales schema, or select an analysis for the user. Business
 examples belong in synthetic fixtures and demo datasets. Starting layouts are
 optional, editable arrangements with no attached data or prescribed analysis.
 
+The private predecessor's client-facing report builder is the primary experience
+benchmark. Capability migration does not require carrying over an analyst or
+operator interface. Readers see the report, filters, refresh, sharing and history;
+authors choose data, fields and chart styles directly. Internal operations,
+identifiers, digests, provenance terminology and authority machinery do not belong
+in the ordinary workflow. Keep meaningful access, privacy, incomplete-data,
+expiry and uncertain-action explanations in plain language. This is a product
+experience requirement, not a lexical check or permission to weaken enforcement.
+
 Expose authorized loaded tables, including uploads, and topic datasets through
 one schema-driven field selection experience. Distinguish physical columns from
 reviewed dimensions and metrics. Physical columns offer type-compatible grouping,
@@ -50,6 +59,16 @@ name heuristics, silent fallback aggregation or unverified joins.
 - [ ] FA08: focused Go/race/browser/contract/planning gates, bounded adversarial
   review, exact-source evidence, draft PRs and standalone walkthrough are updated.
   Owned temporary services are stopped; local results are not hosted CI evidence.
+- [ ] FA09: reader, Builder, chart setup, publication and Pengui sharing use
+  client-facing language and a clear action hierarchy. Technical references are
+  absent from the ordinary experience; status and recovery still explain what
+  happened, what is safe to do next, and whether existing readers are affected.
+  Preserve existing English/Spanish support and keyboard/screen-reader labels.
+- [ ] FA10: the signed-in walkthrough demonstrates a composed report with
+  meaningful charts, a summary value, a table and editable text, using synthetic
+  data selected through the same schema-driven workflow. Show authoring and
+  reading on desktop/mobile and both transports; a table-only fixture or a
+  renderer catalog is insufficient evidence of the complete client experience.
 
 ## Ownership, migration and boundaries
 
@@ -251,3 +270,30 @@ not an authenticated browser journey. The local certificate warning requires a
 human browser hand-off. FA04/FA06/FA07/FA08 remain open for final host visual
 qualification, delivery/cleanup and any concrete issues it exposes. No hosted CI,
 production deployment or merge is claimed.
+
+
+## Client experience checkpoint
+
+The reader, chart setup, formatting, publication and recovery controls now use
+plain language. Readers get a visible Refresh report action, filters/history
+before the canvas, and optional details instead of raw status codes, revision
+coordinates or validation identifiers. Data warnings, draft privacy, original
+numeric values and uncertain-action fences remain. Pengui sharing explains data
+prerequisites and separately granted access in English and Spanish. Field choices
+remain schema-driven; useful source field names still distinguish display labels.
+
+A composed synthetic report was created through the public services, published
+by an independent reviewer, shared with a Team and read through both HTTP and
+restricted MCP. It contains text, a summary number, bars, a daily line and a table
+on two pages. This is authenticated API evidence, not signed-in visual acceptance.
+The date chart exposed PostgreSQL's abbreviated whole-hour timezone offsets; the
+temporal parser now accepts those actual source values without rewriting retained
+cells. Native line/area regressions and browser-formatting checks cover those
+offsets and the daylight-saving boundary.
+
+Local module/compiled-resource checks, chart race tests, Pengui sharing tests and
+the console build pass. Browser fixtures have updated expectations but the new
+visual pass remains open: Chrome displayed ERR_BLOCKED_BY_CLIENT when reopening
+the app. The owner was asked to restore the browser page. FA09/FA10, desktop/mobile
+visual sign-off, the refreshed walkthrough and final service cleanup remain open;
+this checkpoint does not establish predecessor visual parity or goal completion.

@@ -89,7 +89,7 @@ const proof=await runHostedBrowser({htmlPath,screenshotPath,mode,fixture,tools:p
  async function assertValues(name){
   const stage=data.stages[name],table=stage.views.table.output.table,kpi=stage.views.kpi.output.chart;
   const valueColumn=kpi.columns.find(column=>column.id===kpi.mapping.bindings.value),value=kpi.kpi_result.value;
-  await check(`${root}.querySelector('.preview-provenance')?.textContent.includes('Private preview')&&${root}.querySelector('.preview-provenance')?.textContent.includes('Values from revision ${stage.report.revision}')&&!${root}.textContent.includes('Retained output unavailable.')`,name+' displays its exact saved actor-private retained revision');
+  await check(`${root}.querySelector('.preview-provenance')?.textContent.includes('Private preview')&&${root}.querySelector('.preview-provenance')?.textContent.includes('Values from revision ${stage.report.revision}')&&!${root}.textContent.includes('This chart could not be opened. Try reopening the report.')`,name+' displays its exact saved actor-private retained revision');
   const headers=await evaluate(`Array.from(${card('table')}.querySelectorAll('.retained-output thead th'),e=>e.textContent)`);
   equal(headers,[...(table.row_indices?.length?['Returned row']:[]),...table.columns.map(column=>column.display_label||column.name)],name+' table headers use only the effective native column labels');
   equal(await evaluate(`Array.from(${card('table')}.querySelectorAll('.retained-output tbody td'),e=>e.firstChild?.textContent)`),table.rows.flatMap(row=>row.map((cell,index)=>exact(cell,table.columns[index],'Missing',stage.views.table.timezone))),name+' table digits round exact native cells without float conversion');
@@ -123,7 +123,7 @@ const proof=await runHostedBrowser({htmlPath,screenshotPath,mode,fixture,tools:p
    for(const key of [...Object.keys(edit.set||{}),...(edit.reset||[])])equal(await evaluate(`${field((key==='display_label'?'Table header':'Fraction digits')+' · '+label)}.value`),String(saved?.[key]??(key==='display_label'?column.display_label??'':column.format?.fraction_digits??0)),name+' reopened field inherits or shows its exact saved override');
   }
   await noCalls(name+' reopening Cancel does not mutate or execute',()=>click('Cancel formatting'));
-  await arm(stage.validation_request);const before=fixture.counts();await click('Validate data');equal(fixture.counts().validations,before.validations+1,name+' explicitly validates only its changed private chart');
+  await arm(stage.validation_request);const before=fixture.counts();await click('Check data');equal(fixture.counts().validations,before.validations+1,name+' explicitly validates only its changed private chart');
   equal(fixture.counts().nativeSourceReadsRepresented,before.nativeSourceReadsRepresented+stage.counts.explicit_validation.source_reads,name+' validation accounts for its actual native source read');
   for(const widget of stage.report.definition.report_pages.find(page=>page.id==='analysis').widgets.filter(widget=>widget.block?.policy==='private_preview')){
    await select(widget.id);await noSource('Checking '+widget.id+' fresh native validation is metadata-only',()=>click('Check chart status'));
@@ -187,7 +187,7 @@ const proof=await runHostedBrowser({htmlPath,screenshotPath,mode,fixture,tools:p
  scenarios.push({name:'happy-private-retained',counts:fixture.counts(),calls:structuredClone(fixture.calls),allocations:structuredClone(fixture.allocations)});
  // This native fixture has no report publication. Browse is deliberately not
  // used as a substitute for public Consumer qualification.
- await h.close();await textHas('This report app is closed. Reopen it through your authorized host.');
+ await h.close();await textHas('This report is closed. Reopen it from your workspace.');
  for(const scenario of ['conflict','unknown','late-read','late-save']){
   fixture.reset(scenario);await h.navigate();await open();
   if(scenario==='late-read'){
@@ -198,8 +198,8 @@ const proof=await runHostedBrowser({htmlPath,screenshotPath,mode,fixture,tools:p
   }
   if(scenario.startsWith('late-')){
    if(scenario==='late-save')await until(()=>fixture.held()===1,'Pending save did not reach hold');
-   await h.close();await textHas('This report app is closed. Reopen it through your authorized host.');await fixture.release();await h.drain();await ready();
-   await check(`${root}.textContent==='This report app is closed. Reopen it through your authorized host.'&&!${inspector}`,'Closing during '+scenario+' ignores the exact late native reply');
+   await h.close();await textHas('This report is closed. Reopen it from your workspace.');await fixture.release();await h.drain();await ready();
+   await check(`${root}.textContent==='This report is closed. Reopen it from your workspace.'&&!${inspector}`,'Closing during '+scenario+' ignores the exact late native reply');
    equal(fixture.snapshot().report,data.initial_report,'A late '+scenario+' response cannot save or rebind the report');
   }else{
    await check(`${button('Save formatting')}.disabled===true`,scenario+' fences repeated formatting writes');
@@ -207,12 +207,12 @@ const proof=await runHostedBrowser({htmlPath,screenshotPath,mode,fixture,tools:p
    equal(writes().length,1,scenario+' makes exactly one attempted native mutation');
    if(scenario==='unknown'){
     await textHas('The save outcome is unknown.');const target=data.stages.copied_table.block.block;
-    await click('Inspect chart state');equal(fixture.calls.at(-1),{name:'reporting_authoring_block_read_v1',args:{block:target.state.id,revision:target.revision}},'Unknown inspection uses the original stable target and pinned revision');
-    await check(`${button('Save formatting')}.disabled===true&&${inspector}.textContent.includes('outcome is unknown')`,'Successful metadata inspection does not resolve unknown write attribution');await captureAs('unknown-fenced');
+    await click('Check saved chart');equal(fixture.calls.at(-1),{name:'reporting_authoring_block_read_v1',args:{block:target.state.id,revision:target.revision}},'Unknown inspection uses the original stable target and pinned revision');
+    await check(`${button('Save formatting')}.disabled===true&&${inspector}.textContent.includes('could not confirm')`,'Successful metadata inspection does not resolve unknown write attribution');await captureAs('unknown-fenced');
     await click('Close chart editor');await check(`${button('Field formatting')}.disabled===true`,'Unknown close preserves the report-local editing fence');
    }else{await textHas('This chart changed elsewhere.');await captureAs('cas-conflict');const nativeUnknown=data.response_contract.errors.duplicate_copy.mcp.structuredContent.error.outcome==='unknown';await click(nativeUnknown?'Close chart editor':'Cancel formatting');if(nativeUnknown)await check(`${button('Field formatting')}.disabled===true`,'Native CAS conflict preserves its recorded unknown-outcome editing fence');}
    equal(fixture.snapshot().report,data.initial_report,scenario+' never adopts or saves an uncertain/conflicting chart pin');
-   equal(fixture.allocations.length,1,scenario+' keeps one original host allocation');await h.close();await textHas('This report app is closed. Reopen it through your authorized host.');
+   equal(fixture.allocations.length,1,scenario+' keeps one original host allocation');await h.close();await textHas('This report is closed. Reopen it from your workspace.');
   }
   equal(fixture.counts().nativeSourceReadsRepresented,0,scenario+' performs no source or model execution');
   scenarios.push({name:scenario,counts:fixture.counts(),calls:structuredClone(fixture.calls),allocations:structuredClone(fixture.allocations)});
