@@ -29,16 +29,16 @@ name heuristics, silent fallback aggregation or unverified joins.
 
 - [x] FA01: audit production assumptions and compare physical/semantic field
   discovery with current predecessors; optional layouts contain neutral copy.
-- [ ] FA02: versioned typed field compiler supports multi-dimension/multi-measure
+- [x] FA02: versioned typed field compiler supports multi-dimension/multi-measure
   aggregates, count, raw rows and explicit date grouping. Exact physical schema,
   safe columns, current source/context and configured column limits are checked
   before source work; incompatible types/policies fail with useful dispositions.
-- [ ] FA03: authorized table/upload and topic discovery use existing public
+- [x] FA03: authorized table/upload and topic discovery use existing public
   services; no mandatory topic creation and no extra access-management service.
 - [ ] FA04: searchable field UI exposes types, physical versus reviewed meaning,
   selected order, aggregation and date controls; no hidden business defaults.
   Both transports use the same implementation and deliberate prepare lifecycle.
-- [ ] FA05: old definitions, omitted-field canonical hashes, original preparation
+- [x] FA05: old definitions, omitted-field canonical hashes, original preparation
   custody, private amendments and immutable publications remain compatible.
 - [ ] FA06: Pengui-owned report access management grants people/Teams independent
   view/edit/publish/manage permissions. Complete dependency preflight prevents
@@ -177,3 +177,77 @@ FA03/FA04 still require uploaded-data and actual signed-in host acceptance.
 Independent people/Team view/edit/publish/manage authority, dependency eligibility,
 revocation/amendment and the final author-to-reader walkthrough remain open under
 FA06/FA07. Hosted CI remains billing-blocked, not green. No deployment or merge.
+
+## Independent permission and sharing checkpoint
+
+D-110 implements native read-only publication review: exact read intersects
+write/publish reach before worklist projection; report opening and lifecycle
+inspection do not lend write authority to publishers. Save/rebind/review and
+execution remain independently gated. Actual PostgreSQL lifecycle acceptance
+publishes as a separate reviewer with no write/execute/source-query permission;
+negative cases retain data context and private custody. Both HTTP/MCP registration
+and the shared UI support the publisher-only lane.
+
+The Pengui companion implements people/Team sharing, full dependency preflight,
+canonical grant contributions, safe revocation and independent permissions under
+PD-253/migration 0110. Local three-store, HTTP and UI tests are distinct from
+signed-in proof. Self-review corrected a delayed dialog-response race on report
+switches and added explicit search/preflight/mutation/reload regressions.
+FA06/FA07/FA08 remain open for complete signed-in author/Team/amendment journeys,
+uploaded data, current desktop/mobile walkthrough, exact-head gates and cleanup.
+
+## Uploaded-data API journey checkpoint
+
+Two synthetic CSV files with unrelated physical schemas were reserved, staged
+and loaded through the real engineering service into isolated PostgreSQL. The
+running reference binary discovered those uploaded tables without topics or
+predefined measures. An authenticated author selected three groups and three
+measures, including explicit zoned daily grouping, prepared/validated the chart,
+and submitted a report for a separate publisher. A viewer-admitted reviewer
+published without write or source-query permission. A Team-only reader explicitly
+ran the report and read six exact retained rows. This sequence passed through
+both HTTP authority/BFF APIs and restricted no-chat MCP with the current resource.
+
+An amendment added the second uploaded schema. HTTP preflight reported missing
+source/dataset/context authority before sharing; it granted no data permissions.
+The old retained result remained readable while the new publication was hidden.
+After explicit administrative data prerequisites, the manager rechecked sharing
+and the Team ran both pages. Revoking the report contribution denied an existing
+reader session. MCP repeated amendment/publication/refresh/revocation and verified
+that removing one report's contribution preserved a chart shared by another report.
+`TestReportAppUploadedFieldsNative` covers the real upload/typed preparation/private
+consumption/preview seam without models or caller-supplied schema.
+
+These are authenticated API journeys, not live browser acceptance. The browser
+certificate hand-off, desktop/mobile visual review, standalone walkthrough,
+exact-source final gates and owned-service cleanup remain open. Local fixture
+setup retained the original source address because execution-context fingerprints
+correctly reject a changed warehouse location. Hosted CI is still billing-blocked.
+
+## Precision review correction
+
+Offline inspection of the actual compiled UI over captured uploaded results found
+that new decimal measures inherited zero fraction digits. D-111 changes new typed
+numeric selections to preserve exact retained precision until explicit formatting.
+Legacy definitions remain unchanged; explicit zero and reset have distinct native
+and browser semantics. The offline fixture contains no credentials or live relay
+and does not substitute for signed-in browser acceptance.
+
+## Current local qualification, 2026-10-09
+
+FA02/FA03/FA05 now have native and authenticated public-seam evidence: actual
+uploads, typed multi-field selection, legacy preparation compatibility, immutable
+publication and independent reviewer/Team amendment journeys. The final numeric
+default is also exercised by newly prepared HTTP and MCP reports. Native charts,
+static rendering, full reporting/API race suites and focused real-PostgreSQL
+acceptance pass. Shared resource/module tests and planning/docs checks pass.
+
+Desktop and 390-pixel mobile inspection used the actual compiled resource with
+captured public synthetic DTOs in a read-only offline host. Six fields, ordered
+multi-measure selection, explicit day/timezone controls and exact retained values
+were inspected. This exposed and corrected decimal rounding and compressed mobile
+table columns; tables now scroll within their container. This is visual evidence,
+not an authenticated browser journey. The local certificate warning requires a
+human browser hand-off. FA04/FA06/FA07/FA08 remain open for final host visual
+qualification, delivery/cleanup and any concrete issues it exposes. No hosted CI,
+production deployment or merge is claimed.

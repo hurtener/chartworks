@@ -281,3 +281,12 @@ App HTML) or invoke tools. Interactive App resource/tool requests still require
 No service name alone authorizes a request; the verifier, configured MCP audience,
 expiry and exact scope profile remain mandatory. No new issuer, credential,
 identity table, domain endpoint or migration is introduced.
+
+## Manual report access boundary
+
+D-110 keeps Pengui-owned report view/edit/publish/manage policy independent.
+Chartworks private worklists and inspection require exact read plus write or
+publish reach, preserving stored data dependencies and private chart custody.
+Report publication needs no edit or source execution authority. The shared App
+can open Pengui's parent sharing dialog but accepts no local grants or identity.
+See [D-110](docs/decisions/2026-10-09-independent-report-review.md).

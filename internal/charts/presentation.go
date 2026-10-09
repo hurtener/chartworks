@@ -194,7 +194,7 @@ func validatePresentation(m Mapping, limits Limits) error {
 		if o.DisplayLabel != nil && (!slices.Contains(fields, PresentationDisplayLabel) || !text(*o.DisplayLabel, 256) || *o.DisplayLabel == c.DisplayLabel) {
 			return ErrInvalid
 		}
-		if o.FractionDigits != nil && (!slices.Contains(fields, PresentationFractionDigits) || *o.FractionDigits < 0 || *o.FractionDigits > 20 || *o.FractionDigits == c.Format.FractionDigits) {
+		if o.FractionDigits != nil && (!slices.Contains(fields, PresentationFractionDigits) || *o.FractionDigits < 0 || *o.FractionDigits > 20 || !c.Format.PreservePrecision && *o.FractionDigits == c.Format.FractionDigits) {
 			return ErrInvalid
 		}
 	}
@@ -234,6 +234,7 @@ func projectPresentationColumns(m Mapping) []Column {
 				}
 				if o.FractionDigits != nil {
 					c.Format.FractionDigits = *o.FractionDigits
+					c.Format.PreservePrecision = false
 				}
 				break
 			}
@@ -335,7 +336,7 @@ func ApplyPresentationPatch(ctx context.Context, m Mapping, patch PresentationPa
 				}
 				value := *v
 				o.FractionDigits = &value
-				if value == c.Format.FractionDigits {
+				if value == c.Format.FractionDigits && !c.Format.PreservePrecision {
 					o.FractionDigits = nil
 				}
 			}

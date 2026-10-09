@@ -28,7 +28,7 @@ func TestDraftCatalogDeniesBeforeDatabase(t *testing.T) {
 	}{
 		{e: identity.Envelope{}, limit: 10, want: access.ErrUnauthenticated},
 		{e: envelope("reporting.read", "cw.report.read:report"), limit: 10, want: access.ErrForbidden},
-		{e: envelope("reporting.write"), limit: 10, want: access.ErrNotFound},
+		{e: envelope("reporting.write"), limit: 10, want: access.ErrForbidden},
 		{e: envelope("reporting.write", "cw.report.write:*"), limit: 10, want: access.ErrForbidden},
 		{e: envelope("reporting.write", "cw.report.write:report", "cw.source.read:*"), limit: 10, want: access.ErrForbidden},
 		{e: envelope("reporting.write", "cw.report.write:report"), limit: 101, want: store.ErrInvalid},

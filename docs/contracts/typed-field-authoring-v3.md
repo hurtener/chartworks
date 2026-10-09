@@ -40,7 +40,12 @@ the existing absolute 256-column schema ceiling. This is a resource budget, not 
 business-analysis limit. Table columns bind in selected order; chart category,
 series and multiple-value slots use the existing renderer contracts. Positional
 output aliases are `group_1` and `value_1` families. Display labels and provenance
-retain selected identities. Observed native schema supplies output types.
+retain selected identities. Observed native schema supplies output types. New numeric
+physical projections and non-count measures preserve retained precision by default
+through optional `format.preserve_precision: true` (D-111). Authors can explicitly
+round through the existing presentation controls. Count remains integer-formatted;
+old and already-prepared mappings retain their sealed formatting. No business
+scale, unit or currency is inferred from field names.
 
 ## Dates and retained custody
 

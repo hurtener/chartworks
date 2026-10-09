@@ -36,11 +36,12 @@ export function manualDocument(definition) {
 export function narrowCapabilities(value,supports) {
   if(value?.version!==AUTHORING_VERSION)throw appError(UNAVAILABLE);
   const c=copyData(value),has=(...names)=>names.every(supports),author=(...actions)=>has(...actions.map(authoringTool));
-  c.builder=c.builder===true&&author('capabilities','read','save');
+  c.builder=c.builder===true&&author('capabilities','read')&&(author('save')||author('lifecycle','report_transition'));
   c.consumer=c.consumer===true&&has('reporting_search','reporting_describe');
   c.can_create=c.can_create===true&&author('capabilities','create','read','save');
   c.can_open=c.can_open===true&&author('capabilities','read');
   c.can_save=c.can_save===true&&author('capabilities','read','save');
+  c.can_publish=c.can_publish===true&&author('lifecycle','report_transition');
   c.can_preview=c.can_preview===true&&author('preview','execute')&&has('reporting_view');
   c.can_execute=c.can_execute===true&&has('reporting_run','reporting_view');
   return c;

@@ -87,3 +87,18 @@ test('visual formatting rejects mismatched output, column identity, invalid prec
  for(const value of [null,21,-1]){numeric.fraction_digits=value;assert.throws(()=>formattingPreview(view,output,draft));}
  numeric.fraction_digits=1;numeric.currency='EUR';assert.throws(()=>formattingPreview(view,output,draft));
 });
+
+test('unrounded numeric defaults distinguish explicit zero from inherited precision and reset',async()=>{
+ const {formattingPreview}=await import('./formatting.js'),before=formatView(),output=selected(before),column=output.mapping.columns.find(c=>c.id==='amount');
+ delete output.mapping.presentation;column.format={fraction_digits:0,preserve_precision:true};
+ const draft=formattingDraft(output);field(draft,'amount').fraction_digits=0;
+ const patch=formattingPatch(draft,output);assert.deepEqual(patch,{version:1,edits:[{column:'amount',set:{fraction_digits:0}}]});
+ const after=mapClone(before);selected(after).mapping.presentation={version:1,columns:[{column:'amount',fraction_digits:0}]};after.block.digest='c'.repeat(64);
+ checkFormattingResult(before,after,output.id,patch);assert.equal(formattingColumns(selected(after)).length,4);
+ const view={output:{id:output.id,table:{columns:[mapClone(column)],rows:[[{value:'15.5'}]]}}};
+ const rounded=formattingPreview(view,output,draft);assert.deepEqual(rounded.output.table.columns[0].format,{fraction_digits:0});
+ const reset=formattingDraft(selected(after));delete field(reset,'amount').fraction_digits;
+ assert.deepEqual(formattingPatch(reset,selected(after)),{version:1,edits:[{column:'amount',reset:['fraction_digits']}]});
+ assert.equal(formattingPreview(rounded,selected(after),reset).output.table.columns[0].format.preserve_precision,true);
+ assert.equal(view.output.table.columns[0].format.preserve_precision,true);
+});

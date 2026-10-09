@@ -3,7 +3,7 @@ import {appError,copyData} from './model.js';
 import {node, button, textField, selectField} from './dom.js';
 const fields=['display_label','fraction_digits'];
 const keys=(value,allowed)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(key=>allowed.includes(key));
-const base=(column,field)=>field==='display_label'?column.display_label??'':column.format?.fraction_digits??0;
+const base=(column,field)=>field==='display_label'?column.display_label??'':column.format?.preserve_precision?null:column.format?.fraction_digits??0;
 const validValue=(field,value)=>field==='fraction_digits'?Number.isInteger(value)&&value>=0&&value<=20:typeof value==='string'&&new TextEncoder().encode(value).length<=256&&!/[\x00-\x08\x0b-\x1f\x7f]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(value);
 
 // Capabilities describe native display consumers, never grant access. Unknown or
@@ -84,7 +84,10 @@ export function formattingPreview(view,output,draft){
   const original=entry.column,row=draft.fields.find(item=>item.column===column.id);
   if(column.name!==original.name||column.type!==original.type)throw appError(INVALID_REQUEST);
   for(const field of entry.fields){const value=Object.hasOwn(row,field)?row[field]:base(original,field);
-   if(field==='display_label')column.display_label=value;else column.format={...column.format,fraction_digits:value};
+   if(field==='display_label')column.display_label=value;else {
+    column.format={...column.format,fraction_digits:value??0};
+    if(value===null)column.format.preserve_precision=true;else delete column.format.preserve_precision;
+   }
   }
  }
  return result;
@@ -98,7 +101,7 @@ export function renderFormattingFields(parent,session,change){
  section.append(node('p',[role.replaceAll('_',' '),column.type,column.format?.currency,column.format?.unit].filter(Boolean).join(' · '),'metadata'));
  for(const field of fields){
   const label=(field==='display_label'?'Table header':'Fraction digits')+' · '+name(column),present=Object.hasOwn(row,field),reviewed=base(column,field),edit=fn=>{session.edit(d=>fn(d.fields[index]));change();},control=textField(label,present?row[field]:reviewed,value=>edit(d=>{d[field]=field==='fraction_digits'?(value.trim()===''?null:Number(value)):value;}),field==='fraction_digits'?{type:'number',min:0,max:20}:{maxLength:256});
-  section.append(control,node('p',present?`Override · Reviewed: ${reviewed===''?'(empty)':reviewed}`:'Inherited from reviewed field','metadata'),button('Reset '+label,()=>{control.children[0].focus?.({preventScroll:true});edit(d=>{delete d[field];});},!present));
+  section.append(control,node('p',present?`Override · Reviewed: ${reviewed===null?'Unrounded retained value':reviewed===''?'(empty)':reviewed}`:reviewed===null?'Unrounded retained value · Enter fraction digits to round explicitly':'Inherited from reviewed field','metadata'),button('Reset '+label,()=>{control.children[0].focus?.({preventScroll:true});edit(d=>{delete d[field];});},!present));
  }
  parent.append(section);
 }

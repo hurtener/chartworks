@@ -86,7 +86,7 @@ export function exact(cell, column, missing = 'Missing', timezone = 'UTC') {
 	if (column?.type === 'temporal' && f.date_pattern) value = formatDate(raw,f.date_pattern,f.locale,column?.display_timezone || timezone);
   if (f.percent === 'fraction') { const shifted = percentShift(raw); value = shifted === null ? raw + ' (fraction)' : shifted + '%'; }
   if (f.percent === 'whole') value += '%';
-	if (!f.percent && ['integer','decimal','number'].includes(column?.type)) value = formatDecimal(value,f.fraction_digits,f.locale);
+	if (!f.percent && !f.preserve_precision && ['integer','decimal','number'].includes(column?.type)) value = formatDecimal(value,f.fraction_digits,f.locale);
 	return [value,text(f.currency_symbol)||text(f.currency),text(f.unit)].filter(Boolean).join(' ');
 }
 function formatDecimal(raw,digits,locale) {
@@ -137,7 +137,7 @@ function scale(values) {
 }
 function categoryKey(cell) { return JSON.stringify([cell?.null ?? true,text(cell?.value ?? cell?.exact)]); }
 
-function appendRawPrecision(parent,cell,column,w){const raw=cellValue(cell,w.null),digits=column?.format?.fraction_digits;if(cell?.null||!['integer','decimal','number'].includes(column?.type)||!integer(digits,0,20)||column.format?.percent)return;const numeric=/^[+-]?\d+(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(raw);if(!numeric||numeric[2]===undefined&&(numeric[1]?.length||0)<=digits)return;const disclosure=element('details',undefined,'cell-precision');disclosure.append(element('summary',w===words.es?'Precisión':'Precision'),element('p',`${w===words.es?'Valor guardado sin redondear':'Unrounded retained value'}: ${raw}`,'metadata raw-retained-value'));parent.append(disclosure);}
+function appendRawPrecision(parent,cell,column,w){const raw=cellValue(cell,w.null),digits=column?.format?.fraction_digits;if(cell?.null||column?.format?.preserve_precision||!['integer','decimal','number'].includes(column?.type)||!integer(digits,0,20)||column.format?.percent)return;const numeric=/^[+-]?\d+(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(raw);if(!numeric||numeric[2]===undefined&&(numeric[1]?.length||0)<=digits)return;const disclosure=element('details',undefined,'cell-precision');disclosure.append(element('summary',w===words.es?'Precisión':'Precision'),element('p',`${w===words.es?'Valor guardado sin redondear':'Unrounded retained value'}: ${raw}`,'metadata raw-retained-value'));parent.append(disclosure);}
 
 function renderTable(parent, columns, rows, w, caption, totals = [], rowIndices = [], timezone = 'UTC') {
   if (columns.length > 256 || rows.length > 1000) throw fail('limit_exceeded');

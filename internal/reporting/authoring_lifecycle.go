@@ -71,15 +71,18 @@ func authoringDocumentReference(in AuthoringReadRequest) (DocumentReference, err
 	return ref, nil
 }
 
-// authoringDocumentSnapshot preserves full lifecycle pointers under exact write
-// authority without allowing write to stand in for read or private preview.
+// authoringDocumentSnapshot preserves lifecycle pointers for an exact writer or
+// publisher. Both still need independent read and private-preview authority.
 func (s *Authoring) authoringDocumentSnapshot(ctx context.Context, e identity.Envelope, in AuthoringReadRequest) (DocumentSnapshot, error) {
 	ref, err := authoringDocumentReference(in)
 	if err != nil {
 		return DocumentSnapshot{}, err
 	}
-	for _, a := range []Access{Write, Read} {
-		if err := RequireDocument(e, "report", in.Report, a); err != nil {
+	if err := RequireDocument(e, "report", in.Report, Read); err != nil {
+		return DocumentSnapshot{}, err
+	}
+	if err := RequireDocument(e, "report", in.Report, Write); err != nil {
+		if publishErr := RequireDocument(e, "report", in.Report, Publish); publishErr != nil {
 			return DocumentSnapshot{}, err
 		}
 	}
@@ -315,6 +318,9 @@ func (s *Authoring) RebindPublished(ctx context.Context, e identity.Envelope, in
 		return DocumentState{}, ErrInvalid
 	}
 	if err := requireAuthoringEnvelope(e); err != nil {
+		return DocumentState{}, err
+	}
+	if err := RequireDocument(e, "report", in.Report, Write); err != nil {
 		return DocumentState{}, err
 	}
 	selected := map[string]AuthoringPublishedWidget{}

@@ -29,8 +29,8 @@ func authoringEntry[I, O any](suffix, action, effect, summary string, call func(
 func authoringEntries(service *reporting.Authoring) []runtimeEndpoint {
 	out := []runtimeEndpoint{
 		authoringEntry("capabilities", "reporting.read", "retained_metadata_read", "Read current capability-derived Builder and Consumer hints for an exact report target", service.Capabilities),
-		authoringEntry("drafts", "reporting.write", "retained_metadata_read", "List bounded currently authorized private report draft metadata", service.Drafts),
-		authoringEntry("read", "reporting.write", "retained_metadata_read", "Reopen an exact report revision with independent read and preview authority", service.Read),
+		authoringEntry("drafts", "reporting.read", "retained_metadata_read", "List bounded currently authorized private report draft metadata", service.Drafts),
+		authoringEntry("read", "reporting.read", "retained_metadata_read", "Reopen an exact report revision with independent read and preview authority", service.Read),
 		authoringEntry("create", "reporting.write", "report_document_draft_cas_commit", "Create a private report draft under tenant and exact report write authority", service.Create),
 		authoringEntry("save", "reporting.write", "report_document_draft_cas_commit", "Save an immutable private report amendment under exact version CAS", service.Save),
 		authoringEntry("widget", "reporting.write", "report_document_draft_cas_commit", "Patch one stable widget through a server-enforced presentation-only allowlist", service.PatchWidget),
@@ -81,7 +81,7 @@ func AuthoringMCPBindings(service *reporting.Authoring, app ...mcpserver.AppReso
 	if err = add(bindApp(mcpserver.Bind(registry, "reporting_authoring_capabilities_v1", "reporting_authoring_capabilities_v1", "reporting", "Read current signed target capability hints and open the optional report application. Hints are not grants; operations recheck all dependencies.", service.Capabilities, mapper))); err != nil {
 		return nil, err
 	}
-	if err = add(mcpserver.Bind(registry, "reporting_authoring_drafts_v1", "reporting_authoring_drafts_v1", "reporting", "List private report draft metadata selected by current signed write reach and stored dependencies before pagination. Never returns widget payloads.", service.Drafts, mapper)); err != nil {
+	if err = add(mcpserver.Bind(registry, "reporting_authoring_drafts_v1", "reporting_authoring_drafts_v1", "reporting", "List private report draft metadata selected by current signed read plus write or publish reach and stored dependencies before pagination. Never returns widget payloads.", service.Drafts, mapper)); err != nil {
 		return nil, err
 	}
 	if err = add(bindApp(mcpserver.Bind(registry, "reporting_authoring_read_v1", "reporting_authoring_read_v1", "reporting", "Read an exact report revision for manual editing. Draft payloads require separate read and private-preview authority; creator labels grant nothing.", service.Read, mapper))); err != nil {

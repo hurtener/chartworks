@@ -185,3 +185,9 @@ not a rewrite of saved definitions or portable export geometry.
 exact provider authority and a 512 KiB self-contained App ceiling. The small
 read viewer remains bounded at 256 KiB. The [active product pass](team-ready-reporting.md)
 tracks twelve-chart/two-page runtime and browser qualification separately.
+
+AC02/AC07/AC08 additionally consume D-110 independent report review and the
+Pengui parent sharing method. `TestReportAppManualPublicationLifecycle` includes
+an independent publisher with no edit/execute scopes; HTTP/MCP registry tests
+and `publication-controls.test.mjs` cover native admission and read-only controls.
+The flexible-authoring plan owns full signed-in sharing and visual qualification.

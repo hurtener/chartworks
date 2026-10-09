@@ -68,10 +68,15 @@ Use the mounted tool schemas for exact request fields and current availability.
    output never reruns a query. Host authority refresh may be required for the new
    exact run before retained read; do not rerun preview to fix a denied read.
 
-## Create a chart from a reviewed dataset
+## Create a chart from an authorized table or reviewed dataset
 
-1. Read `reporting_authoring_dataset_v1` for immutable reviewed field metadata.
-   Stage supported dimensions, measure, chart mapping and filters locally.
+1. Discover an authorized table/upload or reviewed topic dataset and read
+   `reporting_authoring_dataset_v1` for exact pinned schema and semantic metadata.
+   Use explicit typed `fields` for multiple physical/reviewed dimensions and
+   measures, row count or unaggregated tables within the advertised bounds.
+   Offer only type-compatible operations; preserve reviewed metric meaning.
+   Stage chart mapping, typed filters and explicit date grain/calendar/timezone
+   locally. Never infer an analysis, unit or business meaning from a column name.
 2. Request an explicitly authorized Prepare through
    `reporting_authoring_prepare_chart_v1`, with the allocated new-block target
    and unique operation ID. The finite compiler and native validator perform one
@@ -198,3 +203,18 @@ option Search and preview retain their separate native costs and controls.
 Do not claim production host allocation, no-chat launch, source/provider, browser
 or deployment qualification from an offline fixture or this guide. Consult the
 current contract and actual mounted capabilities; unsupported work remains explicit.
+
+## Independent review and sharing
+
+Opening the manual worklist or report requires exact read plus write or publish
+permission, with all native dependency/private-preview checks. A publish-only
+reviewer can inspect, publish or return a reviewed revision without edit/execute
+rights. Saving, rebinding and review submission still require write. Publication
+never executes the report or makes earlier private previews public.
+
+For people/Team access, use the admitted Pengui parent sharing dialog only when
+it advertises `report-access-v1`. Pass the exact saved report/revision. The parent
+owns recipient search, independent view/edit/publish/manage choices and complete
+dependency preflight. Do not construct grants or request bearer material through
+Chartworks. Missing data access is an explicit prerequisite; sharing must not
+silently expand it. Reopen current access after an uncertain mutation.

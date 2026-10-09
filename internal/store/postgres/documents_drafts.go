@@ -14,7 +14,7 @@ import (
 var _ reporting.DocumentDraftRepository = (*DB)(nil)
 
 // ListDocumentDrafts is a separate private authoring catalog. The signed
-// tenant, exact report-write selection and complete stored dependencies are
+// tenant, exact report read plus write/publication selection and complete stored dependencies are
 // applied in SQL before metadata projection or pagination. Pending review stays
 // recoverable after the native transition clears the draft pointer. Published-only
 // ListDocuments and its consumer semantics remain unchanged.
@@ -26,12 +26,7 @@ func (d *DB) ListDocumentDrafts(ctx context.Context, e identity.Envelope, after 
 	if !e.Valid() {
 		return out, access.ErrUnauthenticated
 	}
-	for _, reach := range e.Reach() {
-		if reach.ID == "*" {
-			return out, access.ErrForbidden
-		}
-	}
-	selection, err := access.Constrain(e, "reporting.write", "report", "write")
+	ids, err := reporting.AuthoringReportIDs(e)
 	if err != nil {
 		return out, err
 	}
@@ -54,7 +49,7 @@ func (d *DB) ListDocumentDrafts(ctx context.Context, e identity.Envelope, after 
  AND ($3::boolean OR h.document_id=ANY($4::text[]))
  AND NOT EXISTS(SELECT 1 FROM chartworks.document_publications p WHERE (p.tenant_id,p.kind,p.document_id,p.revision)=(r.tenant_id,r.kind,r.document_id,r.revision))
  AND `+documentReferenceEligibility+` AND `+documentPrivateBlockEligibility("$7", "$8")+`
- ORDER BY h.document_id LIMIT $5`, e.Tenant(), after, selection.All(), selection.IDs(), limit+1, grants, e.User(), e.Has("reporting.preview"))
+ ORDER BY h.document_id LIMIT $5`, e.Tenant(), after, false, ids, limit+1, grants, e.User(), e.Has("reporting.preview"))
 		if err != nil {
 			return err
 		}

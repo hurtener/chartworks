@@ -18,8 +18,8 @@
     },
     {
       "path": "web/report-app/app.js",
-      "bytes": 103653,
-      "sha256": "bca706784cbd4796c0d42a07669c4cc9421b6032d419fad9418e8f2aea60937f",
+      "bytes": 104449,
+      "sha256": "a73f88d83df1dac3888c3f0cadc75d79660685291b07163b8a9908581c2136d6",
       "imports": [
         "web/report-app/allocation.js",
         "web/report-app/bridge.js",
@@ -43,18 +43,18 @@
         "web/report-app/theme.js",
         "web/report-viewer/presentation.js"
       ],
-      "bytesInOutput": 78678
+      "bytesInOutput": 79429
     },
     {
       "path": "web/report-app/bridge.js",
-      "bytes": 11249,
-      "sha256": "4c59730b37832dddb8b1acff570c91b21033be2b3bd116d7f3bcd1ffb77207b3",
+      "bytes": 12290,
+      "sha256": "c2771b8af6e069a08a3e2114c09492c3cd6e31ddeae2b5324360059d4af61744",
       "imports": [
         "web/report-app/error-codes.js",
         "web/report-app/model.js",
         "web/report-viewer/presentation.js"
       ],
-      "bytesInOutput": 7884
+      "bytesInOutput": 8601
     },
     {
       "path": "web/report-app/catalog.js",
@@ -169,14 +169,14 @@
     },
     {
       "path": "web/report-app/formatting.js",
-      "bytes": 8902,
-      "sha256": "6c38977cb4711998b12a66ec49c8f803a280023b47eb60700f635e038dcd37eb",
+      "bytes": 9190,
+      "sha256": "b32298265281ae0b671e0c3927eb1e2b0b132bafed1c8d17ebed4f993973e085",
       "imports": [
         "web/report-app/dom.js",
         "web/report-app/error-codes.js",
         "web/report-app/model.js"
       ],
-      "bytesInOutput": 5771
+      "bytesInOutput": 6002
     },
     {
       "path": "web/report-app/grid.js",
@@ -213,15 +213,15 @@
     },
     {
       "path": "web/report-app/model.js",
-      "bytes": 14076,
-      "sha256": "c38f268c866a454a66604410018475218a719ad9d649e5ea0299cbae4057558f",
+      "bytes": 14207,
+      "sha256": "3cc4af1e860d68db465830a8efb96c4fab6cacf33f7b404215eacb95a26a72f4",
       "imports": [
         "web/report-app/error-codes.js",
         "web/report-app/page-settings.js",
         "web/report-app/pages.js",
         "web/report-viewer/presentation.js"
       ],
-      "bytesInOutput": 8922
+      "bytesInOutput": 9033
     },
     {
       "path": "web/report-app/page-settings.js",
@@ -246,13 +246,13 @@
     },
     {
       "path": "web/report-app/publication-controls.js",
-      "bytes": 12952,
-      "sha256": "d3822ed4079b384e7e28db1a41d0d3d67bb7e66dc1c89be735101d4cb456aa9d",
+      "bytes": 13118,
+      "sha256": "918ec8de1b4e35f7629b29c21c5caccdf040189dd7cc6d96f6c79051e09ee5a9",
       "imports": [
         "web/report-app/dom.js",
         "web/report-app/publication.js"
       ],
-      "bytesInOutput": 10464
+      "bytesInOutput": 10628
     },
     {
       "path": "web/report-app/publication.js",
@@ -324,10 +324,10 @@
     },
     {
       "path": "web/report-viewer/presentation.js",
-      "bytes": 48937,
-      "sha256": "625bdede81b0b5dc026f58fe5b8be46df2f68f16438c4e5c0724a1c5c429405d",
+      "bytes": 48998,
+      "sha256": "d2777aac727df30c521eabbadf2c7b04fd8a64ff26beeb5c0a4ebbfc4870d8ca",
       "imports": [],
-      "bytesInOutput": 33827
+      "bytesInOutput": 33881
     }
   ],
   "configuration": [
@@ -350,8 +350,8 @@
   "styles": [
     {
       "path": "web/report-viewer/styles.css",
-      "bytes": 5593,
-      "sha256": "b7eabcaf8e2d6f9b6ab1e573a8dba4820b6229150e29531589f839f0862c4413"
+      "bytes": 5722,
+      "sha256": "10ab896b5e6b29b91ae0e62f16072c1e6c5515ecb91a3e9b0432031717d5691b"
     },
     {
       "path": "web/report-app/styles.css",
@@ -361,7 +361,7 @@
   ],
   "output": {
     "path": "web/report-app/generated/report-app.js",
-    "bytes": 272408,
-    "sha256": "a9c092d53e44e5eef01c24841f7447746cb3dbc7f3c38a468a02a025b4321f13"
+    "bytes": 274436,
+    "sha256": "bd5c34aed6f41cd8edb8b06703243a62ffe19886ba5bc2bc9593057a8338dfbd"
   }
 }

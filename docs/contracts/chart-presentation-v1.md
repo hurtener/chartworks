@@ -12,7 +12,10 @@ is reset. When present it has version `1` and a nonempty, bounded `columns` arra
 ordered by the canonical mapping columns. Each entry identifies an existing
 `column` and contains `display_label`, `fraction_digits`, or both. No other
 properties are accepted. Explicit zero and empty labels remain distinct from
-omission. Canonical-equivalent values normalize to inheritance.
+omission. Canonical-equivalent values normalize to inheritance. When canonical numeric
+`format.preserve_precision` is true, an explicit `fraction_digits: 0` is a real
+override: effective columns disable precision preservation. Reset restores the
+unrounded canonical value. The flag itself is not an editable overlay field.
 
 The native builder computes using the unchanged canonical `Mapping.columns`.
 Only after calculations finish does it project the overlay into detached

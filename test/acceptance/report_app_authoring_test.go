@@ -102,7 +102,7 @@ func TestReportAppAuthoring(t *testing.T) {
 		if err != nil || len(public.Items) != 0 {
 			t.Fatal("published catalog exposed drafts", public, err)
 		}
-		one := []string{"reporting.write", "cw.report.write:c-private"}
+		one := []string{"reporting.read", "reporting.write", "cw.report.read:c-private", "cw.report.write:c-private"}
 		page, err := service.Drafts(ctx, actor("tenant", "author", one), reporting.DraftListRequest{Limit: 1})
 		if err != nil || len(page.Items) != 1 || page.Items[0].ID != "c-private" || page.Next != "" {
 			t.Fatal("target selection after pagination", page, err)

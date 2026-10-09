@@ -2,6 +2,7 @@ package reporting
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
@@ -64,6 +65,7 @@ type AuthoringCapabilities struct {
 	CanSave    bool   `json:"can_save"`
 	CanPreview bool   `json:"can_preview"`
 	CanExecute bool   `json:"can_execute"`
+	CanPublish bool   `json:"can_publish"`
 }
 
 type AuthoringCapabilitiesRequest struct {
@@ -89,6 +91,9 @@ func (s *Authoring) Capabilities(ctx context.Context, e identity.Envelope, in Au
 	}
 	_, err := access.Constrain(e, "reporting.write", "report", "write")
 	out.Builder = err == nil
+	_, publishErr := access.Constrain(e, "reporting.publish", "report", "publish")
+	out.CanPublish = publishErr == nil
+	out.Builder = out.Builder || out.CanPublish
 	for _, kind := range []string{"block", "report", "dashboard", "run"} {
 		if _, err := access.Constrain(e, "reporting.read", kind, "read"); err == nil {
 			out.Consumer = true
@@ -98,10 +103,42 @@ func (s *Authoring) Capabilities(ctx context.Context, e identity.Envelope, in Au
 		out.CanExecute = RequireDocument(e, "report", in.Report, Execute) == nil
 		out.CanSave = RequireDocument(e, "report", in.Report, Write) == nil
 		out.CanCreate = out.CanSave && access.Require(e, "reporting.write", access.Tenant(e, "write")) == nil
-		out.CanOpen = out.CanSave && RequireDocument(e, "report", in.Report, Read) == nil && RequireDocument(e, "report", in.Report, Preview) == nil
-		out.CanPreview = out.CanOpen && out.CanExecute
+		out.CanPublish = RequireDocument(e, "report", in.Report, Publish) == nil
+		out.CanOpen = (out.CanSave || out.CanPublish) && RequireDocument(e, "report", in.Report, Read) == nil && RequireDocument(e, "report", in.Report, Preview) == nil
+		out.CanPreview = out.CanSave && out.CanOpen && out.CanExecute
 	}
 	return out, nil
+}
+
+// AuthoringReportIDs intersects exact read reach with independent write or
+// publication reach for the private worklist. It constructs no new authority;
+// stores apply these IDs and complete dependency/custody eligibility before
+// reading metadata or paginating.
+func AuthoringReportIDs(e identity.Envelope) ([]string, error) {
+	if err := requireAuthoringEnvelope(e); err != nil {
+		return nil, err
+	}
+	read, err := access.Constrain(e, "reporting.read", "report", "read")
+	if err != nil {
+		return nil, err
+	}
+	ids := []string{}
+	for _, permission := range []string{"write", "publish"} {
+		selected, err := access.Constrain(e, "reporting."+permission, "report", permission)
+		if err != nil {
+			continue
+		}
+		for _, id := range selected.IDs() {
+			if slices.Contains(read.IDs(), id) {
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return nil, access.ErrForbidden
+	}
+	slices.Sort(ids)
+	return slices.Compact(ids), nil
 }
 
 // DraftSummary exposes only bounded metadata and revision/CAS coordinates.
@@ -127,7 +164,7 @@ type DraftListRequest struct {
 }
 
 // DocumentDraftRepository is separate from the published catalog. Storage must
-// apply tenant, write selection and dependency reach before metadata projection.
+// apply tenant, read plus write/publish selection and dependency reach before metadata projection.
 type DocumentDraftRepository interface {
 	ListDocumentDrafts(context.Context, identity.Envelope, string, int) (DraftList, error)
 }
@@ -139,7 +176,7 @@ func (s *Authoring) Drafts(ctx context.Context, e identity.Envelope, in DraftLis
 	if err := requireAuthoringEnvelope(e); err != nil {
 		return DraftList{}, err
 	}
-	if _, err := access.Constrain(e, "reporting.write", "report", "write"); err != nil {
+	if _, err := AuthoringReportIDs(e); err != nil {
 		return DraftList{}, err
 	}
 	repo, ok := s.documents.repo.(DocumentDraftRepository)

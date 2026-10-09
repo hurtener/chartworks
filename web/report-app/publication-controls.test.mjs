@@ -68,3 +68,26 @@ test('publication guidance follows native gates and returns through the reader t
 
 
 test('twelve-chart controls disclose exact revisions, batch only after confirmation, and explicitly select all links',async()=>{const {root,f,app}=await setup({fixture:multiChartFixture});await app.inspectPublication();app.render();assert.equal(buttons(root,'Publish 12 ready charts')[0].disabled,true);assert.equal(root.querySelectorAll('article').filter(el=>el.textContent.includes('Included in ready charts')).length,12);assert.match(root.textContent,/every listed output/);tickBox(root,'I confirm publishing all 12 ready chart revisions and every listed output.');assert.equal(buttons(root,'Publish 12 ready charts')[0].disabled,false);await app.publishChartBatch();app.render();assert.equal(app.publication.records('report-a').length,12);assert.equal(app.session.revision,1);assert(app.session.definition.report_pages.flatMap(p=>p.widgets).every(w=>w.block.policy==='private_preview'));buttons(root,'Select all 12 components')[0].emit('click');assert.equal(app.publication.selection.size,12);assert.equal(app.publication.confirmed('rebind_published'),false);tickBox(root,'I confirm rebinding only the selected widgets to their exact published chart revisions.');await app.publishAction('rebind_published');assert.equal(app.session.revision,2);assert(app.session.definition.report_pages.flatMap(p=>p.widgets).every(w=>w.block.policy==='published'));assert(!f.calls.some(c=>c.name==='reporting_run'));app.close();});
+
+
+test('independent publisher can inspect and publish with no editing or execution tools',async()=>{
+ const allowed=new Set(['capabilities','read','drafts','lifecycle','report_transition'].map(authoringTool));
+ const fixture=()=>{const f=publicationFixture();f.definitions.get(1).report_pages[0].widgets=[];f.setState({draft_revision:0,review_revision:1});return f;};
+ const {app,root,f}=await setup({fixture,supports:name=>allowed.has(name),wrap:invoke=>async(name,args)=>{
+   const result=await invoke(name,args);
+   if(name===authoringTool('capabilities'))Object.assign(result,{can_save:false,can_preview:false,can_execute:false,can_publish:true});
+   if(name===authoringTool('lifecycle'))result.can_review=false;
+   return result;
+ }});
+ assert.equal(app.session.capabilities.builder,true);assert.equal(app.canEdit(),false);assert(buttons(root,'Review').length);
+ assert.throws(()=>app.session.edit(d=>d.metadata[0].title='Unauthorized edit'),/forbidden/);
+ app.session.dirty=true;await assert.rejects(app.session.save(),/forbidden/);app.session.dirty=false;
+ await app.inspectPublication();app.render();
+ assert.equal(buttons(root,'Publish reviewed report')[0].disabled,true);
+ assert(!buttons(root,'Submit report for review').length);assert(!buttons(root,'Rebind selected widgets').length);
+ tickBox(root,'I confirm publishing this exact reviewed report revision.');
+ await app.publishAction('publish');app.render();
+ assert.equal(f.state().published_revision,1);assert.equal(app.session.stage,'published');assert.equal(app.canEdit(),false);
+ assert(!f.calls.some(c=>/save|rebind|preview|execute|block_publish|reporting_run$/.test(c.name)));
+ assert.equal(f.calls.filter(c=>c.name===authoringTool('report_transition')).length,1);app.close();
+});

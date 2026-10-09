@@ -253,6 +253,38 @@ func TestReportAppManualPublicationLifecycle(t *testing.T) {
 			t.Fatal("review became public catalog content", public, err)
 		}
 	})
+	publisherScopes := slices.DeleteFunc(slices.Clone(scopes), func(s string) bool {
+		return s == "reporting.write" || s == "reporting.execute" || s == "sources.query" || strings.Contains(s, ".write:") || strings.Contains(s, ".execute:") || strings.HasPrefix(s, "cw.source.query:") || strings.HasPrefix(s, "cw.block.publish:") || strings.HasPrefix(s, "cw.block.preview:")
+	})
+	publisher := actor("independent-reviewer", publisherScopes)
+	t.Run("independent-publisher", func(t *testing.T) {
+		list, err := service.Drafts(ctx, publisher, reporting.DraftListRequest{Limit: 10})
+		if err != nil || len(list.Items) != 1 || list.Items[0].Stage != "review" {
+			t.Fatal("publisher cannot enumerate review", list, err)
+		}
+		view, err := service.Read(ctx, publisher, reporting.AuthoringReadRequest{Report: reportID})
+		if err != nil || view.Revision != state.ReviewRevision {
+			t.Fatal("publisher cannot open review", err)
+		}
+		hints, err := service.InspectLifecycle(ctx, publisher, reporting.AuthoringLifecycleRequest{Report: reportID, Stage: "review"})
+		if err != nil || !hints.CanPublish || !hints.CanReject || hints.CanReview {
+			t.Fatal("independent publisher lifecycle", hints, err)
+		}
+		if _, err := service.Save(ctx, publisher, reporting.AuthoringSaveRequest{Report: reportID, Revision: view.Revision, ExpectedVersion: state.Version, Definition: view.Definition}); err == nil {
+			t.Fatal("publisher saved without write")
+		}
+		if _, err := service.RebindPublished(ctx, publisher, reporting.AuthoringRebindPublishedRequest{Report: reportID, Revision: view.Revision, ExpectedVersion: state.Version, Digest: view.Digest, Widgets: []reporting.AuthoringPublishedWidget{{Widget: "chart", Block: blockID, Revision: chart.Revision, Digest: blockSnapshot.Revision.Digest}}}); err == nil {
+			t.Fatal("publisher rebound without write")
+		}
+		if _, err := service.Preview(ctx, publisher, reporting.AuthoringPreviewRequest{Report: reportID, Revision: view.Revision}); err == nil {
+			t.Fatal("publisher executed private preview")
+		}
+		denied := actor("independent-reviewer", slices.DeleteFunc(slices.Clone(publisherScopes), func(s string) bool { return s == "cw.execution_context.use:"+f.base.Context }))
+		list, err = service.Drafts(ctx, denied, reporting.DraftListRequest{Limit: 10})
+		if err != nil || len(list.Items) != 0 {
+			t.Fatal("publisher metadata bypassed context", list, err)
+		}
+	})
 	transition.ExpectedVersion, transition.Revision, transition.Operation = state.Version, state.ReviewRevision, "reject"
 	if _, err := service.TransitionReport(ctx, without("cw.report.publish:"+reportID), transition); err == nil {
 		t.Fatal("writer rejected without native publish authority")
@@ -269,7 +301,7 @@ func TestReportAppManualPublicationLifecycle(t *testing.T) {
 	if _, err := service.TransitionReport(ctx, without("cw.execution_context.use:"+f.base.Context), transition); err == nil {
 		t.Fatal("report publication ignored revoked dependency")
 	}
-	state, err = service.TransitionReport(ctx, author, transition)
+	state, err = service.TransitionReport(ctx, publisher, transition)
 	if err != nil || state.PublishedRevision != current.Revision || state.ReviewRevision != 0 {
 		t.Fatal(state, err)
 	}

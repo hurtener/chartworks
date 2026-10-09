@@ -10,3 +10,6 @@
 .chart-axis-label{display:none}.chart-axis{display:flex;justify-content:space-between;gap:12px;font-size:.78rem;line-height:1.35;padding:0 8px;margin:4px 0 8px}.chart-axis span{min-width:0;max-width:45%;overflow-wrap:anywhere}.chart-axis span:last-child{text-align:right}.chart-axis span:not(:first-child):not(:last-child){text-align:center}
 
 .cell-precision{margin:2px 0}.cell-precision>summary{font-size:.72rem;font-weight:400;min-height:22px;padding:1px 0;color:var(--muted)}.cell-precision .raw-retained-value{white-space:normal;overflow-wrap:anywhere;margin:3px 0}
+
+/* Keep arbitrary multi-field results readable inside their keyboard-scrollable table. */
+.scroll th,.scroll td{min-width:8rem}

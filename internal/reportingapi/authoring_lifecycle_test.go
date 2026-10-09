@@ -147,7 +147,7 @@ func TestAuthoringLifecycleHTTPMCPRegistrationParity(t *testing.T) {
 	if err != nil || len(mcp.Manifest()) != 4 {
 		t.Fatal("lifecycle binding inventory", err)
 	}
-	actions := []string{"reporting.read", "reporting.publish", "reporting.write", "reporting.write"}
+	actions := []string{"reporting.read", "reporting.publish", "reporting.write", "reporting.read"}
 	effects := []string{"retained_metadata_read", "block_publication_cas_commit", "report_document_draft_cas_commit", "report_document_transition_cas_commit"}
 	for i, entry := range authoringLifecycleEntries(nil) {
 		d := entry.definition

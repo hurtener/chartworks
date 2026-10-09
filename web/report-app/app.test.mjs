@@ -519,7 +519,7 @@ test('return to editing resumes an existing private draft or review without repl
 });
 
 test('read-only consumers cannot enter published report editing',async()=>{
- const root=installDOM(),f=fixture(),app=new ReportApp(root,f.adapter);await app.start();app.selected={target:{kind:'report',id:'report-a',revision:2},title:'Operations'};app.capabilities={...caps('report-a'),builder:false,can_save:false};const count=f.calls.length;app.render();
+ const root=installDOM(),f=fixture(),app=new ReportApp(root,f.adapter);await app.start();app.selected={target:{kind:'report',id:'report-a',revision:2},title:'Operations'};app.capabilities={...caps('report-a'),builder:false,can_open:false,can_save:false,can_publish:false};const count=f.calls.length;app.render();
  assert(!root.querySelectorAll('button').some(b=>b.textContent==='Edit report'));await assert.rejects(app.editPublished(),/forbidden/);assert.equal(f.calls.length,count);assert.equal(app.mode,'consumer');app.close();
 });
 

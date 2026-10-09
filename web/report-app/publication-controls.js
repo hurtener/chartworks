@@ -25,12 +25,12 @@ export function renderPublicationControls(parent,app){
       section.append(checkbox('I confirm retrying this identical inspected request with its original version and revision.',p.retryConfirmed(op),unavailable,value=>{p.confirmRetry(op,value);app.render();}),button('Retry identical inspected request',()=>void app.perform(()=>app.retryPublicationOperation(op)),unavailable||!p.retryConfirmed(op)));
     }
   }
-  if(!p.current(s)){section.append(node('p','Check this saved revision, then publish charts, link them, submit for review and publish the report.','metadata'));parent.append(section);return;}
+  if(!p.current(s)){section.append(node('p',s.capabilities.can_save?'Check this saved revision, then publish charts, link them, submit for review and publish the report.':'Inspect this saved revision to see its review status and available publication actions.','metadata'));parent.append(section);return;}
   const view=p.view,r=view.report,locked=unavailable||p.blocked(s.state.id);
   const step=!r.private?'Published':view.blocks.some(item=>!item.published_at)?'1 · Publish charts':hasPrivatePins(view)?'2 · Link published charts':view.stage==='review'?'4 · Publish report':'3 · Submit for review';
   section.append(node('h2',step),node('p',`${stageLabel(view.stage)} · revision ${r.revision}`,'metadata'));
   const coordinates=node('details');coordinates.append(node('summary','Inspected report coordinates'),node('p',`Report ${r.state.id} · revision ${r.revision} · version ${r.state.version} · digest ${r.digest}`,'metadata'));section.append(coordinates);
-  if(view.stage==='review'||r.state.review_revision>0)section.append(node('p',`Revision ${r.state.review_revision} is pending review. Editing and saving creates a new draft and preserves that independent review revision.`,'notice'));
+  if(s.capabilities.can_save&&(view.stage==='review'||r.state.review_revision>0))section.append(node('p',`Revision ${r.state.review_revision} is pending review. Editing and saving creates a new draft and preserves that independent review revision.`,'notice'));
   if(r.state.draft_revision>0&&r.state.draft_revision!==r.revision)section.append(button('Open current draft',()=>app.navigate(()=>app.openDraft(r.state.id,'draft')),app.busy));
   if(view.rejected===true||p.rejected(r.state.id,r.revision))section.append(node('p','This revision was returned for amendment. Edit and save a new revision before resubmitting it for review.','notice'));
   if(r.state.review_revision>0&&r.state.review_revision!==r.revision)section.append(button('Open pending review',()=>app.navigate(()=>app.openDraft(r.state.id,'review')),app.busy));
@@ -52,7 +52,7 @@ export function renderPublicationControls(parent,app){
     section.append(card);
   }
   const options=publishedWidgets(view);
-  if(options.length&&r.private&&r.state.draft_revision===r.revision&&p.available('rebind_published')){
+  if(options.length&&s.capabilities.can_save&&r.private&&r.state.draft_revision===r.revision&&p.available('rebind_published')){
     const group=node('section');group.append(node('h3','Use published charts in this report'),node('p','Link selected widgets to these published charts in a new private draft. Their outputs, filters, parameters and layout stay intact.','metadata'));
     if(options.length>1)group.append(button(p.selection.size===options.length?'Clear selection':`Select all ${options.length} components`,()=>{const value=p.selection.size!==options.length;for(const option of options)p.select(option.widget,value);app.render();},locked));
     for(const option of options)group.append(checkbox(`${option.page} / ${option.title} · ${option.widget} · ${option.block} revision ${option.revision}`,p.selection.has(option.widget),locked,value=>{p.select(option.widget,value);app.render();}));

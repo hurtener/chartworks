@@ -74,16 +74,16 @@ func TestAuthoringLifecycleHTTPMCPNativeAuthorityAndSafeFaults(t *testing.T) {
 		status        int
 		code, outcome string
 	}{
-		{"inspect-needs-report-write", 0, reporting.AuthoringLifecycleRequest{Report: "report", Revision: 1}, []string{"reporting.read", "cw.report.read:report"}, 403, "forbidden", "unknown"},
+		{"inspect-needs-report-write-or-publish", 0, reporting.AuthoringLifecycleRequest{Report: "report", Revision: 1}, []string{"reporting.read", "cw.report.read:report"}, 403, "forbidden", "unknown"},
 		{"publish-entry-needs-publish", 1, requests[1], []string{"reporting.read", "cw.block.read:chart"}, 403, "forbidden", "not_started"},
 		{"publish-needs-independent-read", 1, requests[1], []string{"reporting.publish", "cw.block.publish:chart"}, 403, "forbidden", "unknown"},
 		{"rebind-needs-independent-read", 2, requests[2], []string{"reporting.write", "cw.report.write:report"}, 403, "forbidden", "unknown"},
-		{"review-needs-exact-write", 3, requests[3], []string{"reporting.write", "cw.report.write:other"}, 404, "not_found", "unknown"},
-		{"publish-needs-native-publish", 3, reporting.AuthoringReportTransitionRequest{Report: "report", Revision: 2, ExpectedVersion: 4, Operation: "publish"}, []string{"reporting.write", "cw.report.write:report"}, 403, "forbidden", "unknown"},
-		{"reject-needs-native-publish", 3, reporting.AuthoringReportTransitionRequest{Report: "report", Revision: 2, ExpectedVersion: 4, Operation: "reject", Note: "Explicit note"}, []string{"reporting.write", "cw.report.write:report"}, 403, "forbidden", "unknown"},
-		{"publish-only-cannot-bypass-editor-entry", 3, reporting.AuthoringReportTransitionRequest{Report: "report", Revision: 2, ExpectedVersion: 4, Operation: "publish"}, []string{"reporting.publish", "cw.report.publish:report"}, 403, "forbidden", "not_started"},
-		{"reject-requires-note", 3, reporting.AuthoringReportTransitionRequest{Report: "report", Revision: 2, ExpectedVersion: 4, Operation: "reject"}, []string{"reporting.write", "reporting.publish", "cw.report.publish:report"}, 400, "invalid_request", "unknown"},
-		{"hidden-publish-operation-rejected", 3, reporting.AuthoringReportTransitionRequest{Report: "report", Revision: 2, ExpectedVersion: 4, Operation: "Publish"}, []string{"reporting.write"}, 400, "invalid_request", "not_started"},
+		{"review-needs-exact-write", 3, requests[3], []string{"reporting.read", "reporting.write", "cw.report.write:other"}, 404, "not_found", "unknown"},
+		{"publish-needs-native-publish", 3, reporting.AuthoringReportTransitionRequest{Report: "report", Revision: 2, ExpectedVersion: 4, Operation: "publish"}, []string{"reporting.read", "reporting.write", "cw.report.write:report"}, 403, "forbidden", "unknown"},
+		{"reject-needs-native-publish", 3, reporting.AuthoringReportTransitionRequest{Report: "report", Revision: 2, ExpectedVersion: 4, Operation: "reject", Note: "Explicit note"}, []string{"reporting.read", "reporting.write", "cw.report.write:report"}, 403, "forbidden", "unknown"},
+		{"publish-needs-read-dispatch", 3, reporting.AuthoringReportTransitionRequest{Report: "report", Revision: 2, ExpectedVersion: 4, Operation: "publish"}, []string{"reporting.publish", "cw.report.publish:report"}, 403, "forbidden", "not_started"},
+		{"reject-requires-note", 3, reporting.AuthoringReportTransitionRequest{Report: "report", Revision: 2, ExpectedVersion: 4, Operation: "reject"}, []string{"reporting.read", "reporting.write", "reporting.publish", "cw.report.publish:report"}, 400, "invalid_request", "unknown"},
+		{"hidden-publish-operation-rejected", 3, reporting.AuthoringReportTransitionRequest{Report: "report", Revision: 2, ExpectedVersion: 4, Operation: "Publish"}, []string{"reporting.read", "reporting.write"}, 400, "invalid_request", "not_started"},
 		{"wildcard-reach-rejected", 0, requests[0], []string{"reporting.read", "cw.block.read:*"}, 403, "forbidden", "unknown"},
 	}
 	for i, entry := range authoringLifecycleEntries(nil) {

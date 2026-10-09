@@ -142,8 +142,9 @@ calendar grouping follow the [typed compiler contract](docs/contracts/typed-fiel
 No client business schema or analytical question is assumed.
 [D-107](docs/decisions/2026-10-09-source-dataset-blocks.md) adds an exact registered
 source/dataset origin without a mandatory semantic topic, using the same native
-block lifecycle and current signed data authority. Topic-independent
-tables/uploads and self-service audience management remain implementation work in
+block lifecycle and current signed data authority. Table discovery and typed
+authoring are implemented; uploaded-data and signed-in audience qualification
+remain tracked in
 the [active flexible authoring plan](docs/plans/flexible-report-authoring.md).
 
 [D-097](docs/decisions/2026-10-03-visual-chart-authoring.md) requires direct grid editing, real chart/field authoring, governed dataset-first creation and independent private pages beyond the initial approved-output checkpoint. Copies, validation, private previews and publication keep distinct native authority and lifecycle gates. No automatic source work on edit or deployed-host claim is introduced.
@@ -203,3 +204,12 @@ identity table, domain endpoint or migration is introduced.
 exact provider authority and a 512 KiB self-contained App ceiling. The small
 read viewer remains bounded at 256 KiB. The [active product pass](docs/plans/team-ready-reporting.md)
 tracks twelve-chart/two-page runtime and browser qualification separately.
+
+## Independent manual review
+
+[D-110](docs/decisions/2026-10-09-independent-report-review.md) permits exact
+read plus publish authority to inspect and publish a reviewed report without
+write. Saving/rebinding still require write and execution remains independent.
+Pengui owns people/Team access management and complete dependency preflight;
+Chartworks accepts only its existing signed native scopes. Both App transports
+open the same Pengui sharing dialog using an exact report/revision selector.

@@ -426,3 +426,31 @@ func TestPresentationRebindNeverRetargetsAnOverride(t *testing.T) {
 		t.Fatal("overlay silently retargeted after semantic rebind")
 	}
 }
+
+func TestPresentationUnroundedDefaultAndExplicitZero(t *testing.T) {
+	d, m := presentationTable(t)
+	d.Columns[1].Format.FractionDigits, m.Columns[1].Format.FractionDigits = 0, 0
+	d.Columns[1].Format.PreservePrecision, m.Columns[1].Format.PreservePrecision = true, true
+	before := presentationWire(t, m)
+	presentationBuild(t, d, m)
+	changed, err := charts.ApplyPresentationPatch(t.Context(), m, presentationPatch(presentationDigits("actual", 0)), charts.Defaults())
+	if err != nil || changed.Presentation == nil {
+		t.Fatal("explicit zero lost", err)
+	}
+	out := presentationBuild(t, d, changed)
+	if out.Columns[1].Format.PreservePrecision || out.Columns[1].Format.FractionDigits != 0 || !changed.Columns[1].Format.PreservePrecision {
+		t.Fatal("rounding did not override default without mutating it")
+	}
+	reset, err := charts.ApplyPresentationPatch(t.Context(), changed, presentationPatch(charts.ColumnPresentationEdit{Column: "actual", Reset: []charts.PresentationField{charts.PresentationFractionDigits}}), charts.Defaults())
+	if err != nil || !bytes.Equal(before, presentationWire(t, reset)) {
+		t.Fatal("reset lost unrounded default", err)
+	}
+	for _, mutate := range []func(*charts.Column){func(c *charts.Column) { c.Type = "text" }, func(c *charts.Column) { c.Format.FractionDigits = 2 }, func(c *charts.Column) { c.Format.Percent = "fraction" }} {
+		bad := m
+		bad.Columns = slices.Clone(m.Columns)
+		mutate(&bad.Columns[1])
+		if _, err := charts.ProjectPresentationColumns(t.Context(), bad, charts.Defaults()); err == nil {
+			t.Fatal("conflicting precision accepted")
+		}
+	}
+}

@@ -852,3 +852,12 @@ shared report binding checks. The native core precedes its Builder/option UI.
 [D-109](decisions/2026-10-09-physical-option-search.md) extends governed options to
 exact typed physical columns and source-only origins, preserving explicit reads,
 original custody, source fences and actual Pengui dependency authority.
+
+[D-110](decisions/2026-10-09-independent-report-review.md) separates manual report
+inspection/publication from editing. Exact read plus write/publish selection,
+private custody and complete dependencies are enforced before native projection;
+Pengui alone manages people/Team access through the admitted parent dialog.
+
+[D-111](decisions/2026-10-09-preserved-numeric-precision.md) preserves exact numeric
+display by default for new typed field selections while retaining old serialized
+formats and explicit fraction-digit overrides.

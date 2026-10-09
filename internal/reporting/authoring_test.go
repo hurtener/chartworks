@@ -3,6 +3,7 @@ package reporting
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -23,9 +24,9 @@ func authoringEnvelope(t *testing.T, scopes ...string) identity.Envelope {
 func TestAuthoringCapabilitiesRequireExactSignedReach(t *testing.T) {
 	s := &Authoring{}
 	for _, tc := range []struct {
-		name                                                    string
-		scopes                                                  []string
-		builder, consumer, create, open, save, preview, execute bool
+		name                                                             string
+		scopes                                                           []string
+		builder, consumer, create, open, save, preview, execute, publish bool
 	}{
 		{name: "actions alone", scopes: []string{"reporting.read", "reporting.write", "reporting.preview", "reporting.execute"}},
 		{name: "descriptive role", scopes: []string{"reporting.read", "admin", "builder"}},
@@ -33,11 +34,12 @@ func TestAuthoringCapabilitiesRequireExactSignedReach(t *testing.T) {
 		{name: "unrelated target", scopes: []string{"reporting.read", "reporting.write", "cw.report.write:other"}, builder: true},
 		{name: "exact writer", scopes: []string{"reporting.read", "reporting.write", "cw.report.write:report"}, builder: true, save: true},
 		{name: "writer with parent", scopes: []string{"reporting.read", "reporting.write", "cw.report.write:report", "cw.tenant.write:tenant"}, builder: true, create: true, save: true},
+		{name: "independent publisher", scopes: []string{"reporting.read", "reporting.preview", "reporting.publish", "cw.report.read:report", "cw.report.preview:report", "cw.report.publish:report"}, builder: true, consumer: true, open: true, publish: true},
 		{name: "full exact target", scopes: []string{"reporting.read", "reporting.write", "reporting.preview", "reporting.execute", "cw.report.read:report", "cw.report.write:report", "cw.report.preview:report", "cw.report.execute:report", "cw.tenant.write:tenant"}, builder: true, consumer: true, create: true, open: true, save: true, preview: true, execute: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out, err := s.Capabilities(t.Context(), authoringEnvelope(t, tc.scopes...), AuthoringCapabilitiesRequest{Report: "report"})
-			if err != nil || out.Version != AuthoringVersion || out.Builder != tc.builder || out.Consumer != tc.consumer || out.CanCreate != tc.create || out.CanOpen != tc.open || out.CanSave != tc.save || out.CanPreview != tc.preview || out.CanExecute != tc.execute {
+			if err != nil || out.Version != AuthoringVersion || out.Builder != tc.builder || out.Consumer != tc.consumer || out.CanCreate != tc.create || out.CanOpen != tc.open || out.CanSave != tc.save || out.CanPreview != tc.preview || out.CanExecute != tc.execute || out.CanPublish != tc.publish {
 				t.Fatal(out, err)
 			}
 		})
@@ -125,5 +127,27 @@ func TestAuthoringManualLaneRejectsModelIntentBeforeIO(t *testing.T) {
 	}
 	if _, err := s.Execute(t.Context(), broad, AuthoringExecuteRequest{Run: "run"}); !errors.Is(err, access.ErrForbidden) {
 		t.Fatal(err)
+	}
+}
+
+func TestAuthoringReportIDsIndependentPermissions(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		scopes []string
+		want   []string
+	}{
+		{"publisher", []string{"reporting.read", "reporting.publish", "cw.report.read:a", "cw.report.publish:a"}, []string{"a"}},
+		{"union intersect read", []string{"reporting.read", "reporting.write", "reporting.publish", "cw.report.read:a", "cw.report.read:b", "cw.report.write:a", "cw.report.publish:a", "cw.report.publish:b", "cw.report.write:other"}, []string{"a", "b"}},
+		{"actions alone", []string{"reporting.read", "reporting.write", "reporting.publish"}, nil},
+		{"cross target", []string{"reporting.read", "reporting.publish", "cw.report.read:a", "cw.report.publish:b"}, nil},
+		{"missing action", []string{"reporting.read", "cw.report.read:a", "cw.report.publish:a"}, nil},
+		{"wildcard", []string{"reporting.read", "reporting.publish", "cw.report.read:*", "cw.report.publish:a"}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ids, err := AuthoringReportIDs(authoringEnvelope(t, tc.scopes...))
+			if !slices.Equal(ids, tc.want) || (err == nil) != (tc.want != nil) {
+				t.Fatal(ids, err)
+			}
+		})
 	}
 }

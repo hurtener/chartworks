@@ -308,7 +308,7 @@ func compileAuthoringFields(in AuthoringDatasetIntent, p topics.Published, datas
 		if in.Topic.Topic != "" {
 			provenance.Topic, provenance.TopicVersion, provenance.SemanticID = in.Topic.Topic, in.Topic.Version, d.Field
 		}
-		out.Columns = append(out.Columns, charts.Column{ID: alias, Name: alias, DisplayLabel: label, Role: role, Grain: d.Grain, Provenance: provenance})
+		out.Columns = append(out.Columns, charts.Column{ID: alias, Name: alias, DisplayLabel: label, Role: role, Grain: d.Grain, Format: charts.Format{PreservePrecision: slices.Contains([]string{"integer", "decimal", "number"}, authoringColumnKind(c))}, Provenance: provenance})
 	}
 	seen = map[string]bool{}
 	for i, m := range f.Measures {
@@ -375,7 +375,7 @@ func compileAuthoringFields(in AuthoringDatasetIntent, p topics.Published, datas
 		if m.Kind != "count" && in.Topic.Topic != "" {
 			provenance.Topic, provenance.TopicVersion, provenance.SemanticID = in.Topic.Topic, in.Topic.Version, semanticID
 		}
-		out.Columns = append(out.Columns, charts.Column{ID: alias, Name: alias, DisplayLabel: label, Role: "measure", Aggregation: aggregation, Format: charts.Format{Unit: unit}, Provenance: provenance})
+		out.Columns = append(out.Columns, charts.Column{ID: alias, Name: alias, DisplayLabel: label, Role: "measure", Aggregation: aggregation, Format: charts.Format{Unit: unit, PreservePrecision: aggregation != "count" && aggregation != "distinct_count"}, Provenance: provenance})
 	}
 	out.SQL = "SELECT " + strings.Join(projection, ", ") + " FROM " + pgx.Identifier{relation.Schema, relation.Name}.Sanitize()
 	predicates, parameters, err := compileAuthoringFilters(in, p, binding, resolve)

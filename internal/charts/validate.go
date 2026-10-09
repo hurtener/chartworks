@@ -93,6 +93,9 @@ func validateColumn(c Column) error {
 	if c.Format.DatePattern != "" && c.Type != "temporal" {
 		return ErrInvalid
 	}
+	if c.Format.PreservePrecision && (!numeric(c.Type) || c.Format.FractionDigits != 0 || c.Format.Percent != "") {
+		return ErrInvalid
+	}
 	if !numeric(c.Type) && (c.Role == "measure" || c.Role == "kpi" || c.Aggregation != "" || c.Format.Currency != "" || c.Format.Percent != "" || c.Format.FractionDigits != 0) ||
 		c.Role == "time" && c.Type != "temporal" || c.Grain != "" && c.Type != "temporal" {
 		return ErrInvalid

@@ -214,3 +214,19 @@ test('both transports carry exact manual lifecycle tools only when advertised',a
  const actions=['lifecycle','block_publish','rebind_published','report_transition'],names=actions.map(action=>`reporting_authoring_${action}_v1`);
  for(const kind of ['mcp','embedded']){const h=await toolsConnected(kind,supportedHint(names));for(const name of names){const args={report:'exact-report',revision:7},pending=h.bridge.call(name,args),message=h.sent.at(-1).message;assert.deepEqual(message.params,{name,arguments:args});h.receive(h.envelope({id:message.id,result:{ok:true}}));assert.deepEqual(await pending,{ok:true});}h.bridge.close();const narrowed=await toolsConnected(kind,supportedHint(['reporting_authoring_lifecycle_v1']));for(const name of names.slice(1))await assert.rejects(narrowed.bridge.call(name,{}),/forbidden/);narrowed.bridge.close();}
 });
+
+test('report access opens only a bounded host dialog in both transports',async()=>{
+ for(const embedded of [false,true]){
+  const h=harness(),b=embedded?new EmbeddedReportAdapter({win:h.win,origin:'https://host.example',frame:'f',generation:1,challenge:'a'.repeat(16)}):new MCPReportAdapter(h.win);
+  const p=b.connect();
+  const reply=(id,result)=>embedded?{protocol:'chartworks-report-app-v1',frame:'f',generation:1,id,result}:{jsonrpc:'2.0',id,result};
+  h.receive(reply(1,embedded?{challenge:'a'.repeat(16),tools:true,capabilities:{report_access:{version:'report-access-v1'}}}:{protocolVersion:'2026-01-26',hostCapabilities:{serverTools:{}},hostContext:{'chartworks/report-access':{version:'report-access-v1'}}}));await p;
+  assert.equal(b.supportsReportAccess(),true);
+  for(const input of [{report:'*',revision:1},{report:'report',revision:0},{report:'report',revision:1,permissions:['manage']},{report:'report',revision:1,principal_id:'injected'}])await assert.rejects(b.manageReportAccess(input),/invalid_request/);
+  const opened=b.manageReportAccess({report:'saved-report',revision:3}),request=h.sent.at(-1).message;
+  assert.equal(request.method,'app/manage-report-access');assert.deepEqual(request.params,{report:'saved-report',revision:3});
+  h.receive(reply(request.id,{opened:true}));assert.deepEqual(await opened,{opened:true});
+  b.close();assert.equal(b.supportsReportAccess(),false);
+ }
+ const h=await connected();assert.equal(h.bridge.supportsReportAccess(),false);await assert.rejects(h.bridge.manageReportAccess({report:'report',revision:1}),/forbidden/);h.bridge.close();
+});

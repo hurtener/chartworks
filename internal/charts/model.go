@@ -96,8 +96,11 @@ type Format struct {
 	CurrencySymbol string `json:"currency_symbol,omitempty"`
 	Percent        string `json:"percent"`
 	FractionDigits int    `json:"fraction_digits"`
-	Locale         string `json:"locale,omitempty"`
-	DatePattern    string `json:"date_pattern,omitempty" jsonschema:"enum=,enum=date_short,enum=date_medium,enum=date_long,enum=datetime_short,enum=year_month"`
+	// PreservePrecision leaves the retained numeric text unchanged until an
+	// explicit presentation override selects rounding. Omission keeps old output.
+	PreservePrecision bool   `json:"preserve_precision,omitempty"`
+	Locale            string `json:"locale,omitempty"`
+	DatePattern       string `json:"date_pattern,omitempty" jsonschema:"enum=,enum=date_short,enum=date_medium,enum=date_long,enum=datetime_short,enum=year_month"`
 }
 
 // Provenance pins reviewed meaning separately from a mutable display label.
