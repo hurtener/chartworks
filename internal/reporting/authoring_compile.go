@@ -19,6 +19,7 @@ const AuthoringCompilerVersion = "reviewed-dataset-postgres-v1"
 
 // Logical reviewed selections only; no physical names, SQL, types or rows.
 type AuthoringDatasetIntent struct {
+	Fields     *AuthoringFieldSelection `json:"fields,omitempty"`
 	Filters    []AuthoringDatasetFilter `json:"filters,omitempty"`
 	Topic      TopicPin                 `json:"topic"`
 	Dataset    string                   `json:"dataset"`
@@ -41,6 +42,7 @@ type AuthoringSemanticField struct {
 	Reason      string `json:"reason,omitempty"`
 }
 type AuthoringDatasetView struct {
+	Fields             *AuthoringFieldCatalog      `json:"fields,omitempty"`
 	FilterCompiler     string                      `json:"filter_compiler,omitempty"`
 	FilterCapabilities []AuthoringFilterCapability `json:"filter_capabilities,omitempty"`
 	Compiler           string                      `json:"compiler"`
@@ -188,12 +190,18 @@ func (s *Authoring) Dataset(ctx context.Context, e identity.Envelope, in Authori
 		reason := measureUnsupported(measure, d.ID)
 		out.Measures = append(out.Measures, AuthoringSemanticField{ID: measure.ID, Binding: semanticBinding("m", measure.ID), Name: measure.Name, Role: "measure", Aggregation: string(measure.Aggregation), Unit: measure.Unit, Supported: reason == "", Reason: reason})
 	}
+	out.Fields = authoringFieldCatalog(d, filterBinding, blocks.limits.MaxSchemaColumns)
+	out.Fields.Dimensions = authoringGroupingCapabilities(p, d, out.Fields.Columns)
+	out.Fields.Supported, out.Fields.Reason = out.Supported, out.Reason
+	if out.Fields.Supported && !slices.ContainsFunc(out.Fields.Columns, func(field AuthoringColumnCapability) bool { return field.Supported }) {
+		out.Fields.Supported, out.Fields.Reason = false, "no_supported_column"
+	}
 	if out.Supported && !slices.ContainsFunc(out.Measures, func(field AuthoringSemanticField) bool { return field.Supported }) {
 		out.Supported, out.Reason = false, "no_supported_measure"
 	}
 	out.FilterCompiler = AuthoringFilteredCompilerVersion
 	_, optionsAvailable := blocks.repo.(AuthoringOptionRepository)
-	out.FilterCapabilities = authoringFilterCapabilities(p, d, filterBinding, out.Reason, optionsAvailable && blocks.CanValidate())
+	out.FilterCapabilities = authoringFilterCapabilities(p, d, filterBinding, out.Fields.Reason, optionsAvailable && blocks.CanValidate())
 	return out, ctx.Err()
 }
 
@@ -215,6 +223,9 @@ func compileAuthoringDataset(in AuthoringDatasetIntent, p topics.Published, data
 	}
 	if reason := datasetUnsupported(p); reason != "" {
 		return out, unsupportedPreparation(reason)
+	}
+	if in.Fields != nil {
+		return compileAuthoringFields(in, p, dataset, binding)
 	}
 	if len(in.Dimensions) > 2 || !identity.Identifier(in.Measure) || !slices.Contains(manualChartKinds(), in.Mapping.Kind) || in.Mapping.Intent != nil {
 		return out, unsupportedPreparation("chart_shape_unsupported")

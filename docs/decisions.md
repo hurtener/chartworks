@@ -832,3 +832,10 @@ See [the accepted decision](decisions/2026-10-09-reporting-capacity.md).
 It supersedes only the D-059–D-061 scope-size ceilings; same exact claim encoding,
 central policy, privacy, audience and expiry checks. Product acceptance remains
 tracked independently in the team-ready reporting plan.
+
+## Schema-driven manual authoring
+
+[D-106](decisions/2026-10-09-schema-driven-authoring.md) extends the manual
+compiler with explicit typed physical/reviewed fields, multiple measures and
+neutral layouts. Loaded-table lifecycle and Pengui audience management remain
+tracked separately in the active flexible authoring pass.

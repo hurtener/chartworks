@@ -3,6 +3,7 @@ import {TARGET_ALLOCATION_UNAVAILABLE} from './allocation.js';
 import {DATASET_CHART_KINDS,datasetFilterCapability} from './dataset.js';
 import {displayFilterRange} from './filters.js';
 import {renderFilterInput} from './filter-controls.js';
+import {renderFieldPicker} from './field-picker.js';
 
 function datasetInput(label,value,callback,{disabled=false,number=false}={}){return textField(label,value,next=>callback(number?Number(next):next),{type:number?'number':'text',maxLength:number?4:256,disabled});}
 const filterKindLabel={select:'One value',multi_select:'Multiple values',date_range:'Date range'};
@@ -53,7 +54,7 @@ function renderDatasetLookupRecovery(parent,session,{busy,inspectFilter}){
  }
 }
 export function renderDatasetEditor(parent,session,{busy=false,allocation=null,canAllocate=false,resume,change,read,prepare,review,create,recover,inspect,cancel,searchFilter,inspectFilter}){
- const section=datasetNode('section',undefined,'dataset-editor');section.append(datasetNode('h2','Create from dataset'),datasetNode('p','Choose reviewed fields, then deliberately prepare their actual data shape.','metadata'));
+ const section=datasetNode('section',undefined,'dataset-editor');section.append(datasetNode('h2','Create from dataset'),datasetNode('p','Choose your data and fields, then prepare the result.','metadata'));
  const locked=busy||session.locked||!!allocation?.pending||!!allocation?.unknown,edit=fn=>{session.edit(fn);change();};
  if(!session.custody){
   section.append(datasetButton('Refresh topics',()=>read(()=>session.loadTopics()),locked));
@@ -64,11 +65,14 @@ export function renderDatasetEditor(parent,session,{busy=false,allocation=null,c
  const view=session.view,draft=session.draft;section.append(datasetNode('p',session.custody?'3 · Review preparation':view?'2 · Define your chart':'1 · Choose reviewed data','eyebrow'));
  if(view){
   section.append(datasetNode('p',`${session.publication?.name||view.topic.topic} · ${session.datasets.find(d=>d.id===view.dataset)?.name||view.dataset} · ${view.topic.version}`,'metadata'));
-  if(!view.supported)section.append(datasetNode('p',`This dataset cannot be prepared here: ${view.reason||'unsupported'}.`,'notice error'));
+  if(!(draft.fields?view.fields?.supported:view.supported))section.append(datasetNode('p',`This dataset cannot be prepared here: ${draft.fields?view.fields?.reason:view.reason||'unsupported'}.`,'notice error'));
   section.append(datasetInput('Chart title',draft.title,value=>edit(d=>{d.title=value;}),{disabled:locked}),datasetSelect('New chart type',view.chart_kinds.filter(k=>DATASET_CHART_KINDS.includes(k)).map(k=>({value:k,label:k.replaceAll('_',' ')})),draft.kind,value=>edit(d=>{d.kind=value;if(value==='kpi')d.dimensions=[];}),locked));
+  if(draft.fields)renderFieldPicker(section,session,{locked,edit,change});
+  else{
   const dimensions=datasetNode('fieldset');dimensions.disabled=locked;dimensions.append(datasetNode('legend',draft.kind==='kpi'?'Dimensions · KPI uses no grouping':'Dimensions · choose up to two'));
   for(const field of view.dimensions){const label=datasetNode('label',undefined,'dataset-field'),input=datasetNode('input');input.type='checkbox';input.checked=draft.dimensions.includes(field.id);input.disabled=locked||!field.supported||!input.checked&&(draft.kind==='kpi'||draft.dimensions.length>=2);input.setAttribute('aria-label',`Dimension: ${field.name}`);input.addEventListener('change',()=>edit(d=>{d.dimensions=input.checked?[...d.dimensions,field.id]:d.dimensions.filter(id=>id!==field.id);}));label.append(input,datasetNode('span',`${field.name}${field.supported?'':` · unavailable: ${field.reason}`}`));dimensions.append(label);}if(draft.kind!=='kpi')section.append(dimensions);
   section.append(datasetSelect('Reviewed measure',[{value:'',label:'Choose one measure'},...view.measures.map(m=>({value:m.id,label:`${m.name} · ${m.aggregation}${m.unit?' · '+m.unit:''}${m.supported?'':' · unavailable: '+m.reason}`,disabled:!m.supported}))],draft.measure,value=>edit(d=>{d.measure=value;}),locked));
+  }
   renderDatasetFilters(section,session,{locked,busy,canAllocate,change,searchFilter,inspectFilter});
   if(draft.kind==='table')section.append(datasetInput('New table page size',draft.pageSize,value=>edit(d=>{d.pageSize=value;}),{disabled:locked,number:true}));
   section.append(datasetNode('p','Aggregation and units come from the reviewed measure. Line and area charts need a temporal first dimension; pie and donut use one dimension.','metadata'));

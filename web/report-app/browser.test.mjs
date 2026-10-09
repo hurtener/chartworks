@@ -10,6 +10,7 @@ import {once} from 'node:events';
 import {cleanupBrowserFixture} from './browser_cleanup.mjs';
 import {publicationFrameFits} from './publication-browser-fixture.mjs';
 import {capturedViews,initializeSyntheticHost,browserMappingSamples,browserDatasetSamples} from './browser_fixture.mjs';
+import {typedFieldCatalog} from './field-selection-fixture.mjs';
 const [htmlPath,screenshotPath,mode="mcp"]=process.argv.slice(2);
 assert(["mcp","embedded"].includes(mode),"explicit transport mode required");
 assert(htmlPath,'provide actual Go-compiled resource HTML');
@@ -590,6 +591,31 @@ try{
  await evaluate('closeApp()');await textHas('This report app is closed.');await evaluate('firstCreatorOnly=false;datasetMode=false;startPageAuthoringFixture();document.getElementById("app").src="/resource"');await textHas('Weekly operations');await ready();await click('Build');await textHas('Private drafts and reviews');await ready();await click('New report');await fill('Report title','Closed allocation');
  const closedAllocationCalls=await evaluate('allocationCalls.length'),closedAllocationNative=await evaluate('calls.length');await evaluate('allocationDelay=400');await click('Create report');await until(()=>evaluate(`allocationCalls.length===${closedAllocationCalls+1}`),'closing allocation did not reach host');await evaluate('closeApp()');await textHas('This report app is closed.');await pause(500);
  await check(`${body}.textContent==='This report app is closed. Reopen it through your authorized host.'&&calls.length===${closedAllocationNative}&&allocationCalls.length===${closedAllocationCalls+1}&&document.getElementById('app').contentWindow.storageTouches===0`,'teardown fences a late allocated target without native capability adoption, automatic retry or browser storage');
+ // Typed metadata is synthetic here; real source/custody is independently
+ // exercised by TestReportAppTypedFieldsNative. This checks the compiled UI.
+ await evaluate(`allocationSupported=true;firstCreatorOnly=false;startDatasetAuthoringFixture();datasetEvidence.dataset.fields=${JSON.stringify(typedFieldCatalog)};document.getElementById('app').src='/resource'`);
+ await textHas('Dataset chart report');await ready();await click('Build');await textHas('Private drafts and reviews');await ready();await click('Dataset chart report');await textHas('Private draft · revision 1');await ready();
+ const typedStart=await evaluate('calls.length');await click('Create from dataset');await textHas('Commerce');await ready();await click('Commerce');await ready();await selectOption('Reviewed dataset',browserDatasetSamples.dataset.dataset);await ready();await selectOption('New chart type','table');
+ await check(`${body}.querySelector('.field-picker')&&!${body}.querySelector('select[aria-label="Reviewed measure"]')&&${body}.querySelector('.field-picker').textContent.includes('specimen_id · text')`,'typed metadata exposes physical column names and types without the legacy single-measure control');
+ const addTyped=async(label,action)=>{await evaluate(`(()=>{const row=Array.from(${body}.querySelectorAll('.field-library-row')).find(r=>r.querySelector('strong')?.textContent===${JSON.stringify(label)}),b=Array.from(row?.querySelectorAll('button')||[]).find(b=>b.textContent===${JSON.stringify(action)}&&!b.disabled);if(!b)throw Error('Missing typed field action');b.click();})()`);};
+ for(const label of ['Specimen','Instrument','Observed on'])await addTyped(label,'Group by');
+ await selectOption('Date grouping: Observed on','month');await addTyped('Reading','Aggregate');await selectOption('Aggregation: Reading','average');await click('Add row count');
+ await check(`${body}.querySelectorAll('.field-selection-row').length===5&&Array.from(${body}.querySelectorAll('button')).some(b=>b.textContent==='Prepare chart'&&!b.disabled)`,'three physical grouping fields and two measures can be staged with an explicit calendar and aggregation');
+ await fill('Find a field','year');await check(`${body}.querySelectorAll('.field-library-row').length===1&&${body}.querySelector('.field-library-row strong').textContent==='Year'`,'field search follows current schema labels and identifiers');await addTyped('Year','Group by');
+ await check(`!${body}.querySelector('select[aria-label="Date grouping: Year"]')`,'a numeric field named Year does not become a calendar dimension');
+ await fill('Find a field','');await click('Remove Year');
+ const checkFieldsFit=async label=>check(`(()=>{const panel=${body}.querySelector('.component-panel'),bounds=panel.getBoundingClientRect();return panel.scrollWidth<=panel.clientWidth+1&&Array.from(panel.querySelectorAll('.dataset-editor input,.dataset-editor select,.dataset-editor button')).every(e=>{const r=e.getBoundingClientRect();return r.left>=bounds.left&&r.right<=bounds.right+1;});})()`,label+' keeps every field control inside the settings panel without horizontal clipping');
+ const captureFields=async(suffix,selector)=>{await evaluate(`(()=>{const panel=${body}.querySelector('.component-panel'),e=panel.querySelector(${JSON.stringify(selector)});panel.scrollTop+=e.getBoundingClientRect().top-panel.getBoundingClientRect().top-16;})()`);if(screenshotPath)await captureProof(screenshotPath.replace(/\.png$/,suffix));};
+ await checkFieldsFit('Desktop typed authoring');
+ await captureFields('.typed-fields.png','.field-picker');
+ await captureFields('.typed-selection.png','.field-selections');
+ await rpc('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});await pause(150);
+ await check(`${doc}.documentElement.scrollWidth<=${doc}.documentElement.clientWidth+1`,'typed field controls fit the mobile viewport');await checkFieldsFit('Mobile typed authoring');
+ await captureFields('.typed-fields-mobile.png','.field-picker');
+ await captureFields('.typed-selection-mobile.png','.field-selections');
+ await selectOption('Result shape','rows');await click('Remove Reading');await click('Remove Row count');
+ await check(`${body}.querySelectorAll('.field-selection-row').length===3&&Array.from(${body}.querySelectorAll('button')).some(b=>b.textContent==='Prepare chart'&&!b.disabled)&&calls.slice(${typedStart}).every(c=>['list_topics','describe_topic','reporting_authoring_dataset_v1'].includes(c.name))`,'switching explicitly to raw rows keeps three columns and stages no aggregate or source work');
+ await evaluate('closeApp()');await textHas('This report app is closed.');
  assert.deepEqual(errors,[],'no browser exceptions');assert(requests.every(path=>['/','/resource','/favicon.ico'].includes(path)),'no remote or injected asset requests');
 }catch(error){runError=error;if(socket&&screenshotPath){try{await captureProof(screenshotPath.replace(/\.png$/,'.failure.png'),{settle:false});}catch{}}let failureState;try{failureState=socket?await evaluate(`({text:${body}?.textContent.slice(0,16000),calls:calls.slice(-12),allocations:allocationCalls.slice(-6)})`):undefined;}catch{}console.error(JSON.stringify({mode,checks,assertions,browserErrors:errors,browserStderr,failureState},null,2));throw error;}finally{
  try{

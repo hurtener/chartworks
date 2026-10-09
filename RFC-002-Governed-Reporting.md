@@ -123,6 +123,14 @@ qualification remains separate from pure functional tests.
 
 ## Canvas-first manual authoring continuation
 
+[D-106](docs/decisions/2026-10-09-schema-driven-authoring.md) adds schema-driven
+field authoring to this continuation. Physical columns and reviewed semantics are
+distinct choices; explicit multi-field selections, typed aggregation, raw rows and
+calendar grouping follow the [typed compiler contract](docs/contracts/typed-field-authoring-v3.md).
+No client business schema or analytical question is assumed. Topic-independent
+tables/uploads and self-service audience management remain implementation work in
+the [active flexible authoring plan](docs/plans/flexible-report-authoring.md).
+
 [D-097](docs/decisions/2026-10-03-visual-chart-authoring.md) requires direct grid editing, real chart/field authoring, governed dataset-first creation and independent private pages beyond the initial approved-output checkpoint. Copies, validation, private previews and publication keep distinct native authority and lifecycle gates. No automatic source work on edit or deployed-host claim is introduced.
 
 ## App dependency discovery continuation

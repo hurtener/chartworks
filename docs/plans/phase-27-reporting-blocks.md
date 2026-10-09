@@ -4,6 +4,11 @@ Status: in_progress. Owner: internal/reporting. Hard dependencies: 15, 20, 21.
 
 ## Authority and design
 
+The active [flexible authoring pass](flexible-report-authoring.md), D-106 and the
+[typed-field contract](../contracts/typed-field-authoring-v3.md) extend manual
+preparation with physical fields and multiple reviewed measures. Existing block
+lifecycle and validation criteria still apply; the pass does not close this phase.
+
 RFC-002 §§2–5, the Pengui authority contract, D-045/D-047 and [COMMON.md](COMMON.md) apply. This is the reusable analytical-definition lifecycle, not just a saved chart. Phase 28 owns recurring execution and retained results.
 
 ## Brief findings incorporated

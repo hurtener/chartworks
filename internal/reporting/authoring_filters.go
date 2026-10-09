@@ -22,6 +22,9 @@ type AuthoringDatasetFilter struct {
 
 // AuthoringCompilerForIntent preserves legacy custody and its exact digest path.
 func AuthoringCompilerForIntent(in AuthoringDatasetIntent) string {
+	if in.Fields != nil {
+		return AuthoringFieldCompilerVersion
+	}
 	if len(in.Filters) == 0 {
 		return AuthoringCompilerVersion
 	}

@@ -244,6 +244,9 @@ func (s *Authoring) PrepareDatasetChart(ctx context.Context, e identity.Envelope
 		}
 		return AuthoringPreparationView{}, err
 	}
+	if len(compiled.Columns) > blocks.limits.MaxSchemaColumns || len(compiled.SQL) > blocks.limits.MaxSQLBytes {
+		return AuthoringPreparationView{Status: "unsupported", Code: "field_capacity_exceeded", Schema: []exec.Field{}, Validation: "not_performed"}, nil
+	}
 	id, err := newID()
 	if err != nil {
 		return AuthoringPreparationView{}, err

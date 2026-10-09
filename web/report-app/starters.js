@@ -6,13 +6,13 @@ import {node,button} from './dom.js';
 const slot=(kind,column,row,width,height)=>({kind,grid:{column,row,width,height}});
 const starters=[
   {id:'blank',title:'Blank report',description:'A clear canvas for your own story.',pages:[]},
-  {id:'executive',title:'Executive review',description:'Key measures first, then trends and the drivers behind them.',pages:[
-    {id:'main',title:'Overview',heading:'Performance overview',guide:'Add up to three key measures, followed by a trend chart.',slots:[slot('kpi',0,1,4,2),slot('kpi',4,1,4,2),slot('kpi',8,1,4,2),slot('chart',0,3,12,4)]},
-    {id:'drivers',title:'Drivers & detail',heading:'Drivers and detail',guide:'Compare two breakdowns, then add the supporting detail table.',slots:[slot('chart',0,1,6,4),slot('chart',6,1,6,4),slot('table',0,5,12,5)]}
+  {id:'executive',title:'Open layout',description:'A full-width canvas with space for summary cards and detail.',pages:[
+    {id:'main',title:'Overview',heading:'Overview',guide:'Use these optional spaces for cards and a full-width chart. Choose your own fields and move or resize any component.',slots:[slot('kpi',0,1,4,2),slot('kpi',4,1,4,2),slot('kpi',8,1,4,2),slot('chart',0,3,12,4)]},
+    {id:'drivers',title:'Detail',heading:'Detail',guide:'Add your chosen charts or a table. These placements are suggestions, and every component is editable.',slots:[slot('chart',0,1,6,4),slot('chart',6,1,6,4),slot('table',0,5,12,5)]}
   ]},
-  {id:'operations',title:'Operational scorecard',description:'Monitor the current position and investigate the detail.',pages:[
-    {id:'main',title:'Scorecard',heading:'Operational performance',guide:'Start with two measures and compare two operational breakdowns.',slots:[slot('kpi',0,1,6,2),slot('kpi',6,1,6,2),slot('chart',0,3,6,4),slot('chart',6,3,6,4)]},
-    {id:'detail',title:'Detail',heading:'Operational detail',guide:'Add a detail table, then a chart to explain its distribution. Choose filters that apply to these components.',slots:[slot('table',0,1,12,5),slot('chart',0,6,12,4)]}
+  {id:'operations',title:'Split layout',description:'Side-by-side spaces and a separate page for detail.',pages:[
+    {id:'main',title:'Overview',heading:'Overview',guide:'Arrange your chosen cards and charts side by side. The layout does not choose data or calculations.',slots:[slot('kpi',0,1,6,2),slot('kpi',6,1,6,2),slot('chart',0,3,6,4),slot('chart',6,3,6,4)]},
+    {id:'detail',title:'Detail',heading:'Detail',guide:'Use a wide table, a chart, or another arrangement that fits your data. Add only filters that apply to your chosen fields.',slots:[slot('table',0,1,12,5),slot('chart',0,6,12,4)]}
   ]}
 ];
 export const reportStarters=()=>copyData(starters);

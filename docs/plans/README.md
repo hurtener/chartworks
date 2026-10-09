@@ -1,9 +1,11 @@
 # Chartworks — actionable implementation plan
 
-The active [team-ready reporting pass](team-ready-reporting.md) extends the manual
-application with bounded capacity, approachable authoring, report quality and
-team use. Its twelve-chart/two-page target remains under implementation and
-qualification; it does not close migration or whole-product release.
+The active [flexible report authoring pass](flexible-report-authoring.md) extends
+schema-driven table/topic selection, typed field/date authoring and Pengui-owned
+audience management. It is under implementation and qualification.
+
+The [team-ready reporting pass](team-ready-reporting.md) locally qualified its
+twelve-chart/two-page target. Neither pass closes migration or whole-product release.
 
 The [manual report product-quality continuation](manual-report-product-quality.md)
 qualifies the existing phases 29/31 application and its real Builder/Consumer journey.

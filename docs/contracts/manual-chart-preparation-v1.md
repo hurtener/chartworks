@@ -185,3 +185,9 @@ or conflicting evidence.
 This is an ordering requirement for a future authorized rollout. The source-only
 implementation and fixture qualification perform no production migration, cleanup,
 deployment, provider call or identity/grant change.
+
+## Typed field continuation
+
+The additive [version-three field compiler](typed-field-authoring-v3.md) is being
+implemented under the flexible authoring plan. Its optional `fields` branch does
+not rewrite legacy v1/v2 requests, mappings or retained preparation identities.

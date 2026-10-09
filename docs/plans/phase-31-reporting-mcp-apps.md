@@ -4,6 +4,11 @@ Status: in_progress. Owner: internal/mcpserver, internal/reporting, web/report-v
 
 ## Authority and design
 
+The active [flexible authoring pass](flexible-report-authoring.md) owns the shared
+schema-driven picker for both transports. D-106 preserves explicit preparation
+and retained custody. Compiled-browser controls and real host acceptance are
+separate evidence; the pass does not close whole-product migration or release.
+
 RFC-002 §8, `docs/reporting/delivery.md`, D-046/D-047/D-054 and [COMMON.md](COMMON.md) apply. Harbor and Pengui support MCP Apps end to end. Build Chartworks' tools/resources/viewer, not a host qualification project. Viewing does not depend on phase 30 scheduling; later scheduled artifacts use the same result contract.
 
 ## Brief findings incorporated
