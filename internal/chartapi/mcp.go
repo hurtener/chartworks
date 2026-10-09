@@ -38,6 +38,10 @@ func MCPBindings(service *chartservice.Service) ([]mcpserver.Binding, error) {
 	if err != nil {
 		return nil, err
 	}
+	b0, err = mcpserver.WithAppCallback(b0)
+	if err != nil {
+		return nil, err
+	}
 	bindings = append(bindings, b0)
 	b1, err := mcpserver.Bind(registry, "selectChart", "select_chart", "charts", "Select a suitable output specification for caller-supplied data. Deterministic by default; explicit rank assistance may incur bounded model cost. Never queries a source or certifies caller data.", service.Select, mapper)
 	if err != nil {

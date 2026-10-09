@@ -179,7 +179,7 @@ func (s *Service) Parameterize(ctx context.Context, e identity.Envelope, id stri
 	if err != nil {
 		return View{}, err
 	}
-	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "parameterize", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, Note: in.Note, Revision: &r, References: refs})
+	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "parameterize", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, Note: in.Note, Revision: &r, References: refs})
 	if err != nil {
 		return View{}, err
 	}

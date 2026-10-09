@@ -25,6 +25,9 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 	if err := expected(snapshot, in.ExpectedVersion); err != nil {
 		return record, result, resolved, nil, err
 	}
+	if err := s.checkAuthoringRuleAbsence(ctx, e, snapshot.Revision); err != nil {
+		return record, result, resolved, nil, err
+	}
 	d := snapshot.Revision.Definition
 	if _, err := templateSelections(d); err != nil {
 		return record, result, resolved, nil, err
@@ -76,7 +79,7 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 		}
 		catalog = observed.Identity
 	}
-	scope, err := validationScope(binding, definitions)
+	scope, err := definitionValidationScope(binding, d, definitions)
 	if err != nil {
 		return record, result, resolved, nil, err
 	}
@@ -97,6 +100,9 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 	if err != nil {
 		return record, result, resolved, nil, err
 	}
+	if err := s.checkAuthoringRuleAbsence(ctx, e, snapshot.Revision); err != nil {
+		return record, result, resolved, nil, err
+	}
 	report, err := s.executor.Execute(ctx, e, plan, exec.Options{Operation: operation, Number: 1, Preview: true, Rows: min(s.limits.PreviewRows, caps.MaxRows), Bytes: min(s.limits.PreviewBytes, caps.MaxBytes)})
 	if err != nil {
 		return record, result, resolved, nil, err
@@ -104,6 +110,9 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 	attempt := report.Attempt
 	if !successful(attempt.Status) || report.Result == nil || attempt.Finished == nil || attempt.RemoteState != "stopped" || attempt.Manifest.Operation != operation || attempt.Manifest.Session != e.Session() || attempt.Manifest.Receipt.Manifest != receipt.Manifest || !attempt.Manifest.Preview {
 		return record, result, resolved, nil, ErrStale
+	}
+	if err := s.checkAuthoringRuleAbsence(ctx, e, snapshot.Revision); err != nil {
+		return record, result, resolved, nil, err
 	}
 	if err := checkResult(ctx, d, *report.Result, s.limits); err != nil {
 		return record, result, resolved, nil, err
@@ -144,7 +153,7 @@ func (s *Service) Validate(ctx context.Context, e identity.Envelope, id string, 
 	if err != nil {
 		return ValidationResult{}, err
 	}
-	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "validate", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, References: refs, Validation: &record, Watch: record.Dependencies, Topics: record.Topics, CheckCurrent: true})
+	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "validate", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, References: refs, Validation: &record, Watch: record.Dependencies, Topics: record.Topics, CheckCurrent: true})
 	if err != nil {
 		return ValidationResult{}, err
 	}
@@ -177,7 +186,7 @@ func (s *Service) Preview(ctx context.Context, e identity.Envelope, id string, i
 	if err != nil {
 		return PreviewResult{}, err
 	}
-	_, err = s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "preview", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, References: refs, Validation: &record, Watch: record.Dependencies, Topics: record.Topics, CheckCurrent: true})
+	_, err = s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Source: snapshot.State.Source, Kind: "preview", ExpectedVersion: in.ExpectedVersion, TargetRevision: snapshot.Revision.Number, TargetDigest: snapshot.Revision.Digest, References: refs, Validation: &record, Watch: record.Dependencies, Topics: record.Topics, CheckCurrent: true})
 	if err != nil {
 		return PreviewResult{}, err
 	}

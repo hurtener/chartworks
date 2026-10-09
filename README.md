@@ -4,19 +4,19 @@
 
 ## Current status
 
-**The merged baseline through phase 29 implements 172 named acceptance criteria.**
-Phases **30 and 31 add sixteen criteria for reporting schedules and the MCP Apps
-read viewer**, bringing the implemented/in-progress inventory to 188 across 29 of
-34 workstreams. The phase registry retains `in_progress` for review submissions;
-actual named tests and exact-source CI, not that status label, establish readiness.
-The [delivery contract](docs/contracts/reporting-delivery-v1.md) and
-[adversarial evidence](docs/reviews/phase-30-31-adversarial.md) describe this change.
+The [current phase ledger](docs/plans/README.md) owns the 34-workstream,
+224-criterion inventory. Phase labels and earlier checkpoints are not evidence
+that the complete release, migration or production integration is qualified.
+Use each capability's exact-source evidence and explicit remaining gates.
 
-**Five workstreams remain planned: 24–25 and 32–34**, including evaluation,
-static rendering/BFF exports, onboarding, migration and the final release gate.
-There are 224 criteria in the complete plan. Catalog pull delivery is implemented;
-no outbound notification service, static-export implementation, live-provider
-qualification or production-cutover claim is implied.
+The optional [manual report app](docs/contracts/report-app-v1.md) now has direct
+grid editing, private chart mapping, independent inline pages and a finite
+PostgreSQL dataset-first creation path. The shared MCP Apps and embedded resources
+have [hosted browser and inspected-pixel evidence](docs/reviews/report-app-v1-evidence.md)
+at `fb936b1aa20e40790d5a6bd713198425e50669f8`. This does not complete typed filter
+authoring, display-format controls, the in-app review/publication lifecycle or
+real Pengui host activation. Current-head SQL/reporting and protected-renderer
+qualification remain separate gates.
 
 | Capability | Implemented boundary |
 |---|---|
@@ -34,13 +34,13 @@ qualification or production-cutover claim is implied.
 | Frozen reporting runs — phase 28 | Bounded selected-output execution, optional grounded narrative, durable results and read receipts, explicit recovery, artifact privacy and retention. |
 | Reports/dashboards — phase 29 | Independent revision/review/publication pointers, exact report pages, typed business filters, shared-block output fan-out, opt-in dynamic query durability, partial outcomes and metadata-only artifact summaries. |
 | Reporting schedules — phase 30 | Four real target types on the shared queue; fresh Pengui authority, immutable due/window/revision pins, CAS lifecycle/history, fenced budgets and independent artifact/catalog delivery. No local issuer or fabricated notification. |
-| MCP Apps — phases 22/31 | Eighteen existing tools plus five reporting tools when installed; a versioned read viewer, fourteen visual kinds, typed filter reruns, exact retained paging, theme/locale and safe structured/text fallback. No browser credentials or separate scheduler. |
+| MCP Apps — phases 22/31 | Shared read viewer and optional manual report app; 87 default mounted tools, or 92 with five optional rendition operations, under the unchanged 96-tool ceiling. Fourteen native mapping kinds; dataset-first creation has a narrower eight-kind compiler. No browser credentials or separate scheduler. |
 
 ## Ownership and security
 
 **Pengui is the sole issuer, authentication and access-policy owner.** Chartworks verifies current Pengui JWTs and enforces their signed scopes. It does not create users, roles, API keys, login/OAuth flows, local token renewal or embed credentials. Warehouse secrets are a separate source concern. See the [authority contract](docs/contracts/pengui-authority.md) and [operator registration guide](docs/contracts/pengui-provider-registration.md).
 
-Harbor/Pengui MCP Apps support is established by the owner. The Chartworks retained-artifact viewer uses that ecosystem; static rendering and exports remain phase 32. Iframe credentials belong in the Pengui/client BFF, not the public Apps resource.
+Harbor/Pengui MCP Apps support is established by the owner. The Chartworks retained-artifact viewer and optional report app use that ecosystem; static rendering and exports remain owned by phase 32 and its separate qualification gates. Iframe credentials belong in the Pengui/client BFF, not the public Apps resource.
 
 **Production inference uses the embedded Bifrost Go SDK and remote providers only.** There is no local learned model, weight download or alternate direct model client. Optional inference is explicit and budgeted. Retained metadata, deterministic output building and other model-free operations remain useful with providers disabled. See the [gateway contract](docs/contracts/model-gateway.md).
 
@@ -69,15 +69,18 @@ Each request requires a fresh Pengui bearer for the MCP intended audience and
 The transport is stateless and returns JSON, with no bearer persistence or separate
 credential channel. HTTP and in-process clients use the same guarded dispatch.
 
-The eleven core tools list/describe topics and datasets; preflight/plan/run/refine
-questions; obtain context/submit SQL; and submit feedback. Source listing, retained
-context lookup and five chart-specification tools bring the installed inventory to
-eighteen. The reporting group adds `reporting_search`, `reporting_describe`, `reporting_run`, `reporting_runs` and `reporting_view`. Paid or persisted calls are annotated accordingly: preflight is **not** a
-pure metadata read. Disabled or unbuilt services are absent, never success stubs.
+The current assembled inventory has 87 default tools, or 92 with all five optional
+rendition operations. It includes source/topic/dataset discovery, query and chart
+operations, reporting delivery and versioned manual authoring. The reporting
+delivery tools include `reporting_search`, `reporting_describe`, `reporting_run`,
+`reporting_runs` and `reporting_view`; the [app contract](docs/contracts/report-app-v1.md)
+describes its additional bounded operations. Paid or persisted calls are annotated
+accordingly: preflight and explicit chart preparation are **not** pure metadata
+reads. Disabled or unbuilt services are absent, never success stubs.
 
 The chart catalog, published topic and registered dataset metadata can also be read
 as three resource bindings through the same services, without source/model calls.
-These three resources remain JSON metadata. The reporting group additionally supplies the versioned credential-free Apps HTML resource and authorized retained-artifact tools.
+These three resources remain JSON metadata. The reporting group additionally supplies the versioned credential-free viewer and report-app HTML resources, authorized retained-artifact tools and `chartworks://report_app/guide/v1` guidance. Guidance and interaction modes never grant authority.
 Phase 21 and the typed Go SDK additionally expose `POST /v1/topics/list`,
 `POST /v1/datasets/list` and `POST /v1/datasets/describe`. Their database queries apply
 all signed dependency/context restrictions before pagination, not after broad reads.
@@ -122,7 +125,7 @@ Each also requires current signed `cw.tenant.read:<tenant>` reach. The SDK recei
 
 Saved mappings pin compatible column metadata and chosen outputs. Building one does not select a different chart or call a model. Schema drift fails; an unambiguous semantic rebind returns a `review_required` proposal rather than editing an approved definition. Optional rank assistance is author-requested, disabled by default and restricted to the already suitable candidates. It cannot invent SQL or bindings. [Configuration](examples/chartworks.charts.json) bounds input size, categories, series, alternatives, concurrency, options and gateway work.
 
-These endpoints transform **caller-supplied data**. They do not certify its provenance or confer access to any source, topic or retained artifact. The output is sealed typed rendering input, **not a rendered image**. Static rendering, artifact privacy/retention and block-revision persistence remain with their later owning phases.
+These endpoints transform **caller-supplied data**. They do not certify its provenance or confer access to any source, topic or retained artifact. The output is sealed typed rendering input, **not a rendered image**. Static rendering, artifact privacy/retention and block-revision persistence remain separate domain responsibilities. The manual app's dataset-first path instead uses [reviewed logical intent and native validation](docs/contracts/manual-chart-preparation-v1.md), never client SQL or a browser-authored result schema.
 
 ## Semantic queries and external agents
 
@@ -136,9 +139,10 @@ Durable operations obtain fresh Pengui authority through the [execution-authorit
 
 The [actionable master plan](docs/plans/README.md) owns sequencing, dependencies and status. [RFC-001](RFC-001-Chartworks.md), [RFC-002](RFC-002-Governed-Reporting.md), [COMMON.md](docs/plans/COMMON.md) and [AGENTS.md](AGENTS.md) define implementation obligations. Historical plans under `docs/archive/` are not current instructions.
 
-Still planned: evaluation and release gates, static rendering/BFF embeds/exports,
-guided onboarding and migration/cutover. Schedule catalog publication does not
-mean an email was sent; retained artifact viewing does not execute a new query.
+The current ledger and capability-specific reviews distinguish implemented
+subsets from remaining evaluation, rendering, host, migration and release gates.
+Schedule catalog publication does not mean an email was sent; retained artifact
+viewing does not execute a new query.
 See the [runtime delivery guide](docs/contracts/reporting-delivery-v1.md) for
 operator setup, target/lifecycle semantics, API/SDK methods and tested boundaries.
 

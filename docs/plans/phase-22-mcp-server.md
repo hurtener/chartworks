@@ -86,3 +86,19 @@ owns the reporting Apps resource/viewer.
 PR #14 was merged at `d6dbd31899449f6e042b4ab069c9c30c01fb844b`. This records that delivered
 baseline, not a new test result. Phase 23 extends cumulative client and large-output
 parity while preserving the existing twenty-two bindings and authority checks.
+
+
+## Service connection discovery — D-104
+
+The existing Pengui-signed service connection bearer with exactly
+`capability:connect` may initialize/ping and list static MCP tool, resource and
+template descriptors for enabled services. It cannot read resources (including
+App HTML) or invoke tools. Interactive App resource/tool requests still require
+`mcp.use`, their exact projected domain scopes and complete native resource reach.
+No service name alone authorizes a request; the verifier, configured MCP audience,
+expiry and exact scope profile remain mandatory. No new issuer, credential,
+identity table, domain endpoint or migration is introduced.
+
+AC01/AC05 include `TestPenguiConnectionDiscoveryCannotInvokeOrRead`: signed static
+discovery, cross-profile/audience/expiry negatives, read/call denial and no domain
+invocations. The package race suite qualifies this added transport boundary.

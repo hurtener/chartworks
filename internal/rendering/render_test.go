@@ -196,3 +196,16 @@ func TestRendererRejectsInvalidConstructionRequestAndArtifact(t *testing.T) {
 		t.Fatal("output budget not enforced", err)
 	}
 }
+
+func TestNewNumericFormatPreservesExactRetainedPrecision(t *testing.T) {
+	column := charts.Column{Type: "decimal", Format: charts.Format{PreservePrecision: true}}
+	for _, raw := range []string{"15.5", "12.2500", "9007199254740993.123456789012345678901", "1.25e-12"} {
+		if got := formatCell(charts.Cell{Value: raw}, column, "UTC"); got != raw {
+			t.Fatalf("exact precision lost: %s -> %s", raw, got)
+		}
+	}
+	column.Format.PreservePrecision = false
+	if got := formatCell(charts.Cell{Value: "15.5"}, column, "UTC"); got != "16" {
+		t.Fatal("legacy zero precision changed", got)
+	}
+}

@@ -1,6 +1,12 @@
 [
   {
     "method": "POST",
+    "path": "/v1/sources/list",
+    "action": "sources.read",
+    "effect": "retained_metadata_read"
+  },
+  {
+    "method": "POST",
     "path": "/v1/datasets/list",
     "action": "sources.read",
     "effect": "retained_metadata_read"

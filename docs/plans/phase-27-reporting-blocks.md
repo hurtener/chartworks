@@ -4,6 +4,32 @@ Status: in_progress. Owner: internal/reporting. Hard dependencies: 15, 20, 21.
 
 ## Authority and design
 
+D-109 extends exact physical option discovery through the same validated read
+and custody core. Migration 090 retains legacy bytes and exclusive origin fences.
+`TestReportAppPhysicalOptionsNative` and `TestReportAppPhysicalOptionScalarTypes`
+qualify actual typed source ordering/search; private/published report choices are
+covered by `TestReportAppColumnFiltersNative` under Phase29/AC06. Original lookup
+cancellation, receipt, retention and dependency tests remain required. Shared
+controls use explicit Search and staged Done/Cancel. See the
+[option contract](../contracts/governed-authoring-options-v1.md).
+
+D-108 extends the shared binder with physical column value/set/range parameters
+and exact registered schema identity. `TestColumnFilter*` and
+`TestAuthoringColumnFiltersCompilerAndIdentity` cover typed values, SQL placement,
+calendar refusal and binding compatibility. `TestReportAppColumnFiltersNative`
+(mapped into Phase29/AC06) covers the actual source-only publication, report
+selection, amendment and compacted-custody lifecycle. Signed-in host work remains in
+[the active flexible pass](flexible-report-authoring.md).
+
+[D-107](../decisions/2026-10-09-source-dataset-blocks.md) adds an exact registered
+source/dataset origin without topic creation. Migration 089 retains native custody;
+the active flexible-authoring pass still owns discovery and host qualification.
+
+The active [flexible authoring pass](flexible-report-authoring.md), D-106 and the
+[typed-field contract](../contracts/typed-field-authoring-v3.md) extend manual
+preparation with physical fields and multiple reviewed measures. Existing block
+lifecycle and validation criteria still apply; the pass does not close this phase.
+
 RFC-002 §§2–5, the Pengui authority contract, D-045/D-047 and [COMMON.md](COMMON.md) apply. This is the reusable analytical-definition lifecycle, not just a saved chart. Phase 28 owns recurring execution and retained results.
 
 ## Brief findings incorporated
@@ -93,3 +119,12 @@ column display intent. Existing JSON digests and drift checks include the comple
 mapping; migration 043 adds forward bounds without rewriting v1/v2 publications.
 Definition transfer remains native and exact. Foreign mapping belongs to Phase 34.
 See [D-079](../decisions/2026-09-22-rich-output-display.md).
+
+## Bounded preparation liability and retention continuation
+
+AC02/AC03/AC08: the [preparation contract](../contracts/manual-chart-preparation-v1.md)
+adds explicitly versioned fresh admission, positive durable execution settlement,
+requesting-actor-only terminal cleanup and compact exact consumed replay receipts.
+Native revision, provenance, validation and publication remain independently
+immutable. Unknown legacy liabilities remain retained and charged. Source-only
+qualification is separate from UI integration, production cleanup and release.

@@ -276,3 +276,15 @@ The supervisor does not enable host controllers, remount filesystems, or fall ba
 to in-process rendering. Pair the new worker with the new supervisor. Run both
 `renderer_integration` kernel tests and the complete Phase32 acceptance suite on
 the intended deployment; ordinary functional/unit passes alone are insufficient.
+
+
+### Larger manual reports
+
+The team-report candidate needs matching Pengui and Chartworks binaries. Deploy
+the Chartworks consumer first. Its default authority budget is 128 scope entries
+and 16,384 total scope bytes; an existing explicit `auth.max_scopes: 32` or
+`auth.max_scope_bytes: 4096` continues to limit reports until deliberately updated.
+Token and claim byte limits are unchanged. No database migration or new secret
+is needed for this capacity change. Static capability scope configuration does
+not become a blanket report grant. See the
+[capacity decision](docs/decisions/2026-10-09-reporting-capacity.md).

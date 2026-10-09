@@ -26,6 +26,11 @@ func MCPBindings(service *sources.Service) ([]mcpserver.Binding, error) {
 		return nil, err
 	}
 	bindings = append(bindings, b0)
+	page, err := mcpserver.Bind(registry, "listSourcePage", "list_source_page", "discovery", "Page through authorized retained source registrations using after and limit (1 to 32). Explicit next cursor. No warehouse call or inference.", service.ListPage, mapper)
+	if err != nil {
+		return nil, err
+	}
+	bindings = append(bindings, page)
 	b1, err := mcpserver.Bind(registry, "listDatasets", "list_datasets", "discovery", "List a bounded page of authorized retained dataset metadata in one exact source execution context. Use source and context IDs, an empty after for the first page, and a limit from 1 to 32. No warehouse call.", service.ListDatasets, mapper)
 	if err != nil {
 		return nil, err

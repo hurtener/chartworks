@@ -126,15 +126,20 @@ func (d *DB) ReadSource(ctx context.Context, s store.Scope, id string) (out sour
 
 // ListSources selects public columns only and applies current signed reach before LIMIT.
 func (d *DB) ListSources(ctx context.Context, s store.Scope, selection access.Selection, limit int) (out []sources.Source, err error) {
+	return d.ListSourcePage(ctx, s, selection, sources.SourceListRequest{Limit: limit})
+}
+
+// ListSourcePage applies signed reach and a byte-ordered cursor before LIMIT.
+func (d *DB) ListSourcePage(ctx context.Context, s store.Scope, selection access.Selection, in sources.SourceListRequest) (out []sources.Source, err error) {
 	if !s.Valid() || selection.Tenant() != s.Tenant() || !selection.All() && len(selection.IDs()) == 0 {
 		return nil, store.ErrScope
 	}
-	if limit < 1 || limit > 100 {
+	if in.Limit < 1 || in.Limit > 100 || in.After != "" && !identity.Identifier(in.After) {
 		return nil, store.ErrInvalid
 	}
 	out = []sources.Source{}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, `SELECT r.source_id,r.name,r.revision,r.context_id,r.binding#>>'{dialect}' FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE NOT s.deleted AND s.tenant_id=$1 AND ($2 OR s.source_id=ANY($3::text[])) ORDER BY s.source_id LIMIT $4`, s.Tenant(), selection.All(), selection.IDs(), limit)
+		rows, e := tx.Query(ctx, `SELECT r.source_id,r.name,r.revision,r.context_id,r.binding#>>'{dialect}' FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE NOT s.deleted AND s.tenant_id=$1 AND ($2 OR s.source_id=ANY($3::text[])) AND s.source_id COLLATE "C" > $4 COLLATE "C" ORDER BY s.source_id COLLATE "C" LIMIT $5`, s.Tenant(), selection.All(), selection.IDs(), in.After, in.Limit)
 		if e != nil {
 			return e
 		}

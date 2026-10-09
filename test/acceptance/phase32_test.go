@@ -27,7 +27,10 @@ import (
 func TestPhase32(t *testing.T) {
 	t.Run("AC01", phase32Authority)
 	t.Run("AC02", phase32BFF)
-	t.Run("AC03", phase32StaticWorker)
+	t.Run("AC03", func(t *testing.T) {
+		phase32StaticWorker(t)
+		t.Run("v3-pages", phase32ReportPages)
+	})
 	t.Run("AC04", phase32Injection)
 	t.Run("AC05", phase32ProcessLimits)
 	t.Run("AC06", phase32ExactFidelity)

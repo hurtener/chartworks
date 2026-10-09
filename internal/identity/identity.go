@@ -63,7 +63,7 @@ type Envelope struct {
 // FromVerified is called only after signature, issuer, audience and time validation.
 // In-process callers must obtain envelopes from auth.Verifier, not build identity DTOs.
 func FromVerified(tenant, user, session string, scopes []string, until time.Time, now func() time.Time) (Envelope, error) {
-	if !Identifier(tenant) || !Identifier(user) || !Identifier(session) || until.IsZero() || len(scopes) > 32 {
+	if !Identifier(tenant) || !Identifier(user) || !Identifier(session) || until.IsZero() || len(scopes) > MaxScopes {
 		return Envelope{}, ErrInvalid
 	}
 	if strings.HasPrefix(strings.ToLower(user), "svc:") && (!strings.HasPrefix(user, "svc:") || len(user) == 4) {
@@ -77,7 +77,7 @@ func FromVerified(tenant, user, session string, scopes []string, until time.Time
 	total := 0
 	for _, s := range scopes {
 		total += len(s)
-		if len(s) == 0 || len(s) > 256 || total > 4096 || seen[s] {
+		if len(s) == 0 || len(s) > MaxScopeBytes || total > MaxTotalScopeBytes || seen[s] {
 			return Envelope{}, ErrInvalid
 		}
 		for _, c := range s {
@@ -115,6 +115,12 @@ func (e Envelope) Session() string { return e.session }
 
 // Service reports attribution only; it grants no privilege.
 func (e Envelope) Service() bool { return strings.HasPrefix(e.user, "svc:") }
+
+// CapabilityConnection identifies Pengui's exact discovery-only service scope.
+// Consumers must still restrict it to transport metadata, never domain access.
+func (e Envelope) CapabilityConnection() bool {
+	return e.Valid() && e.Service() && e.Has("capability:connect") && len(e.scopes) == 1
+}
 
 // Deadline bounds use by exp plus the explicitly configured verification skew.
 func (e Envelope) Deadline() time.Time { return e.until }

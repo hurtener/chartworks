@@ -96,8 +96,11 @@ type Format struct {
 	CurrencySymbol string `json:"currency_symbol,omitempty"`
 	Percent        string `json:"percent"`
 	FractionDigits int    `json:"fraction_digits"`
-	Locale         string `json:"locale,omitempty"`
-	DatePattern    string `json:"date_pattern,omitempty" jsonschema:"enum=,enum=date_short,enum=date_medium,enum=date_long,enum=datetime_short,enum=year_month"`
+	// PreservePrecision leaves the retained numeric text unchanged until an
+	// explicit presentation override selects rounding. Omission keeps old output.
+	PreservePrecision bool   `json:"preserve_precision,omitempty"`
+	Locale            string `json:"locale,omitempty"`
+	DatePattern       string `json:"date_pattern,omitempty" jsonschema:"enum=,enum=date_short,enum=date_medium,enum=date_long,enum=datetime_short,enum=year_month"`
 }
 
 // Provenance pins reviewed meaning separately from a mutable display label.
@@ -231,14 +234,15 @@ func DefaultOptions() Options {
 // Mapping is a portable saved definition. Columns pins every bound column's
 // type and semantic metadata; approved mappings are never rebound in place.
 type Mapping struct {
-	Version  int           `json:"version"`
-	Kind     Kind          `json:"kind"`
-	Columns  []Column      `json:"columns"`
-	Bindings Bindings      `json:"bindings"`
-	Order    []Order       `json:"order"`
-	Options  Options       `json:"options"`
-	KPI      *KPIOptions   `json:"kpi,omitempty"`
-	Table    *TableOptions `json:"table,omitempty"`
+	Version      int                 `json:"version"`
+	Kind         Kind                `json:"kind"`
+	Columns      []Column            `json:"columns"`
+	Bindings     Bindings            `json:"bindings"`
+	Order        []Order             `json:"order"`
+	Options      Options             `json:"options"`
+	KPI          *KPIOptions         `json:"kpi,omitempty"`
+	Table        *TableOptions       `json:"table,omitempty"`
+	Presentation *ColumnPresentation `json:"presentation,omitempty"`
 }
 
 // CatalogEntry describes real slot requirements and data semantics for one kind.

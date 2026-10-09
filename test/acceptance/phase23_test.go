@@ -85,7 +85,7 @@ func phase23Parity(t *testing.T, f *phase23Fixture) {
 			}
 			operation := "phase23-" + surface.name
 			plan := phase23Call[nlqexec.PlanResult](t, surface, "planNLQ", "", nlqexec.PlanRequest{QuestionRequest: question, Operation: operation}, nil)
-			if plan.Status != "planned" || plan.SQL != "SELECT id, amount FROM analytics.sales ORDER BY id" {
+			if plan.Status != "planned" || plan.SQL != phase22MetricSQL {
 				t.Fatal("validated SQL differs by surface", plan.Status)
 			}
 			run := phase23Call[nlqexec.RunResult](t, surface, "runNLQ", "", nlqexec.RunRequest{QueryID: plan.QueryID, Operation: operation, Rows: 10, Bytes: 4096}, nil)
@@ -113,7 +113,7 @@ func phase23Parity(t *testing.T, f *phase23Fixture) {
 			if created.Bundle == nil || created.Bundle.Reference.Context != ref.Context {
 				t.Fatal("missing exact opaque BYO context")
 			}
-			submission := nlqbyo.SubmitRequest{Reference: created.Bundle.Reference, Operation: operation + "-byo", SQL: "SELECT id, amount FROM analytics.sales ORDER BY id", Parameters: []readexec.Parameter{}}
+			submission := nlqbyo.SubmitRequest{Reference: created.Bundle.Reference, Operation: operation + "-byo", SQL: phase22MetricSQL, Parameters: []readexec.Parameter{}}
 			step := phase23Call[nlqbyo.SubmitResult](t, surface, "submitSQL", "", submission, nil)
 			if !step.ValuesAvailable || step.Result == nil || len(step.Result.Rows) != 2 {
 				t.Fatal("missing BYO values")

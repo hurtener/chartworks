@@ -1,0 +1,14 @@
+{
+  "name": "chartworks-report-app-assets",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check",
+    "test:bundle": "node --test bundle.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.21.5"
+  }
+}

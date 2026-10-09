@@ -19,7 +19,7 @@ Pengui owns authentication, issuer/signing, users/service identities, sharing, e
 
 Harbor/Pengui MCP Apps support is established end to end by the owner. No host compatibility research, qualification transcript, framework adoption checkpoint or mandated protocol migration is required. Chartworks builds and tests its own tools/resources/viewer.
 
-Chartworks owns source and semantic metadata, safe data execution, business publication/certification records, reporting definitions, operations, artifacts and functional scheduling. Pengui owns product UI and identity/access policy; Harbor owns agent orchestration/sessions. Services use public interfaces, never each other's private database. Soundings/Stowage can assist authoring but are not prerequisites for frozen refresh.
+Chartworks owns source and semantic metadata, safe data execution, business publication/certification records, reporting definitions, operations, artifacts and functional scheduling. Pengui owns the product host and identity/access policy; Chartworks owns the optional shared report application described by D-096. Harbor owns agent orchestration/sessions. Services use public interfaces, never each other's private database. Soundings/Stowage can assist authoring but are not prerequisites for frozen refresh.
 
 ## 2. Vocabulary and invariants
 
@@ -194,7 +194,7 @@ L2 reviewed engineering/drift proposals remain planned. L3 auto-apply and a new 
 
 ## Phase 03/04 authority implementation
 
-D-059–D-061 implement the existing Pengui provider-scope seam with one JWT verifier/cache and immutable signed envelope. [The operator handoff](docs/contracts/pengui-provider-registration.md) and [actual operation manifest](docs/contracts/chartworks-operations.json) describe the implemented consumer. Scope limits are 32 entries, 256 bytes each, 4096 total; exact HTTP/MCP audiences may be configured separately. Synchronous operational routes and SDK clients are present, but no local issuer, grants database, reporting API or full MCP transport is added by this milestone.
+D-059–D-061 implement the existing Pengui provider-scope seam with one JWT verifier/cache and immutable signed envelope. [The operator handoff](docs/contracts/pengui-provider-registration.md) and [actual operation manifest](docs/contracts/chartworks-operations.json) describe the implemented consumer. The coordinated [D-105](docs/decisions/2026-10-09-reporting-capacity.md) scope limits are 128 entries, 256 bytes each, 16,384 total; exact HTTP/MCP audiences may be configured separately. Synchronous operational routes and SDK clients are present, but no local issuer, grants database, reporting API or full MCP transport is added by this milestone.
 
 ## Phases 05/06 implementation addendum (2026-09-05)
 
@@ -229,3 +229,64 @@ current physical uniqueness remain mandatory. The binder explicitly accounts for
 those constraints without rewriting metric predicates or changing v9 period SQL.
 Schema6 receipts retain value-free coverage evidence; current authenticated replay
 reconstructs the proof. This adds no authority path or generic entailment solver.
+
+## Canvas-first manual authoring continuation
+
+[D-097](docs/decisions/2026-10-03-visual-chart-authoring.md) requires direct grid editing, real chart/field authoring, governed dataset-first creation and independent private pages beyond the initial approved-output checkpoint. Copies, validation, private previews and publication keep distinct native authority and lifecycle gates. No automatic source work on edit or deployed-host claim is introduced.
+
+## Exact-target App dependency metadata
+
+D-098 adds the bounded [dependency discovery contract](docs/contracts/report-dependencies-v1.md): signed `reporting.discover` plus exact target read and private-preview/custody permit identifiers and revision metadata only. Pengui remains the sole policy owner; ordinary content and execution still require every native dependency.
+
+D-099 extends the [native dependency contract](docs/contracts/report-dependencies-v1.md)
+with proposed manual create/save definitions and the existing save baseline.
+Exact report-write discovery and original private-block custody precede metadata
+projection; Pengui owns allocation receipts and every final grant decision.
+No source/model work or report mutation occurs during discovery. Native writes
+retain full dependency, content and CAS checks. Complete cross-service acceptance
+remains outstanding.
+
+D-100 extends the same metadata boundary to whole reviewed publications and
+original preparation custody, including consumed receipts. Pengui resolves the
+returned requirements independently; metadata does not authorize source execution
+or return definitions, names, schemas or values. The embedded topic catalog can
+consume explicit bounded host cursors without dropping dependency-filtered pages.
+
+Manual host validation, preview/execution and fresh retained report-run authority
+use D-101's native [effect dependency projection](docs/contracts/report-dependencies-v1.md).
+Pengui checks independent canonical operation/resource policy; Chartworks retains
+private actor/session and effect fences. This introduces no local authority store
+or model permission and does not establish full MCP/Consumer acceptance.
+
+D-102 extends the native metadata boundary to published execution, block retained
+reads and original-run history. Pengui checks complete original dependencies before
+returning names or summaries; retained artifacts never execute source/model work.
+See [the contract](docs/contracts/report-dependencies-v1.md#published-consumer-and-original-retained-history-d-102).
+No migration or additional MCP tool is introduced.
+
+D-103 extends the manual App integration with native governed-option dependency
+discovery and original lookup recovery; see docs/contracts/report-dependencies-v1.md.
+It reuses existing option services and adds no source effect or migration. Local
+native checks and real cross-service qualification remain distinct; phase release
+status and both-mode acceptance are not changed by this integration increment.
+
+
+## Service connection discovery — D-104
+
+The existing Pengui-signed service connection bearer with exactly
+`capability:connect` may initialize/ping and list static MCP tool, resource and
+template descriptors for enabled services. It cannot read resources (including
+App HTML) or invoke tools. Interactive App resource/tool requests still require
+`mcp.use`, their exact projected domain scopes and complete native resource reach.
+No service name alone authorizes a request; the verifier, configured MCP audience,
+expiry and exact scope profile remain mandatory. No new issuer, credential,
+identity table, domain endpoint or migration is introduced.
+
+## Manual report access boundary
+
+D-110 keeps Pengui-owned report view/edit/publish/manage policy independent.
+Chartworks private worklists and inspection require exact read plus write or
+publish reach, preserving stored data dependencies and private chart custody.
+Report publication needs no edit or source execution authority. The shared App
+can open Pengui's parent sharing dialog but accepts no local grants or identity.
+See [D-110](docs/decisions/2026-10-09-independent-report-review.md).

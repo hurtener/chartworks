@@ -171,3 +171,18 @@ snapshot as input. Positive name membership is not sufficient for an opaque Plan
 Native tree/dependency checks, current source authority, EXPLAIN and analytical
 restrictions remain independent. This refactor does not widen the accepted grammar
 or turn provider assertions into source execution permission.
+
+### Preparation-linked journal retention
+
+The [versioned manual preparation contract](manual-chart-preparation-v1.md)
+adds a narrow retention pin to native attempts linked to preparation custody.
+Upgraded admission does not prune such a row until custody has an exact durable
+terminal witness. Accepted, uncertain or contradictory preparation liability
+therefore cannot lose its needed native evidence merely at the ordinary 24-hour
+journal horizon. Once witnessed, native journal retention is independent again;
+compact consumed replay remains bound to immutable native revision 1.
+
+Migration 087 requires stopping/draining all old writers and restarting only
+upgraded code. The new SQL admission guards do not protect against an old binary's
+generic journal DELETE. Mixed-version writer retention is not supported; see the
+quiesced rollout and rollback restrictions in the preparation contract.

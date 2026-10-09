@@ -9,6 +9,37 @@ import (
 	"github.com/hurtener/chartworks/internal/store"
 )
 
+// SourceListRequest selects a retained source page, without warehouse work.
+type SourceListRequest struct {
+	After string `json:"after"`
+	Limit int    `json:"limit"`
+}
+
+// SourcePage has an explicit cursor so callers need not guess whether more exist.
+type SourcePage struct {
+	Items []Source `json:"items"`
+	Next  string   `json:"next,omitempty"`
+}
+
+func (s *Service) ListPage(ctx context.Context, e identity.Envelope, in SourceListRequest) (SourcePage, error) {
+	if in.Limit < 1 || in.Limit > 32 || in.After != "" && !identity.Identifier(in.After) {
+		return SourcePage{}, store.ErrInvalid
+	}
+	rows, err := s.listSources(ctx, e, SourceListRequest{After: in.After, Limit: in.Limit + 1})
+	if err != nil {
+		return SourcePage{}, err
+	}
+	if rows == nil {
+		rows = []Source{}
+	}
+	out := SourcePage{Items: rows}
+	if len(rows) > in.Limit {
+		out.Items = rows[:in.Limit]
+		out.Next = out.Items[len(out.Items)-1].ID
+	}
+	return out, nil
+}
+
 // DatasetListRequest selects registered metadata in one exact source context.
 // This is not a warehouse probe and does not guarantee current source health.
 type DatasetListRequest struct {
@@ -27,11 +58,12 @@ type DatasetDescribeRequest struct {
 
 // Dataset is secret-free registered metadata; no rows or live estimates are read.
 type Dataset struct {
-	Source   string            `json:"source"`
-	Context  string            `json:"context"`
-	Revision int64             `json:"source_revision"`
-	Dialect  string            `json:"dialect"`
-	Relation readexec.Relation `json:"relation"`
+	SchemaDigest string            `json:"schema_digest"`
+	Source       string            `json:"source"`
+	Context      string            `json:"context"`
+	Revision     int64             `json:"source_revision"`
+	Dialect      string            `json:"dialect"`
+	Relation     readexec.Relation `json:"relation"`
 }
 
 // DatasetQuery is the shared service/store catalog request, not an authority proof.
@@ -88,6 +120,9 @@ func (s *Service) datasetCatalog(ctx context.Context, e identity.Envelope, in Da
 	})
 	if err != nil {
 		return nil, err
+	}
+	for i := range out {
+		out[i].SchemaDigest = readexec.Hash(out[i].Relation)
 	}
 	return out, nil
 }

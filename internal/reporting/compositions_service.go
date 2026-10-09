@@ -124,10 +124,13 @@ func (s *Compositions) Widget(ctx context.Context, e identity.Envelope, id, page
 }
 
 type compositionPageSource struct {
-	id       string
-	title    string
-	snapshot DocumentSnapshot
-	input    PageInput
+	definition    DocumentDefinition
+	reportPage    string
+	containerPage string
+	id            string
+	title         string
+	snapshot      DocumentSnapshot
+	input         PageInput
 }
 
 type compositionBlockSource struct {
@@ -192,9 +195,24 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 		inputs[page.Page] = page
 	}
 	pages := []compositionPageSource{}
-	if kind == "report" {
-		pages = append(pages, compositionPageSource{id: "main", snapshot: root, title: documentTitle(definition), input: inputs["main"]})
+	paged := definition.SchemaVersion == PagedDocumentVersion
+	if paged && task.Dispatch != nil && task.Dispatch.Kind == jobs.ReportingKind {
+		if len(in.Pages) != 1 || in.Pages[0].Page != "main" || len(in.Pages[0].Filters) != 0 || len(in.Pages[0].Overrides) != 0 {
+			return CompositionManifest{}, ErrInvalid
+		}
 		delete(inputs, "main")
+	}
+	if kind == "report" {
+		if task.Dispatch != nil && task.Dispatch.Kind == jobs.ReportingKind {
+			definition, err = scheduledDefinition(definition, task.Dispatch.Reporting)
+			if err != nil {
+				return CompositionManifest{}, err
+			}
+		}
+		for _, canvas := range ReportCanvases(definition) {
+			pages = append(pages, compositionPageSource{id: canvas.ID, reportPage: canvas.ID, snapshot: root, title: canvas.Title, definition: canvas.Definition, input: inputs[canvas.ID]})
+			delete(inputs, canvas.ID)
+		}
 	} else {
 		for _, page := range definition.Pages {
 			if err := RequireDocument(e, "report", page.Report, Execute); err != nil {
@@ -207,8 +225,20 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 			if snapshot.State.Archived || snapshot.PublishedAt == nil {
 				return CompositionManifest{}, ErrStale
 			}
-			pages = append(pages, compositionPageSource{id: page.ID, title: page.Title, snapshot: snapshot, input: inputs[page.ID]})
-			delete(inputs, page.ID)
+			child, err := ProjectStoredDocument(snapshot.Revision.Raw, "report")
+			if err != nil {
+				return CompositionManifest{}, err
+			}
+			paged = paged || child.SchemaVersion == PagedDocumentVersion
+			for _, canvas := range ReportCanvases(child) {
+				coordinate := DashboardCanvasID(page.ID, child, canvas.ID)
+				title := page.Title
+				if child.SchemaVersion == PagedDocumentVersion {
+					title = canvas.Title
+				}
+				pages = append(pages, compositionPageSource{id: coordinate, reportPage: canvas.ID, containerPage: page.ID, title: title, snapshot: snapshot, definition: canvas.Definition, input: inputs[coordinate]})
+				delete(inputs, coordinate)
+			}
 		}
 	}
 	if len(inputs) != 0 || len(pages) > limits.Composition.MaxPages {
@@ -222,20 +252,14 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 		Revision: root.Revision.Number, Digest: root.Revision.Digest, RequestHash: hash, TaskHash: task.Digest(), Private: in.Preview, Policy: policy,
 		Redacted: kind == "dashboard" && DocumentDigest(root.Revision.Raw) != root.Revision.Digest, Created: task.Created, Expires: task.Created.Add(time.Duration(retention)),
 		Limits: limits.Composition, ArtifactLimits: limits.Execution, Pages: []CompositionPage{}, Groups: []CompositionGroup{}}
+	if paged {
+		m.Version = PagedCompositionVersion
+	}
 	memo := map[string]compositionBlockSource{}
 	groups := map[string]int{}
 	widgetCount := 0
 	for _, source := range pages {
-		d, err := ProjectStoredDocument(source.snapshot.Revision.Raw, "report")
-		if err != nil {
-			return CompositionManifest{}, err
-		}
-		if task.Dispatch != nil && task.Dispatch.Kind == jobs.ReportingKind {
-			d, err = scheduledDefinition(d, task.Dispatch.Reporting)
-			if err != nil {
-				return CompositionManifest{}, err
-			}
-		}
+		d := source.definition
 		if d.PartialFailure == "fail_closed" {
 			m.Policy = "fail_closed"
 		}
@@ -243,7 +267,7 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 		if resolution.At.IsZero() {
 			resolution.At = task.Created
 		}
-		if resolution.Timezone != "" && resolution.Timezone != d.Timezone {
+		if resolution.Timezone != "" && resolution.Timezone != d.Timezone && (!paged || resolution.Timezone != definition.Timezone) {
 			return CompositionManifest{}, ErrInvalid
 		}
 		resolution.Timezone = d.Timezone
@@ -256,6 +280,10 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 		}
 		page := CompositionPage{ID: source.id, Report: source.snapshot.State.ID, Revision: source.snapshot.Revision.Number, Digest: source.snapshot.Revision.Digest,
 			Title: source.title, Private: source.snapshot.PublishedAt == nil, Locale: d.Locale, Timezone: d.Timezone, Widgets: []CompositionWidget{}}
+		if paged {
+			page.ReportPage = source.reportPage
+			page.ContainerPage = source.containerPage
+		}
 		for _, widget := range d.Widgets {
 			var variant *QueryVariantReference
 			if IsCapturedQueryVariant(widget) {
@@ -395,6 +423,15 @@ func groupIdentity(g CompositionGroup) string {
 
 func (s *Compositions) resolveBlock(ctx context.Context, e identity.Envelope, m CompositionManifest, d DocumentDefinition, w Widget, filters, overrides []Argument, resolution Resolution, memo map[string]compositionBlockSource) (CompositionGroup, CompositionWidget, error) {
 	cw := CompositionWidget{Definition: clone(w), Parameters: []BoundValue{}}
+	if w.Block.Policy == "private_preview" {
+		if !m.Private || m.Kind != "report" || m.Version != PagedCompositionVersion {
+			return CompositionGroup{}, cw, ErrInvalid
+		}
+		if err := requireAuthoringEnvelope(e); err != nil {
+			return CompositionGroup{}, cw, err
+		}
+	}
+
 	if s.runs == nil || !s.documents.blocks.CanValidate() {
 		return CompositionGroup{}, cw, ErrUnavailable
 	}
@@ -417,9 +454,20 @@ func (s *Compositions) resolveBlock(ctx context.Context, e identity.Envelope, m 
 	if entry.err != nil {
 		return CompositionGroup{}, cw, entry.err
 	}
+	if err := CheckDocumentBlockReference(e, *w.Block, entry.snapshot); err != nil {
+		return CompositionGroup{}, cw, err
+	}
 	policy := w.Block.Policy
 	if policy == "" {
 		policy = "published"
+	}
+	if policy == "private_preview" {
+		if entry.snapshot.Validation == nil {
+			return CompositionGroup{}, cw, ErrStale
+		}
+		if err := freshValidation(entry.snapshot, entry.snapshot.Validation.Evidence.ID, time.Now()); err != nil {
+			return CompositionGroup{}, cw, err
+		}
 	}
 	if err := runEligibility(e, entry.snapshot, policy, time.Now()); err != nil {
 		return CompositionGroup{}, cw, err

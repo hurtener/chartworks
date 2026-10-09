@@ -82,3 +82,19 @@ header. See [clients v1](contracts/clients-v1.md).
   text equality is already mandatory at every selected SUM/COUNT occurrence in a
   PostgreSQL scoped singleton program. Explicit zero-parameter effects account
   for the request; this is not general Boolean inference or source authority.
+
+## Report application presentation profiles
+
+**Builder** is the report app's manual composition profile, derived from current
+server-verified capabilities. **Consumer** is its authorized published/retained
+consumption profile. Neither term is a Chartworks role, grant, user or issuer.
+**Host adapter** connects the same application to MCP Apps or an approved embedded
+parent; it never transfers provider credentials to the child frame.
+
+**Report-local chart copy** is a separately authorized private block, not an in-place change to a shared publication. **Structural mapping validation** checks schema compatibility; it is not observed-data validation or publication approval.
+
+- **Dependency discovery manifest**: content-free native target/revision/reference coordinates for Pengui policy projection under D-098. It is neither a grant nor a validated execution plan.
+
+**Source dataset pin** is the exact registered source, execution context, dataset,
+source revision and relation digest of a topic-independent block. It carries no
+semantic approval or identity authority and cannot silently follow source drift.

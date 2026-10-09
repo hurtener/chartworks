@@ -136,46 +136,69 @@ func scheduledDefinition(d DocumentDefinition, dispatch *jobs.ReportingDispatch)
 	if dispatch.Blocked != "" || t.ResourceKind() != "report" || d.Timezone != t.Timezone || d.Locale != t.Locale {
 		return DocumentDefinition{}, ErrStale
 	}
+	if d.SchemaVersion == PagedDocumentVersion && (len(t.Arguments) != 0 || t.Type == "saved_question") {
+		return DocumentDefinition{}, ErrInvalid
+	}
 	d = clone(d)
 	pins := map[string]jobs.ReportingPin{}
 	for _, p := range dispatch.Pins {
 		pins[p.ID] = p
 	}
-	widgets := make([]Widget, 0, len(d.Widgets))
-	for _, w := range d.Widgets {
-		if t.Type == "saved_question" && w.ID != t.Widget {
-			continue
+	transform := func(input []Widget) ([]Widget, error) {
+		widgets := make([]Widget, 0, len(input))
+		for _, w := range input {
+			if t.Type == "saved_question" && w.ID != t.Widget {
+				continue
+			}
+			if t.Type == "saved_question" && w.Kind != "query" {
+				return nil, ErrStale
+			}
+			if IsCapturedQueryVariant(w) {
+				ref := w.Query.Variant
+				pin, found := pins[w.ID]
+				if t.Type == "saved_question" || !validVariantReference(ref) || !found || pin.Block != ref.Block || pin.Revision != ref.Revision || pin.Digest != ref.Digest {
+					return nil, ErrStale
+				}
+				delete(pins, w.ID)
+				widgets = append(widgets, w)
+				continue
+			}
+			if w.Kind == "query" && (!t.Dynamic || w.Query == nil || w.Query.Durability != "replayable") {
+				return nil, ErrUnavailable
+			}
+			if w.Kind == "block" {
+				p, found := pins[w.ID]
+				if !found || w.Block == nil || p.Block != w.Block.Block || w.Block.Revision > 0 && w.Block.Revision != p.Revision || w.Block.Narrative && !t.Narrative {
+					return nil, ErrStale
+				}
+				w.Block.Revision = p.Revision
+				delete(pins, w.ID)
+			}
+			widgets = append(widgets, w)
 		}
-		if t.Type == "saved_question" && w.Kind != "query" {
+
+		return widgets, nil
+	}
+	var err error
+	if d.SchemaVersion == PagedDocumentVersion {
+		for i := range d.ReportPages {
+			d.ReportPages[i].Widgets, err = transform(d.ReportPages[i].Widgets)
+			if err != nil {
+				return DocumentDefinition{}, err
+			}
+		}
+	} else {
+		d.Widgets, err = transform(d.Widgets)
+		if err != nil {
+			return DocumentDefinition{}, err
+		}
+		if len(d.Widgets) == 0 {
 			return DocumentDefinition{}, ErrStale
 		}
-		if IsCapturedQueryVariant(w) {
-			ref := w.Query.Variant
-			pin, found := pins[w.ID]
-			if t.Type == "saved_question" || !validVariantReference(ref) || !found || pin.Block != ref.Block || pin.Revision != ref.Revision || pin.Digest != ref.Digest {
-				return DocumentDefinition{}, ErrStale
-			}
-			delete(pins, w.ID)
-			widgets = append(widgets, w)
-			continue
-		}
-		if w.Kind == "query" && (!t.Dynamic || w.Query == nil || w.Query.Durability != "replayable") {
-			return DocumentDefinition{}, ErrUnavailable
-		}
-		if w.Kind == "block" {
-			p, found := pins[w.ID]
-			if !found || w.Block == nil || p.Block != w.Block.Block || w.Block.Revision > 0 && w.Block.Revision != p.Revision || w.Block.Narrative && !t.Narrative {
-				return DocumentDefinition{}, ErrStale
-			}
-			w.Block.Revision = p.Revision
-			delete(pins, w.ID)
-		}
-		widgets = append(widgets, w)
 	}
-	if len(widgets) == 0 || len(pins) != 0 {
+	if len(pins) != 0 {
 		return DocumentDefinition{}, ErrStale
 	}
-	d.Widgets = widgets
 	return d, nil
 }
 
@@ -274,65 +297,72 @@ func (s *Scheduled) ValidateScheduledReporting(ctx context.Context, e identity.E
 	if target.PartialFailure == "allow_partial" && d.PartialFailure != "allow_partial" {
 		return ErrInvalid
 	}
-	if _, err := resolveReportFilters(d.Filters, scheduledArguments(target.Arguments)); err != nil {
-		return err
+	if d.SchemaVersion == PagedDocumentVersion && (len(target.Arguments) != 0 || target.Type == "saved_question") {
+		return ErrInvalid
 	}
 	found := target.Type != "saved_question"
-	for _, w := range d.Widgets {
-		if target.Type == "saved_question" && w.ID != target.Widget {
-			continue
+	for _, canvas := range ReportCanvases(d) {
+		d := canvas.Definition
+		resolution.Timezone = d.Timezone
+		if _, err := resolveReportFilters(d.Filters, scheduledArguments(target.Arguments)); err != nil {
+			return err
 		}
-		found = true
-		if IsCapturedQueryVariant(w) {
-			if target.Type == "saved_question" {
+		for _, w := range d.Widgets {
+			if target.Type == "saved_question" && w.ID != target.Widget {
+				continue
+			}
+			found = true
+			if IsCapturedQueryVariant(w) {
+				if target.Type == "saved_question" {
+					return ErrInvalid
+				}
+				ref := w.Query.Variant
+				block, err := runs.blocks.repo.ReadBlock(ctx, e, ref.Block, Reference{Revision: ref.Revision}, Execute)
+				if err != nil {
+					return err
+				}
+				if err = CheckCapturedQueryVariant(ref, block); err != nil {
+					return err
+				}
+				w, err = CapturedVariantBlock(w)
+				if err != nil {
+					return err
+				}
+			}
+			switch w.Kind {
+			case "query":
+				if !target.Dynamic || !s.delivery.documents.limits.Composition.LiveQueries || s.delivery.documents.queries == nil || w.Query.Durability != "replayable" {
+					return ErrUnavailable
+				}
+				if _, err := s.delivery.documents.queries.InspectDocumentQuery(ctx, e, *w.Query); err != nil {
+					return err
+				}
+			case "block":
+				if target.Type == "saved_question" || w.Block.Narrative && !target.Narrative {
+					return ErrInvalid
+				}
+				block, err := runs.blocks.repo.ReadBlock(ctx, e, w.Block.Block, Reference{Revision: w.Block.Revision}, Execute)
+				if err != nil {
+					return err
+				}
+				arguments, _, err := widgetArguments(block.Revision.Definition.Parameters, d, w, scheduledArguments(target.Arguments), nil, resolution)
+				if err != nil {
+					return err
+				}
+				policy := w.Block.Policy
+				if policy == "" {
+					policy = "published"
+				}
+				if err := s.inspectBlock(ctx, e, runs, w.Block.Block, block.Revision.Number, policy, w.Block.Outputs, arguments, resolution, w.Block.Narrative); err != nil {
+					return err
+				}
+			case "text":
+				if target.Type == "saved_question" {
+					return ErrInvalid
+				}
+			default:
 				return ErrInvalid
 			}
-			ref := w.Query.Variant
-			block, err := runs.blocks.repo.ReadBlock(ctx, e, ref.Block, Reference{Revision: ref.Revision}, Execute)
-			if err != nil {
-				return err
-			}
-			if err = CheckCapturedQueryVariant(ref, block); err != nil {
-				return err
-			}
-			w, err = CapturedVariantBlock(w)
-			if err != nil {
-				return err
-			}
-		}
-		switch w.Kind {
-		case "query":
-			if !target.Dynamic || !s.delivery.documents.limits.Composition.LiveQueries || s.delivery.documents.queries == nil || w.Query.Durability != "replayable" {
-				return ErrUnavailable
-			}
-			if _, err := s.delivery.documents.queries.InspectDocumentQuery(ctx, e, *w.Query); err != nil {
-				return err
-			}
-		case "block":
-			if target.Type == "saved_question" || w.Block.Narrative && !target.Narrative {
-				return ErrInvalid
-			}
-			block, err := runs.blocks.repo.ReadBlock(ctx, e, w.Block.Block, Reference{Revision: w.Block.Revision}, Execute)
-			if err != nil {
-				return err
-			}
-			arguments, _, err := widgetArguments(block.Revision.Definition.Parameters, d, w, scheduledArguments(target.Arguments), nil, resolution)
-			if err != nil {
-				return err
-			}
-			policy := w.Block.Policy
-			if policy == "" {
-				policy = "published"
-			}
-			if err := s.inspectBlock(ctx, e, runs, w.Block.Block, block.Revision.Number, policy, w.Block.Outputs, arguments, resolution, w.Block.Narrative); err != nil {
-				return err
-			}
-		case "text":
-			if target.Type == "saved_question" {
-				return ErrInvalid
-			}
-		default:
-			return ErrInvalid
 		}
 	}
 	if !found {

@@ -170,6 +170,8 @@ func phase23Encode[Input, Output any](ctx context.Context, raw []byte, method fu
 }
 func phase23Typed(ctx context.Context, client *cw.Client, id string, options cw.CallOptions) (json.RawMessage, error) {
 	switch id {
+	case "listSourcePage":
+		return phase23Encode(ctx, options.Body, client.ListSourcePage)
 	case "listTopics":
 		return phase23Encode(ctx, options.Body, client.ListTopics)
 	case "listDatasets":

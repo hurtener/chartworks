@@ -290,10 +290,27 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 
-	documentRegistry, documents, delivery, renderer, handler, err := mountDocuments(v.Reporting, v.Rendering, db, verifier, blockService, runs, w.nlq, requestRunner, w.handler)
+	documentRegistry, documents, delivery, authoring, renderer, handler, err := mountDocuments(v.Reporting, v.Rendering, db, verifier, blockService, runs, w.nlq, requestRunner, w.handler)
 	if err != nil {
 		w.close()
 		return nil, err
+	}
+	if v.Reporting.App.EmbeddedEnabled {
+		assetRegistry, assetErr := reportAppAssetRegistry()
+		if assetErr != nil {
+			w.close()
+			return nil, assetErr
+		}
+		documentRegistry, err = api.Compose(documentRegistry, assetRegistry)
+		if err != nil {
+			w.close()
+			return nil, err
+		}
+		handler, err = reportAppAssetHandler(v.Reporting.App.RegisteredParentOrigins, handler)
+		if err != nil {
+			w.close()
+			return nil, err
+		}
 	}
 	w.documents = documents
 	w.handler = handler
@@ -415,7 +432,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.registry, w.handler, err = mountMCP(v, verifier, w.sourceService, published, w.nlq, byo, chartService, w.registry, w.handler, deliveryServices{topicFeedback: topicFeedback, delivery: delivery, renderer: renderer, evaluation: evaluationService, evaluationRunner: evaluationRunner, onboarding: w.onboarding, migrations: migrations})
+	w.registry, w.handler, err = mountMCP(v, verifier, w.sourceService, published, w.nlq, byo, chartService, w.registry, w.handler, deliveryServices{topicFeedback: topicFeedback, delivery: delivery, authoring: authoring, renderer: renderer, evaluation: evaluationService, evaluationRunner: evaluationRunner, onboarding: w.onboarding, migrations: migrations})
 	if err != nil {
 		w.close()
 		return nil, err

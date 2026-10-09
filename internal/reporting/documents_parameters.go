@@ -3,7 +3,7 @@ package reporting
 import "slices"
 
 func compatibleFilter(filter, parameter Parameter) bool {
-	return filter.Type == parameter.Type && digest(filter.Dimension) == digest(parameter.Dimension)
+	return filter.Type == parameter.Type && digest(filter.Dimension) == digest(parameter.Dimension) && digest(filter.Column) == digest(parameter.Column)
 }
 
 func validateArgument(p Parameter, value Value) error {

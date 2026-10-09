@@ -16,7 +16,7 @@ import (
 const AppMIME = "text/html;profile=mcp-app"
 
 // MaxAppBytes bounds a bundled static resource independently of tenant payloads.
-const MaxAppBytes = 256 << 10
+const MaxAppBytes = 512 << 10
 
 // AppResource is immutable bundled presentation code. It contains neither an
 // executable callback nor a tenant-data loader. NewAppResource is its only
@@ -61,6 +61,17 @@ func (a AppResource) meta() mcp.Meta {
 
 func (a AppResource) resource() *mcp.Resource {
 	return &mcp.Resource{Name: a.name, Description: a.description, URI: a.uri, MIMEType: AppMIME, Meta: a.meta()}
+}
+
+// WithAppCallback declares an existing tool callable from the server's App.
+// It adds no resource attachment and changes no schema, authority or effect.
+// Model visibility is preserved; App hosts still enforce their own closed list.
+func WithAppCallback(b Binding) (Binding, error) {
+	if b.invoke == nil {
+		return Binding{}, ErrRegistration
+	}
+	b.appCallback = true
+	return b, nil
 }
 
 // WithAppResource associates an actual tool with immutable presentation code.

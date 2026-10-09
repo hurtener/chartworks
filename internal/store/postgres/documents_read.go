@@ -30,6 +30,14 @@ const documentReferenceEligibility = `NOT EXISTS (
   WHERE grant_ref->>'kind'=dep.resource_kind AND grant_ref->>'permission'=dep.permission
   AND grant_ref->>'id' IN(dep.resource_id,'*')))`
 
+// Private custody restricts existing grants before loading a report payload.
+func documentPrivateBlockEligibility(actor, preview string) string {
+	return `NOT EXISTS(SELECT 1 FROM chartworks.document_private_block_refs private_ref
+ WHERE (private_ref.tenant_id,private_ref.kind,private_ref.document_id,private_ref.revision)=(r.tenant_id,r.kind,r.document_id,r.revision)
+ AND (private_ref.block_actor_id<>` + actor + ` OR NOT ` + preview + `::boolean OR NOT EXISTS(
+  SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'='block' AND g->>'permission'='preview' AND g->>'id'=private_ref.block_id)))`
+}
+
 // A dashboard never acquires a page's read authority from the enclosing label.
 // This predicate is shared by full-reference authoring reads and redacted reads.
 const documentPageEligibility = `($9::boolean AND EXISTS(
@@ -57,7 +65,7 @@ func documentReadArgs(e identity.Envelope, kind, id string, ref reporting.Docume
 		return nil, err
 	}
 	private := a == reporting.Write || a == reporting.Publish || reporting.RequireDocument(e, kind, id, reporting.Preview) == nil
-	return []any{e.Tenant(), kind, id, ref.Revision, ref.Stage, grants, private, redact, e.Has("reporting.read")}, nil
+	return []any{e.Tenant(), kind, id, ref.Revision, ref.Stage, grants, private, redact, e.Has("reporting.read"), e.User(), e.Has("reporting.preview")}, nil
 }
 
 func documentTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, kind, id string, ref reporting.DocumentReference, a reporting.Access, redact bool) (out reporting.DocumentSnapshot, err error) {
@@ -72,20 +80,21 @@ func documentTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, kind, id st
    FROM chartworks.document_page_refs page
    WHERE (page.tenant_id,page.kind,page.document_id,page.revision)=(r.tenant_id,r.kind,r.document_id,r.revision)
    AND `+documentPageEligibility+`)) ELSE r.definition END,
- r.digest,r.actor_id,r.session_id,r.created_at,r.origins,p.created_at
+ r.digest,r.actor_id,r.session_id,r.created_at,r.origins,p.created_at,
+ EXISTS(SELECT 1 FROM chartworks.document_events event WHERE (event.tenant_id,event.kind,event.document_id,event.revision)=(r.tenant_id,r.kind,r.document_id,r.revision) AND event.operation='reject')
  FROM chartworks.document_heads h
  JOIN chartworks.document_revisions r ON(r.tenant_id,r.kind,r.document_id)=(h.tenant_id,h.kind,h.document_id)
  AND r.revision=CASE WHEN $4::bigint>0 THEN $4 WHEN $5='draft' THEN h.draft_revision WHEN $5='review' THEN h.review_revision ELSE h.published_revision END
  LEFT JOIN chartworks.document_publications p ON(p.tenant_id,p.kind,p.document_id,p.revision)=(r.tenant_id,r.kind,r.document_id,r.revision)
  WHERE h.tenant_id=$1 AND h.kind=$2 AND h.document_id=$3 AND NOT h.deleted
  AND (p.revision IS NOT NULL OR $7::boolean)
- AND `+documentReferenceEligibility+`
+ AND `+documentReferenceEligibility+` AND `+documentPrivateBlockEligibility("$10", "$11")+`
  AND ($8::boolean OR r.kind<>'dashboard' OR NOT EXISTS(
   SELECT 1 FROM chartworks.document_page_refs page
   WHERE (page.tenant_id,page.kind,page.document_id,page.revision)=(r.tenant_id,r.kind,r.document_id,r.revision)
   AND NOT `+documentPageEligibility+`))`, args...).Scan(
 		&out.State.Kind, &out.State.ID, &out.State.Version, &out.State.LatestRevision, &out.State.DraftRevision, &out.State.ReviewRevision, &out.State.PublishedRevision, &out.State.Archived, &out.State.Created, &out.State.Updated,
-		&out.Revision.Number, &raw, &out.Revision.Digest, &out.Revision.Actor, &out.Revision.Session, &out.Revision.Created, &origins, &out.PublishedAt)
+		&out.Revision.Number, &raw, &out.Revision.Digest, &out.Revision.Actor, &out.Revision.Session, &out.Revision.Created, &origins, &out.PublishedAt, &out.Rejected)
 	if err != nil {
 		return out, err
 	}
@@ -158,8 +167,8 @@ func (d *DB) ListDocuments(ctx context.Context, e identity.Envelope, kind, after
   AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'='schedule' AND g->>'permission'='read' AND g->>'id' IN(s.schedule_id,'*'))),'{}'),
  COALESCE((SELECT array_agg(DISTINCT ref.resource_id ORDER BY ref.resource_id) FROM chartworks.document_references ref
   WHERE (ref.tenant_id,ref.kind,ref.document_id,ref.revision)=(r.tenant_id,r.kind,r.document_id,r.revision) AND ref.resource_kind='topic'),'{}'),
- COALESCE((SELECT array_agg(DISTINCT ref.block_id ORDER BY ref.block_id) FROM chartworks.document_block_refs ref
-  WHERE (ref.tenant_id,ref.kind,ref.document_id,ref.revision)=(r.tenant_id,r.kind,r.document_id,r.revision)),'{}')
+ COALESCE((SELECT array_agg(DISTINCT ref.resource_id ORDER BY ref.resource_id) FROM chartworks.document_references ref
+  WHERE (ref.tenant_id,ref.kind,ref.document_id,ref.revision)=(r.tenant_id,r.kind,r.document_id,r.revision) AND ref.resource_kind='block'),'{}')
  FROM chartworks.document_heads h JOIN chartworks.document_revisions r
  ON(r.tenant_id,r.kind,r.document_id,r.revision)=(h.tenant_id,h.kind,h.document_id,h.published_revision)
  JOIN chartworks.document_revisions creator ON(creator.tenant_id,creator.kind,creator.document_id,creator.revision)=(h.tenant_id,h.kind,h.document_id,1)
@@ -169,8 +178,8 @@ func (d *DB) ListDocuments(ctx context.Context, e identity.Envelope, kind, after
    OR ($10::boolean AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'=h.kind AND g->>'permission'='write' AND g->>'id' IN(h.document_id,'*'))))
   THEN h.latest_revision ELSE h.published_revision END
  WHERE h.tenant_id=$1 AND h.kind=$2 AND h.document_id>$3 AND NOT h.archived AND NOT h.deleted
- AND ($4::boolean OR h.document_id=ANY($5::text[])) AND `+documentReferenceEligibility+`
-	 ORDER BY h.document_id LIMIT $7`, e.Tenant(), kind, after, selection.All(), selection.IDs(), grants, limit+1, e.Has("scheduling.read"), e.Has("reporting.preview"), e.Has("reporting.write"))
+ AND ($4::boolean OR h.document_id=ANY($5::text[])) AND `+documentReferenceEligibility+` AND `+documentPrivateBlockEligibility("$11", "$12")+`
+	 ORDER BY h.document_id LIMIT $7`, e.Tenant(), kind, after, selection.All(), selection.IDs(), grants, limit+1, e.Has("scheduling.read"), e.Has("reporting.preview"), e.Has("reporting.write"), e.User(), e.Has("reporting.preview"))
 		if err != nil {
 			return err
 		}

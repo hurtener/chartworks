@@ -1,0 +1,31 @@
+import {mapView,mapValidation,mapClone} from './mapping-fixture.mjs';
+import {reportStage} from './publication.js';
+import {appError} from './model.js';
+export const clone=mapClone;
+export function multiChartFixture(count=12){
+  const f=publicationFixture(),source=clone(f.blocks.get('chart-a:2')),definition=f.definitions.get(1),widget=clone(definition.report_pages[0].widgets[0]);f.blocks.clear();for(const page of definition.report_pages)page.widgets=[];
+  for(let i=0;i<count;i++){const id=`chart-${i+1}`,item=clone(source);item.block.state.id=id;item.block.metadata=[{locale:'en-US',title:`Chart ${i+1}`}];f.blocks.set(`${id}:2`,item);const component=clone(widget);component.id=`component-${i+1}`;component.block.block=id;component.presentation.title=`Chart ${i+1}`;component.grid={column:0,row:Math.floor(i/2)*2,width:12,height:2};definition.report_pages[i%2].widgets.push(component);}
+  return f;
+}
+export function publicationFixture(){
+  const b=mapView('chart-a',2,true).block;b.state.draft_state='validated';b.validation=mapValidation({block:b}).evidence;
+  const blocks=new Map([['chart-a:2',{block:b,validation_fresh:true,can_publish:true,publication_scope:'entire_revision',audience_effect:'existing_authorized_readers'}]]);
+  const widget=id=>({id,kind:'block',grid:{column:0,row:id==='first'?0:2,width:12,height:2},presentation:{title:id},block:{block:'chart-a',revision:2,digest:b.digest,policy:'private_preview',narrative:false,outputs:['amount']},literals:[{name:'maximum',value:{literal:'30'}}]});
+  const definitions=new Map([[1,{schema_version:3,metadata:[{locale:'en-US',title:'Lifecycle report'}],locale:'en-US',timezone:'UTC',partial_failure:'fail_closed',report_pages:[{id:'main',title:'Summary',widgets:[widget('first'),widget('second')],filters:[],defaults:[]},{id:'notes',title:'Notes',widgets:[{id:'heading',kind:'text',grid:{column:0,row:0,width:12,height:1},presentation:{title:'Notes'},text:{format:'plain',text:'Unchanged sibling page'}}]}]}]]);
+  let state={kind:'report',id:'report-a',version:1,latest_revision:1,draft_revision:1,review_revision:0,published_revision:0,archived:false};const published=new Set(),rejected=new Set(),calls=[];
+  const report=(revision=state.draft_revision||state.review_revision)=>({state:clone(state),revision,digest:String(revision).repeat(64),private:!published.has(revision),definition:clone(definitions.get(revision))});
+  function lifecycle(args){if(args.block)return {version:'report-authoring-v1',blocks:[clone(blocks.get(`${args.block}:${args.revision}`))]};const r=report(args.revision||(args.stage==='review'?state.review_revision:state.draft_revision||state.review_revision));r.state.id=args.report;return {version:'report-authoring-v1',report:r,stage:reportStage(r),rejected:rejected.has(r.revision),can_review:!rejected.has(r.revision)&&r.private&&r.state.draft_revision===r.revision&&!r.state.review_revision,can_publish:r.private&&r.state.review_revision===r.revision,can_reject:r.private&&r.state.review_revision===r.revision,blocks:Array.from(new Set(r.definition.report_pages.flatMap(p=>p.widgets.filter(w=>w.block).map(w=>`${w.block.block}:${w.block.revision}`))),k=>clone(blocks.get(k)))};}
+  async function invoke(name,args){calls.push({name,args:clone(args)});
+    if(name==='reporting_authoring_lifecycle_v1')return lifecycle(args);
+    if(name==='reporting_authoring_block_publish_v1'){const item=blocks.get(`${args.block}:${args.revision}`);if(item.block.state.version!==args.expected_version||!item.block.private)throw appError('conflict');item.block.state.version++;item.block.state.published_revision=args.revision;item.block.state.draft_revision=0;item.block.private=false;item.published_at='2026-10-04T07:00:00Z';item.can_publish=false;return clone(item.block.state);}
+    if(name==='reporting_authoring_rebind_published_v1'){if(state.version!==args.expected_version)throw appError('conflict');const d=clone(definitions.get(args.revision));for(const p of d.report_pages)for(const w of p.widgets)if(args.widgets.some(pin=>pin.widget===w.id)){w.block.policy='published';delete w.block.digest;}state={...state,version:state.version+1,latest_revision:state.latest_revision+1,draft_revision:state.latest_revision+1};definitions.set(state.draft_revision,d);return clone(state);}
+    if(name==='reporting_authoring_report_transition_v1'){if(state.version!==args.expected_version)throw appError('conflict');if(args.operation==='review')state={...state,version:state.version+1,draft_revision:0,review_revision:args.revision};else if(args.operation==='publish'){state={...state,version:state.version+1,review_revision:0,published_revision:args.revision};published.add(args.revision);}else if(args.operation==='reject'){if(!args.note||state.review_revision!==args.revision)throw appError('conflict');state={...state,version:state.version+1,review_revision:0,draft_revision:state.draft_revision||args.revision};rejected.add(args.revision);}return clone(state);}
+    if(name==='reporting_authoring_read_v1'){const r=report(args.revision||(args.stage==='review'?state.review_revision:state.draft_revision||state.review_revision));r.state.id=args.report;return r;}
+    if(name==='reporting_authoring_capabilities_v1')return {version:'report-authoring-v1',builder:true,consumer:true,can_save:true,can_open:true,can_preview:true,can_execute:true};
+    if(name==='reporting_authoring_drafts_v1')return {items:state.draft_revision||state.review_revision?[{id:state.id,metadata:report().definition.metadata,version:state.version,revision:report().revision,stage:reportStage(report()),draft_revision:state.draft_revision,review_revision:state.review_revision}]:[],next:''};
+    if(name==='reporting_authoring_save_v1'){if(state.version!==args.expected_version)throw appError('conflict');state={...state,version:state.version+1,latest_revision:state.latest_revision+1,draft_revision:state.latest_revision+1};definitions.set(state.draft_revision,clone(args.definition));return clone(state);}
+    if(name==='reporting_search')return {version:'reporting-view-v1',items:state.published_revision?[{title:'Lifecycle report',target:{kind:'report',id:state.id,revision:state.published_revision}}]:[],next:''};
+    throw appError('not_found');
+  }
+  return {blocks,definitions,calls,invoke,report,lifecycle,state:()=>state,setState:s=>{state={...state,...s};}};
+}

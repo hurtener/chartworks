@@ -112,25 +112,28 @@ func RequireReferences(e identity.Envelope, a Access, refs []ResourceReference) 
 // Mutation is exposed only through Prepared.Checked. Repositories recheck head,
 // revision, evidence and dependency fences in the same transaction as the write.
 type Mutation struct {
-	ID              string              `json:"id"`
-	Topic           string              `json:"topic"`
-	Kind            string              `json:"kind"`
-	ExpectedVersion int64               `json:"expected_version"`
-	TargetRevision  int64               `json:"target_revision"`
-	TargetDigest    string              `json:"target_digest"`
-	Note            string              `json:"note"`
-	Revision        *Revision           `json:"revision,omitempty"`
-	References      []ResourceReference `json:"references"`
-	Validation      *ValidationRecord   `json:"validation,omitempty"`
-	Evidence        string              `json:"evidence,omitempty"`
-	Attestation     *Attestation        `json:"attestation,omitempty"`
-	Withdrawal      *Withdrawal         `json:"withdrawal,omitempty"`
-	Health          *Health             `json:"health,omitempty"`
-	Watch           []Dependency        `json:"watch"`
-	Topics          []TopicPin          `json:"topics"`
-	CheckCurrent    bool                `json:"check_current"`
-	MaxRevisions    int                 `json:"max_revisions"`
-	MaxBlocks       int                 `json:"max_blocks"`
+	Source          string                         `json:"source,omitempty"`
+	ID              string                         `json:"id"`
+	Topic           string                         `json:"topic"`
+	Kind            string                         `json:"kind"`
+	ExpectedVersion int64                          `json:"expected_version"`
+	TargetRevision  int64                          `json:"target_revision"`
+	TargetDigest    string                         `json:"target_digest"`
+	Note            string                         `json:"note"`
+	Revision        *Revision                      `json:"revision,omitempty"`
+	Preparation     *AuthoringPreparationReference `json:"preparation,omitempty"`
+	References      []ResourceReference            `json:"references"`
+	Validation      *ValidationRecord              `json:"validation,omitempty"`
+	Evidence        string                         `json:"evidence,omitempty"`
+	Attestation     *Attestation                   `json:"attestation,omitempty"`
+	Withdrawal      *Withdrawal                    `json:"withdrawal,omitempty"`
+	Health          *Health                        `json:"health,omitempty"`
+	Watch           []Dependency                   `json:"watch"`
+	Topics          []TopicPin                     `json:"topics"`
+	RuleAbsence     []TopicPin                     `json:"rule_absence,omitempty"`
+	CheckCurrent    bool                           `json:"check_current"`
+	MaxRevisions    int                            `json:"max_revisions"`
+	MaxBlocks       int                            `json:"max_blocks"`
 }
 
 // Access returns the authority mode associated with this mutation kind.
@@ -189,13 +192,16 @@ func (p Prepared) Checked(e identity.Envelope) (Mutation, error) {
 	if len(p.encoded) == 0 || len(p.encoded) > 4<<20 || !e.Valid() || authority(e) != p.authority || !time.Now().Before(p.deadline) {
 		return m, access.ErrUnauthenticated
 	}
-	if json.Unmarshal(p.encoded, &m) != nil || !identity.Identifier(m.Topic) || m.ExpectedVersion < 0 || m.MaxRevisions < 2 || m.MaxRevisions > 256 || m.MaxBlocks < 1 || m.MaxBlocks > 100000 {
+	if json.Unmarshal(p.encoded, &m) != nil || (m.Topic == "") == (m.Source == "") || m.ExpectedVersion < 0 || m.MaxRevisions < 2 || m.MaxRevisions > 256 || m.MaxBlocks < 1 || m.MaxBlocks > 100000 {
+		return Mutation{}, ErrInvalid
+	}
+	if m.Preparation != nil && (m.Kind != "create" || m.ExpectedVersion != 0 || m.Revision == nil || !identity.Identifier(m.Preparation.ID) || !hashValid(m.Preparation.Digest)) {
 		return Mutation{}, ErrInvalid
 	}
 	if err := Require(e, m.ID, m.Access()); err != nil {
 		return Mutation{}, err
 	}
-	if err := RequireParent(e, m.Topic, m.Access(), m.ExpectedVersion == 0); err != nil {
+	if err := RequireOrigin(e, m.Topic, m.Source, m.Access(), m.ExpectedVersion == 0); err != nil {
 		return Mutation{}, err
 	}
 	if err := RequireReferences(e, m.Access(), m.References); err != nil {

@@ -30,7 +30,7 @@ func formatCell(value charts.Cell, column charts.Column, timezone string) string
 	case "whole":
 		formatted += "%"
 	default:
-		if column.Type == "integer" || column.Type == "decimal" || column.Type == "number" {
+		if !f.PreservePrecision && (column.Type == "integer" || column.Type == "decimal" || column.Type == "number") {
 			formatted = formatDecimal(raw, f.FractionDigits, f.Locale)
 		}
 	}

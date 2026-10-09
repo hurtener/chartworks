@@ -57,3 +57,14 @@ qualification boundaries. Its [adversarial review](../reviews/phase-09-10-advers
 records the actual cursor, attempt, cancellation and exact-result regressions.
 Earlier statements assigning execution to phase 10 are now realized by that
 consumer; other-engine and retained reporting deliverables remain separately owned.
+
+## Manual Builder catalog consumer
+
+The flexible-authoring continuation adds an additive paged source operation to
+HTTP/MCP/SDK and reuses the dataset catalog. The first consumer is the shared
+report Builder and its Pengui host. No migration or additional warehouse call is
+needed. `TestSourceCatalogPageNative` verifies real-store authority before LIMIT,
+byte-ordered cursors, tenant isolation, invalid bounds and registered HTTP shape.
+`TestSourceCatalogSurfaces` verifies HTTP, typed/generic SDK, local, MCP and CLI
+pages without source/model work. See the
+[typed-field contract](../contracts/typed-field-authoring-v3.md).

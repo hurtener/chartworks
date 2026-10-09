@@ -1,0 +1,249 @@
+# Report dependency discovery
+
+Source contract under D-098. Pengui is the policy owner and first consumer. This
+endpoint supplies native requirements so the BFF can make its independent policy
+decision before minting an operation bearer. A response grants no permission.
+
+`POST /v1/reporting/authoring/v1/dependencies` accepts a closed object containing
+`kind: report|block`, exact `id`, `revision` (0 through 256), and optional `stage`.
+A positive revision excludes stage; otherwise stage selects published (default),
+draft, report review, or report editing. Editing resolves the current draft,
+falling back to review only when the draft pointer is absent, matching native
+manual reopening. It never falls back to a published revision. Unknown fields, wildcard reach, invalid identifiers and
+unsupported kinds deny. The HTTP request is at most 8 KiB. The SDK method is
+`ReportDependencies`; registration ID is `reportAppDependenciesV1`.
+
+The request needs `reporting.discover` and exact target read reach. Private
+revisions additionally need `reporting.preview` and exact target preview reach.
+Unpublished blocks retain original-actor custody. Reports containing private
+blocks retain their original block actor restriction. Reports with query widgets
+are outside this manual contract and deny. No envelope is constructed or widened
+to call an ordinary read, and no existing content-read check is weakened.
+
+The response contains `version: report-dependencies-v1`, kind, ID, resolved
+revision, digest, persisted publication privacy, `references`, and `blocks`.
+References contain only kind/permission/ID; blocks contain only ID, parent topic,
+resolved revision, digest and private-pin status. It contains no names,
+definitions, SQL, schemas, result values, identities or credentials. It reads
+existing tenant-composite native reference indexes; there is no dependency cache
+or duplicate authority store. Native metadata access performs no source query or
+model call.
+
+Report discovery includes stored report requirements and the requirements of
+each actual selected block revision. A latest-publication widget resolves the
+current publication pointer, so an old observed dependency set cannot silently
+stand in for a newer one. Private widget pins stay private even after that block
+revision is published. There are at most 128 distinct references and 128 block
+pins; excess or incomplete metadata fails without a partial manifest. Pengui's
+bounded issuer capacity remains separate and may reject a smaller set. D-105
+admits 128 token scopes / 16,384 aggregate scope bytes; App projection reserves
+one scope and seven bytes for MCP, leaving 127 / 16,377 on both transports.
+Every dependency and operation permission must fit; no partial manifest or
+truncated scope set is admitted. Explicit smaller verifier configurations still
+reject larger requests.
+
+Pengui resolves every returned reference through its current canonical
+ShareGrant/Team/Project machinery, plus the independently allowed operation and
+target permissions. It rechecks identity, installation and policy generations
+after minting. Provider operations still verify actual dependencies at their
+effect boundary: discovery is neither a safety proof nor a promise that a later
+operation will succeed. Publication movement, revocation or schema changes can
+require a fresh user attempt. No query is rerun to resolve a denied retained read.
+
+This is an HTTP BFF metadata seam shared by both eventual delivery modes. It is
+not an iframe method or MCP App tool; the existing 96-tool ceiling is unchanged.
+It uses the normal configured Pengui verifier and HTTP audience. No credential is
+sent to the frame. Deployment does not add any policy grants automatically.
+
+Current Pengui projections consume this contract for exact SQL-free block read
+and manual report reopening, with independent report read/write and App editor
+admission. Private roots and pins additionally require preview. Proposed report writes use the extension below. Topic/preparation discovery uses D-100 below; D-101 below covers retained report-run discovery;
+restricted MCP admission and the complete Builder journey remain separate work.
+`TestReportAppDependencyDiscovery` and
+`TestReportAppDependenciesResolveCurrentPublishedPin` exercise the real PostgreSQL
+and verifier boundaries; local results are recorded in the integration review.
+
+## Proposed report writes (D-099)
+
+`POST /v1/reporting/authoring/v1/write-dependencies` accepts a closed object with
+`operation: create|save`, `id`, `expected_version`, `revision`, and `definition`.
+Create requires zero version/revision; save requires a positive expected version
+and exact baseline revision 1–256. The body limit is 1 MiB. The typed SDK method is
+`ReportWriteDependencies`, registration ID `reportAppWriteDependenciesV1`.
+
+The metadata seed requires `reporting.discover` and exact report write, plus exact
+tenant write for create. The provider normalizes and structurally validates the
+same manual definition as the real operation. Query/narrative widgets deny.
+Proposed public blocks resolve native publication pointers; private pins must
+match their original actor, revision and digest before metadata projection. A
+private pin stays private after publication. Save also discovers its native
+baseline under write authority and rejects a stale expected version. Its old
+dependencies remain required even when the proposed edit removes those widgets.
+
+The response is `report-write-dependencies-v1` with operation/ID, expected
+version, base revision/digest (zero/empty for create), normalized definition
+digest, references, blocks and `metadata_actions`. The last field is empty unless
+governed option definitions require native semantic/source metadata reads, in
+which case it is exactly `sources.read` and `topics.read`. It never includes
+source query, execution or publishing. Bounds remain 128 references/block pins
+and the SDK accepts at most 128 KiB. No content is returned or persisted.
+
+Pengui verifies the server-owned allocation receipt for creation, current App
+editor and independent read/write/creation policy, then every native dependency.
+Private block preview is independently checked; report write alone does not grant
+it. Native writes still perform complete content/binding validation and CAS under
+the final bearer. A successful manifest does not promise those checks will pass.
+`TestReportAppWriteDependencyDiscovery` covers native create/save consumption,
+removed baseline requirements, private custody, tenant/target/input negatives,
+zero source/model work and the actual registered HTTP schema.
+
+## Reviewed data and original preparation custody (D-100)
+
+`POST /v1/reporting/authoring/v1/data-dependencies` accepts the closed fields
+`topic` (topic/version/digest), `dataset`, `new_block`, `preparation`, and
+`operation`. Empty strings select the unused branch. A topic-only request may
+omit the version/digest together to select the current active publication, or
+pin both. A dataset, when supplied, must belong to that exact publication.
+Preparation requests select an exact target and exactly one preparation or
+operation. Fresh Prepare supplies the original operation, exact reviewed topic
+pin and dataset; existing operation custody takes precedence over proposed pins.
+
+The metadata seed requires reporting.discover with exact topic read, or exact
+block read/write plus separate reporting.preview/block preview. Private custody
+is filtered by tenant, original actor, native session and target before any
+coordinates are projected. No normal content-read envelope is forged. The
+provider reads only publication dependency indexes and bounded fields of the
+existing preparation/consumed records; it never decodes SQL, schemas, results,
+source operation coordinates, identities or credentials for this response.
+
+`version: report-data-dependencies-v1` returns the native topic pin, selected
+dataset, target, preparation/operation identifiers, complete `references` and
+`query_references`. References include the entire publication, even unselected
+datasets. Query references identify only the selected dataset's source query,
+dataset query and execution context. Original preparation requirements survive
+publication movement and native consumed-record retention. Native Inspect,
+Prepare, Consume and Control still enforce their distinct full authority and
+current-state requirements. Metadata never retries a physical source attempt.
+
+At most 128 distinct references are returned; overflow rejects. Body limit is
+8 KiB. Registration ID is `reportAppDataDependenciesV1`; typed SDK method is
+`ReportDataDependencies`. This endpoint adds no MCP tool or schema migration.
+`TestReportAppDataDependencyDiscovery` exercises actual PostgreSQL custody,
+complete publication dependencies, missing roots, cross-tenant/user/session,
+original operation replay and zero extra source/model work. Local results and
+real-service acceptance must be reported separately.
+
+## Saved effects and exact retained report runs (D-101)
+
+`POST /v1/reporting/authoring/v1/effect-dependencies` accepts exactly `operation`,
+`id`, `revision`. Operations are `block_validate`, `preview`, `execute`, `view`.
+The first two select an exact block/report revision (1–256); the last two select
+an exact run with revision zero. Discovery requires reporting.discover and exact
+root read reach. Block/report roots also require explicit root preview. A run
+seed carries no artifact-read action: private runs must match the original
+signed tenant, actor and session before the metadata query returns any parent.
+Execute accepts private report compositions only. View also accepts public
+retained reports. Dynamic query groups are excluded from this manual lane.
+
+The `report-effect-dependencies-v1` response contains operation, root kind/ID,
+revision/digest, run (empty for block/report selectors), privacy, required actions
+and at most 128 resource references. It contains no SQL, definitions, payloads,
+rows, source credentials or bearer. Root and dependency queries share a read-only
+repeatable-read transaction. Validation includes source query only for the
+block's saved execution source; other reviewed datasets retain their read/query
+entitlements. Preview requires independent report write/execute/preview and
+block execute/preview, including published blocks used in a private composition.
+Execute includes the frozen run's requirements and the native original report
+read requirements. Manual execution rejects narrative outputs rather than
+inferring model permission.
+
+View uses the immutable run reference index, never a current report definition.
+It maps execution targets to read, sources to read and preserves all dataset and
+context reach. Private preview requirements stay private after later publication.
+Pengui checks every returned reference against its canonical policy, including
+the original report read and preview. It derives fresh `cw.run.read:<exact-run>`
+only for that operation. Retained reads receive no source query, validate, write,
+execute or model action. The iframe never receives a bearer or metadata seed.
+
+Request limit is 8 KiB; response limit is 128 KiB. Registration is
+`reportAppEffectDependenciesV1`, SDK `ReportEffectDependencies`. Source/model
+work remains absent from discovery. `TestReportAppEffectDependencyDiscovery`
+exercises native validation, preview, execute and retained values using only the
+returned exact projection, missing-scope and cross-tenant/actor/session denials,
+registered wire closure and query/model counters. This is local native evidence;
+real issuer and browser acceptance are recorded separately.
+
+## Published Consumer and original retained history (D-102)
+
+Effect discovery additionally accepts `report_run`, `block_run` (exact published
+revision) and `block_view` (exact retained run, revision zero). Published run
+seeds require `reporting.discover` and exact root read, without preview; private
+root or block pins are rejected. The resulting manifest requires independent
+execute, source query and complete read/query/use dependencies. No write, preview,
+publish or model action is inferred. Block retained reads use the original frozen
+source/context and immutable block revision references, never the current head.
+Existing report retained reads continue to use their original run reference index.
+
+`POST /v1/reporting/authoring/v1/run-candidates` accepts `kind` (`report` or `block`),
+`resource`, `after`, `limit` (1–32). Exact parent read plus `reporting.discover` is
+required. `version: report-run-candidates-v1` returns kind, resource, ordered run
+IDs and a continuation cursor, with no names, timing, values or definitions.
+Private IDs additionally require exact parent preview, `reporting.preview` and
+original actor/session custody. This is trusted BFF metadata, not browser content.
+Registration `reportAppRunCandidatesV1` has an 8 KiB input; SDK method is
+`ReportRunCandidates`. Ordinary metadata transaction/deadline bounds apply.
+
+After original-run dependency authorization, `reporting_runs` accepts an optional
+exact `run` selector together with its parent resource, empty after and limit 1.
+It uses the existing retained catalog eligibility and returns one summary. This adds
+no authorization shortcut. BFF history scans at most 256 candidates within its
+30-second deadline and only returns an authorized run ID as the external cursor;
+budget exhaustion returns no partial page or hidden coordinate. A full page can
+be followed by an empty terminal page. Search uses canonical independently granted
+roots, full native published dependencies, and bounded exact-root name lookup.
+
+`TestReportAppEffectDependencyDiscovery/published_consumer_and_original_run_dependencies`
+covers actual publication, explicit execution, independent-reader retained values,
+original context denial, private-custody preservation and no query/model work on
+reads. Local native evidence does not substitute for actual issuer/browser proof.
+
+## Governed option dependency discovery (D-103)
+
+`POST /v1/reporting/authoring/v1/option-dependencies` is a BFF-only metadata
+operation (`reportAppOptionDependenciesV1`, SDK `ReportOptionDependencies`).
+Its closed 8 KiB request contains mode (`search`, `status`, `control`), the
+existing exact authoring option target and timestamped operation key. The 128 KiB
+response contains version `report-option-dependencies-v1`, the unchanged target/
+operation, an explicit `original` flag and bounded action/resource requirements.
+It returns no definition, search, cursor, source-operation ID or option values.
+
+The discovery seed requires reporting.discover and exact root reach. Dataset
+targets require allocated block read/write/preview, reporting.preview and exact
+topic read. Report targets require exact report read; private_preview also
+requires independent report preview. Pengui independently checks current policy
+before requesting metadata and before exposing final operation authority.
+
+Original lookup records are selected by tenant, actor, canonical login, operation
+and complete target digest before projecting their persisted references and bound
+blocks. Status/control never fall back to a current definition when custody is
+missing. Search also prefers original custody; only a new search discovers the
+current immutable publication or report closure using the existing discovery
+cores. That initial report projection conservatively covers the complete report
+and private-preview block reach; native execution still validates the specific
+saved page/filter, reviewed dimension and current source fences. Report write is
+not implied by option authority. Dataset targets retain independent write/preview/
+validate, parent write and exact source/dataset/context query requirements.
+
+Status is metadata-only but native custody intentionally requires the original
+operation's current permissions, including query/execute or validate as applicable.
+Control can only cancel or reconcile its original attempt. Neither reconstructs
+lost choices nor starts another query. Changed drafts/publication heads do not
+replace original recovery dependencies. Current policy withdrawal still denies
+access, and unresolved source liability remains protected by the existing native
+ledger across sessions. No new credential, policy store, queue or migration exists.
+
+TestReportAppOptionDependencyDiscovery covers real PostgreSQL metadata-only reads,
+wire closure, absent custody and tenant/actor/session/target negatives.
+TestReportAppAuthoringOptions additionally checks private/published report
+discovery and recovery after the draft changes. Real Pengui/iframe qualification
+is tracked separately in the integration review.

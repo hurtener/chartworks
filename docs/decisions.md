@@ -806,3 +806,58 @@ Renderer memory continuation: [D-093 kernel charged-memory enforcement and a sep
 Scalar equality continuation: [D-094 exact predicates required by every selected scalar occurrence](decisions/2026-10-03-scalar-predicate-entailment.md).
 
 Renderer containment continuation: [D-095 resource controls on a protected outer job domain](decisions/2026-10-03-renderer-protected-job-domain.md).
+
+Optional manual report application: [D-096 one shared Builder/Consumer app with Pengui-owned authority](decisions/2026-10-03-manual-report-app.md).
+
+Visual authoring continuation: [D-097 canvas-first chart authoring and genuine private pages](decisions/2026-10-03-visual-chart-authoring.md).
+
+Native authority discovery: [D-098 exact-target dependency metadata for Pengui](decisions/2026-10-05-report-dependency-discovery.md).
+
+Manual write authority discovery: [D-099 proposed definitions and native save baselines](decisions/2026-10-05-report-write-dependency-discovery.md).
+
+Manual data authority discovery: [D-100 reviewed publications and original preparation custody](decisions/2026-10-05-report-data-dependency-discovery.md).
+
+Manual effect authority: [D-101 saved validation, preview and retained-run requirements](decisions/2026-10-05-report-effect-dependency-discovery.md).
+
+Published Consumer authority: [D-102 native published execution and original-run history](decisions/2026-10-05-published-consumer-dependencies.md).
+
+Governed option authority: [D-103 original lookup custody and target discovery](decisions/2026-10-05-option-dependency-discovery.md).
+
+MCP service discovery: [D-104 existing Pengui connection authority with no domain access](decisions/2026-10-07-mcp-connection-discovery.md).
+
+
+## Team report capacity
+
+See [the accepted decision](decisions/2026-10-09-reporting-capacity.md).
+It supersedes only the D-059–D-061 scope-size ceilings; same exact claim encoding,
+central policy, privacy, audience and expiry checks. Product acceptance remains
+tracked independently in the team-ready reporting plan.
+
+## Schema-driven manual authoring
+
+[D-106](decisions/2026-10-09-schema-driven-authoring.md) extends the manual
+compiler with explicit typed physical/reviewed fields, multiple measures and
+neutral layouts. Loaded-table lifecycle and Pengui audience management remain
+tracked separately in the active flexible authoring pass.
+
+[D-107](decisions/2026-10-09-source-dataset-blocks.md) adds an exclusive registered
+source origin for topic-independent report blocks. Exact source/context/dataset
+pins, current authority and existing execution fences replace neither reviewed
+semantics nor Pengui policy. Migration 089 retains source custody after cleanup.
+
+[D-108](decisions/2026-10-09-physical-column-filters.md) adds typed physical-column
+filters with exact registered schema identity, explicit temporal semantics and
+shared report binding checks. The native core precedes its Builder/option UI.
+
+[D-109](decisions/2026-10-09-physical-option-search.md) extends governed options to
+exact typed physical columns and source-only origins, preserving explicit reads,
+original custody, source fences and actual Pengui dependency authority.
+
+[D-110](decisions/2026-10-09-independent-report-review.md) separates manual report
+inspection/publication from editing. Exact read plus write/publish selection,
+private custody and complete dependencies are enforced before native projection;
+Pengui alone manages people/Team access through the admitted parent dialog.
+
+[D-111](decisions/2026-10-09-preserved-numeric-precision.md) preserves exact numeric
+display by default for new typed field selections while retaining old serialized
+formats and explicit fraction-digit overrides.

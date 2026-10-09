@@ -71,10 +71,10 @@ async function evaluate(expression){const r=await rpc('Runtime.evaluate',{expres
 async function check(expression,message){assert.equal(await evaluate(expression),true,message);passes++;}
 const doc=`document.getElementById('viewer').contentDocument`;
 const body=`${doc}.getElementById('report-viewer')`;
-const waitTitle=title=>until(()=>evaluate(`${body}?.querySelector('h1')?.textContent===${JSON.stringify(title)}`),'render did not finish: '+title);
+const waitTitle=title=>until(()=>evaluate(`${body}?.dataset.target===${JSON.stringify(title)}`),'render did not finish: '+title);
 // A rendered notification does not acknowledge completion of a prior mutation.
 // The real component keeps Run disabled until that promise has settled.
-const waitRunEnabled=()=>until(()=>evaluate(`Array.from(${body}.querySelectorAll('button')).some(b=>b.textContent==='Run with these filters'&&!b.disabled)`),'prior filter mutation did not settle');
+const waitRunEnabled=()=>until(()=>evaluate(`Array.from(${body}.querySelectorAll('button')).some(b=>b.textContent==='Refresh with these filters'&&!b.disabled)`),'prior filter mutation did not settle');
 const waitCalls=n=>until(()=>evaluate(`calls.length>=${n}`),'bridge request missing');
 let restoreSequence=0;
 // Posting a notification is asynchronous. A unique rendered marker proves the
@@ -136,6 +136,7 @@ try{
     for (let i=0;i<fixtures.rich_cases.length;i++) {
       const c=fixtures.rich_cases[i], out=c.output, tag='rich-'+i;
       await evaluate(`show(makeView(fixture.rich_cases[${i}].output,${JSON.stringify(tag)}))`); await waitTitle(tag);
+      if(c.scenario==='line_two_units')await check(`(()=>{const labels=Array.from(${body}.querySelectorAll('text.chart-value-label'));return labels.length===4&&labels.every(e=>Array.from(e.childNodes).some(n=>n.nodeType===3&&n.textContent.trim()));})()`,'single-series scale endpoints render visible numeric text rather than SVG tooltip children');
       const rows=await evaluate(`Array.from(${body}.querySelectorAll('.retained-values tbody tr'),r=>Array.from(r.querySelectorAll('td'),c=>c.textContent))`);
       assert.equal(rows.length,Math.min(100,c.expected_rows.length),'retained wide rows: '+c.scenario);
       for(let r=0;r<rows.length;r++)for(let k=0;k<c.expected_rows[r].length;k++) {
@@ -174,7 +175,7 @@ try{
         assert.equal(radii.length,out.points.length,'size/channel points drawn');
         assert(Math.abs((radii[1]/radii[0])**2-Number(out.points[1].size.exact)/Number(out.points[0].size.exact))<1e-10,'bubble area, not radius, encodes size');passes++;
         await check(`new Set(Array.from(${body}.querySelectorAll('svg circle[data-size]'),c=>c.getAttribute('class'))).size===2`,'bubble categorical colors');
-        await check(`${body}.textContent.includes('zero_size_not_drawn')`,'truthful zero-size omission remains visible beside formatted retained values');
+        await check(`${body}.textContent.includes('Zero-size values are included in View data')`,'truthful zero-size omission remains visible beside formatted retained values');
       }
       if(out.kind==='treemap') {
         for(const node of out.hierarchy) {
@@ -225,14 +226,14 @@ try{
 
   if(suite==='all'||suite==='interaction'){
     await restore();const before=await evaluate('calls.length');
-    await check(`Array.from(${body}.querySelector('select[aria-label="Output"]').options).map(o=>o.value).join(',')==='table-main,table-second,disabled,optional'`,'authored display order is independent of accepted execution order');
-    await check(`Array.from(${body}.querySelector('select[aria-label="Output"]').options).filter(o=>o.disabled).map(o=>o.value).join(',')==='disabled,optional'`,'disabled and omitted retained outputs cannot execute or redraw');
-    await check(`${body}.querySelector('select[aria-label="Output"] option[value="optional"]').textContent==='Table optional — Not included in this run'`,'output omission has its own label, not a chart geometry omission');
+    await check(`Array.from(${body}.querySelector('select[aria-label="Chart"]').options).map(o=>o.value).join(',')==='table-main,table-second,disabled,optional'`,'authored display order is independent of accepted execution order');
+    await check(`Array.from(${body}.querySelector('select[aria-label="Chart"]').options).filter(o=>o.disabled).map(o=>o.value).join(',')==='disabled,optional'`,'disabled and omitted retained outputs cannot execute or redraw');
+    await check(`${body}.querySelector('select[aria-label="Chart"] option[value="optional"]').textContent==='Table optional — Not included'`,'output omission has its own label, not a chart geometry omission');
     await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Next').click()`);await waitCalls(before+1);await until(()=>evaluate(`${body}.textContent.includes('3–3 / 3')`),'exact table continuation');
     await check(`calls.at(-1).name==='reporting_view'&&calls.at(-1).arguments.offset===2`,'paging is an explicit retained read');
     await check(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Next').disabled`,'last page has no invented continuation');
     await check(`calls.every(c=>c.name!=='reporting_run')`,'paging did not execute');
-    await evaluate(`const s=${body}.querySelector('select[aria-label="Output"]');s.value='table-second';s.dispatchEvent(new Event('change'));`);await waitCalls(before+2);await waitTitle(fixtures.view.summary.target.id);
+    await evaluate(`const s=${body}.querySelector('select[aria-label="Chart"]');s.value='table-second';s.dispatchEvent(new Event('change'));`);await waitCalls(before+2);await waitTitle(fixtures.view.summary.target.id);
     await check(`calls.at(-1).arguments.output==='table-second'&&calls.at(-1).arguments.offset===0`,'output navigation resets table cursor');
     await evaluate(`context({theme:'dark',locale:'es-AR',styles:{variables:{'--color-text-primary':'url(/attack)'},css:{fonts:'@import url(/attack);body{display:none}'}}})`);
     await until(()=>evaluate(`${doc}.documentElement.dataset.theme==='dark'`),'dark theme');
@@ -248,10 +249,10 @@ try{
     await evaluate(`context({theme:'light',locale:'en-US'});show(fixture.view)`);await waitTitle(fixtures.view.summary.target.id);
     // The run title is unchanged by locale updates. Wait for the actual translated
     // control, rather than treating an already-present title as an acknowledgement.
-    await until(()=>evaluate(`${doc}.documentElement.lang==='en-US'&&Array.from(${body}.querySelectorAll('details > summary')).some(s=>s.textContent==='Run with different filters')`),'English filter controls were not rendered');
-    await evaluate(`const d=Array.from(${body}.querySelectorAll('details')).find(d=>d.textContent.includes('Run with different filters'));d.open=true;const useDefault=d.querySelector('input[type=checkbox]');useDefault.checked=false;useDefault.dispatchEvent(new Event('change'));const input=d.querySelector('input[type=text]');input.value='2';input.dispatchEvent(new Event('input',{bubbles:true}));`);
+    await until(()=>evaluate(`${doc}.documentElement.lang==='en-US'&&Array.from(${body}.querySelectorAll('details > summary')).some(s=>s.textContent==='Change filters')`),'English filter controls were not rendered');
+    await evaluate(`const d=Array.from(${body}.querySelectorAll('details')).find(d=>d.textContent.includes('Change filters'));d.open=true;const useDefault=d.querySelector('input[type=checkbox]');useDefault.checked=false;useDefault.dispatchEvent(new Event('change'));const input=d.querySelector('input[type=text]');input.value='2';input.dispatchEvent(new Event('input',{bubbles:true}));`);
     await check(`calls.every(c=>c.name!=='reporting_run')`,'editing a filter is not execution');
-    const n=await evaluate('calls.length');await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click()`);await waitCalls(n+3);await waitTitle(fixtures.view.summary.target.id);
+    const n=await evaluate('calls.length');await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Refresh with these filters').click()`);await waitCalls(n+3);await waitTitle(fixtures.view.summary.target.id);
     await check(`calls.filter(c=>c.name==='reporting_run').length===1`,'one explicit cost-bearing invocation');
     await check(`calls.filter(c=>c.name==='reporting_run')[0].arguments.arguments[0].value.literal==='2'`,'typed exact filter value');
     await check(`calls.filter(c=>c.name==='reporting_run')[0].arguments.target.revision===fixture.description.resource.target.revision`,'published revision chosen explicitly');
@@ -266,7 +267,7 @@ try{
     await check(`${body}.textContent.includes('Unknown amount count (displayed rows): 9007199254740993')&&${body}.textContent.includes('Evidence: reviewed definition')&&${body}.textContent.includes('Displayed metric unit: count')`,'exact retained amount disclosure and count role remain visible');
     await check(`${body}.textContent.includes('<script>inert</script>')&&${body}.querySelector('script')===null`,'reviewed disclosure labels remain inert text');
     await restore();const policyRunCount=await evaluate("calls.filter(c=>c.name==='reporting_run').length");
-    await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click();`);
+    await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Refresh with these filters').click();`);
     await until(()=>evaluate(`calls.filter(c=>c.name==='reporting_run').length===${policyRunCount+1}`),'certified filter run was not emitted');
     await check("calls.filter(c=>c.name==='reporting_run').at(-1).arguments.policy==='certified_only'",'filter rerun preserves the admitted trust requirement');
 
@@ -276,7 +277,7 @@ try{
       // clicking; the unchanged fixture title could still belong to restore().
       const marker='invalid-selection-'+i;
       await evaluate(`(()=>{const v=JSON.parse(JSON.stringify(fixture.view));v.summary.target.id=${JSON.stringify(marker)};v.accepted_selection.selected=${JSON.stringify(ids)};show(v);})()`);await waitTitle(marker);await waitRunEnabled();
-      await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click()`);
+      await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Refresh with these filters').click()`);
       await until(()=>evaluate(`${body}.textContent.includes('invalid_request')`),'invalid accepted selection was not rejected: '+i);
       await check(`calls.filter(c=>c.name==='reporting_run').length===${runs}`,'malformed accepted selection cannot widen an explicit run');
     }
@@ -285,7 +286,7 @@ try{
     await restore();const initialRuns=await evaluate("calls.filter(c=>c.name==='reporting_run').length");
     for(const field of ['id','kind']){
       await restore();
-      await evaluate(`(()=>{const d=JSON.parse(JSON.stringify(fixture.description));d.resource.target.${field}=${field==='id'?"'different-resource'":"'report'"};window.resultOverride={structuredContent:{result:d},content:[]};window.resultOverrideTool='reporting_describe';Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click();})()`);
+      await evaluate(`(()=>{const d=JSON.parse(JSON.stringify(fixture.description));d.resource.target.${field}=${field==='id'?"'different-resource'":"'report'"};window.resultOverride={structuredContent:{result:d},content:[]};window.resultOverrideTool='reporting_describe';Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Refresh with these filters').click();})()`);
       await until(()=>evaluate(`${body}.textContent.includes('stale_validation')`),'mismatched describe response was accepted');
       await check(`calls.filter(c=>c.name==='reporting_run').length===${initialRuns}`,'description identity cannot redirect a mutation');
       await check(`${body}.querySelector('table,svg')===null`,'mismatched description clears analytical values');
@@ -307,12 +308,12 @@ try{
     await evaluate(`sendRaw({jsonrpc:'2.0',id:80001,method:'tools/call',params:{name:'arbitrary_code'}})`);await until(()=>evaluate('window.lastReply?.id===80001'),'unknown bridge method reply');
     await check(`lastReply.error.code===-32601&&!calls.some(c=>c.name==='arbitrary_code')`,'host instructions cannot invent outbound tools');
     await evaluate(`window.resultOverride={isError:true,structuredContent:{error:{code:'forbidden',outcome:'not_started'}},content:[]};Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Next').click()`);
-    await until(()=>evaluate(`${body}.textContent.includes('forbidden')`),'denial state');
+    await until(()=>evaluate(`${body}.textContent.includes('Report unavailable')`),'denial state');
     await check(`${body}.querySelector('table,svg')===null&&!${body}.textContent.includes('Beta')`,'denial clears prior values and totals');
-    await restore();await evaluate(`const e=JSON.parse(JSON.stringify(fixture.view));e.summary.state='expired';e.summary.expires_at='2000-01-01T00:00:00Z';show(e);`);await until(()=>evaluate(`${body}.textContent.includes('expired')`),'expiry state');
+    await restore();await evaluate(`const e=JSON.parse(JSON.stringify(fixture.view));e.summary.state='expired';e.summary.expires_at='2000-01-01T00:00:00Z';show(e);`);await until(()=>evaluate(`${body}.textContent.includes('no longer available')`),'expiry state');
     await check(`${body}.querySelector('table,svg')===null`,'expired payload never renders values');
     await restore();await evaluate(`const p=JSON.parse(JSON.stringify(fixture.view));p.summary.private=true;p.summary.state='partial';p.summary.target.id='private-partial';show(p);`);await waitTitle('private-partial');
-    await check(`${body}.textContent.includes('Private preview')&&${body}.textContent.includes('Partial result')&&!${body}.textContent.includes('Run with different filters')`,'private partial state remains read-only');
+    await check(`${body}.textContent.includes('Draft preview')&&${body}.textContent.includes('Some data is missing')&&!${body}.textContent.includes('Change filters')`,'private partial state remains read-only');
     await restore();await evaluate(`sendRaw({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:{oversized:'X'.repeat(17*1024*1024)}})`);await until(()=>evaluate(`${body}.textContent.includes('limit_exceeded')`),'oversized message bound');
     await check(`${body}.querySelector('table,svg')===null`,'oversized response clears old analytical state');
     await restore();await evaluate(`sendRaw({jsonrpc:'2.0',id:90001,method:'ui/resource-teardown'})`);await until(()=>evaluate('window.lastReply?.id===90001'),'teardown response');

@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "82" || len(manifest) != 82 {
+	if err != nil || SchemaVersion() != "90" || len(manifest) != 90 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -90,6 +90,14 @@ func TestSafeErrors(t *testing.T) {
 		{79, "migrations/080_nlq_grouped_fact_predicates.sql", "independent_filtered_grouped_populations"},
 		{80, "migrations/081_nlq_scalar_predicate_entailment.sql", "nlq_scalar_entailment_binding_shape"},
 		{81, "migrations/082_protected_clarification_origin.sql", "protected_saved_route_equal"},
+		{82, "migrations/083_private_document_block_refs.sql", "document_private_publication_guard"},
+		{83, "migrations/084_authoring_preparations.sql", "immutable_authoring_preparation"},
+		{84, "migrations/085_authoring_preparation_audit.sql", "authoring.preparation_reserved"},
+		{85, "migrations/086_authoring_option_operations.sql", "authoring_option_read_start"},
+		{86, "migrations/087_authoring_preparation_retention.sql", "preparation_has_liability"},
+		{87, "migrations/088_chart_presentation.sql", "block_presentation_check"},
+		{88, "migrations/089_source_dataset_blocks.sql", "preparation_origin_exclusive"},
+		{89, "migrations/090_physical_option_columns.sql", "option_column_coordinates"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {

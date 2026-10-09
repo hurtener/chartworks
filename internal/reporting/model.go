@@ -113,8 +113,9 @@ type DimensionReference struct {
 // Parameter uses exact text for scalar values. Only the domain binder converts
 // them to the common reader's typed bind parameters; SQL fragments are absent.
 type Parameter struct {
+	Column     *ColumnReference    `json:"column,omitempty"`
 	Name       string              `json:"name"`
-	Type       string              `json:"type" jsonschema:"enum=date,enum=datetime,enum=relative_period,enum=dimension_value,enum=number,enum=integer,enum=boolean,enum=grain,enum=top_n,enum=dimension_list,enum=number_list,enum=integer_list"`
+	Type       string              `json:"type" jsonschema:"enum=date,enum=datetime,enum=relative_period,enum=dimension_value,enum=number,enum=integer,enum=boolean,enum=grain,enum=top_n,enum=dimension_list,enum=number_list,enum=integer_list,enum=dimension_set,enum=date_range,enum=column_value,enum=column_set,enum=column_range"`
 	Required   bool                `json:"required"`
 	Default    *Value              `json:"default,omitempty"`
 	Min        string              `json:"min,omitempty"`
@@ -124,11 +125,19 @@ type Parameter struct {
 	ListLength int                 `json:"list_length,omitempty" jsonschema:"minimum=0,maximum=32"`
 }
 
-// Value carries exactly one scalar literal or a structured period.
+// DateRange is a half-open range of civil dates, independent of any timezone.
+type DateRange struct {
+	Start        string `json:"start"`
+	EndExclusive string `json:"end_exclusive"`
+}
+
+// Value is a closed typed union interpreted by its parameter declaration.
 type Value struct {
-	Literal string   `json:"literal,omitempty"`
-	Period  *Period  `json:"period,omitempty"`
-	Items   []string `json:"items,omitempty"`
+	Range     *ScalarRange `json:"range,omitempty"`
+	DateRange *DateRange   `json:"date_range,omitempty"`
+	Literal   string       `json:"literal,omitempty"`
+	Period    *Period      `json:"period,omitempty"`
+	Items     []string     `json:"items,omitempty"`
 }
 
 // Argument assigns a typed value to a declared parameter by name.
@@ -167,11 +176,12 @@ type Resolution struct {
 
 // BoundValue records the resolved parameter identity, origin and digest without SQL fragments.
 type BoundValue struct {
-	Name       string  `json:"name"`
-	Type       string  `json:"type"`
-	Provenance string  `json:"provenance"`
-	Window     *Window `json:"window,omitempty"`
-	Digest     string  `json:"digest"`
+	DateRange  *DateRange `json:"date_range,omitempty"`
+	Name       string     `json:"name"`
+	Type       string     `json:"type"`
+	Provenance string     `json:"provenance"`
+	Window     *Window    `json:"window,omitempty"`
+	Digest     string     `json:"digest"`
 }
 
 // Resolved contains exact typed execution binds and their resolution evidence.
@@ -222,6 +232,7 @@ type Output struct {
 // Definition is private authoring/persistence input. Never return this type from
 // a normal block read: SQL has its own separately authorized projection.
 type Definition struct {
+	SourceDataset      *SourceDatasetPin   `json:"source_dataset,omitempty"`
 	AmountCompleteness []AmountDeclaration `json:"amount_completeness,omitempty"`
 	QueryLimits        *QueryLimits        `json:"query_limits,omitempty"`
 	ResultPolicy       []ResultFieldPolicy `json:"result_policy,omitempty"`
@@ -251,6 +262,8 @@ type RulePin struct {
 
 // Provenance records the server-derived origin of an authored revision.
 type Provenance struct {
+	// RuleAbsence is a server-owned prepared-origin fence, never client input.
+	RuleAbsence      []TopicPin                `json:"rule_absence,omitempty"`
 	CaptureDigest    string                    `json:"capture_digest,omitempty"`
 	Kind             string                    `json:"kind"`
 	ParentRevision   int64                     `json:"parent_revision,omitempty"`
@@ -299,6 +312,7 @@ type Reference struct {
 
 // State contains the CAS version and current lifecycle pointers for a stable block identity.
 type State struct {
+	Source            string    `json:"source,omitempty"`
 	ID                string    `json:"id"`
 	Topic             string    `json:"topic"`
 	Version           int64     `json:"version"`
@@ -402,6 +416,7 @@ type Trust struct {
 // View deliberately has no Definition, SQL or private capture provenance field.
 // JSON reflection cannot accidentally expose them when a new field is added.
 type View struct {
+	SourceDataset      *SourceDatasetPin      `json:"source_dataset,omitempty"`
 	AmountCompleteness []AmountDeclaration    `json:"amount_completeness,omitempty"`
 	SchemaVersion      int                    `json:"schema_version"`
 	QueryLimits        *QueryLimits           `json:"query_limits,omitempty"`

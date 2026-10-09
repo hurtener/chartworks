@@ -56,7 +56,7 @@ func ProjectDocument(raw json.RawMessage, kind string, limits config.ReportingCo
 		return DocumentDefinition{}, err
 	}
 	if d.SchemaVersion == 1 {
-		if kind != "report" || len(d.Widgets) != 0 || len(d.Pages) != 0 || len(d.Sections) == 0 || len(d.Sections) > limits.MaxWidgets {
+		if kind != "report" || len(d.Widgets) != 0 || len(d.Pages) != 0 || len(d.ReportPages) != 0 || len(d.Sections) == 0 || len(d.Sections) > limits.MaxWidgets {
 			return DocumentDefinition{}, ErrInvalid
 		}
 		row := 0
@@ -168,7 +168,14 @@ func validWidget(w Widget, limits config.ReportingComposition) bool {
 		}
 		return w.Query != nil && w.Block == nil && w.Text == nil && len(w.Literals)+len(w.Bindings)+len(w.Overrides) == 0 && validQuerySelections(*w.Query)
 	case "block":
-		if w.Block == nil || w.Block.Limits != nil && !w.Block.Limits.valid() || w.Query != nil || w.Text != nil || !identity.Identifier(w.Block.Block) || w.Block.Revision < 0 || w.Block.Revision > 256 || len(w.Block.Outputs) > 64 || !slices.Contains([]string{"", "published", "certified_only", "explicit_stale"}, w.Block.Policy) {
+		if w.Block == nil || w.Block.Limits != nil && !w.Block.Limits.valid() || w.Query != nil || w.Text != nil || !identity.Identifier(w.Block.Block) || w.Block.Revision < 0 || w.Block.Revision > 256 || len(w.Block.Outputs) > 64 || !slices.Contains([]string{"", "published", "certified_only", "explicit_stale", "private_preview"}, w.Block.Policy) {
+			return false
+		}
+		if w.Block.Policy == "private_preview" {
+			if w.Block.Revision < 1 || !hashValid(w.Block.Digest) {
+				return false
+			}
+		} else if w.Block.Digest != "" {
 			return false
 		}
 		seen := map[string]bool{}
@@ -208,7 +215,7 @@ func validWidget(w Widget, limits config.ReportingComposition) bool {
 // ValidateDocument checks bounded tagged unions, not reference existence or
 // source authority. emptyPages is reserved for an authorized redacted read.
 func ValidateDocument(kind string, d DocumentDefinition, limits config.ReportingComposition, emptyPages bool) error {
-	if limits.Validate() != nil || !documentKind(kind) || d.SchemaVersion != DocumentVersion || len(d.Sections) != 0 || !validDocumentMetadata(d) || !slices.Contains([]string{"", "fail_closed", "allow_partial"}, d.PartialFailure) {
+	if limits.Validate() != nil || !documentKind(kind) || (d.SchemaVersion != DocumentVersion && d.SchemaVersion != PagedDocumentVersion) || len(d.Sections) != 0 || !validDocumentMetadata(d) || !slices.Contains([]string{"", "fail_closed", "allow_partial"}, d.PartialFailure) {
 		return ErrInvalid
 	}
 	raw, err := json.Marshal(d)
@@ -216,6 +223,9 @@ func ValidateDocument(kind string, d DocumentDefinition, limits config.Reporting
 		return ErrInvalid
 	}
 	if kind == "dashboard" {
+		if d.SchemaVersion != DocumentVersion || d.ReportPages != nil {
+			return ErrInvalid
+		}
 		if len(d.Widgets)+len(d.Filters)+len(d.Defaults) != 0 || len(d.Pages) > limits.MaxPages || !emptyPages && len(d.Pages) == 0 {
 			return ErrInvalid
 		}
@@ -228,7 +238,50 @@ func ValidateDocument(kind string, d DocumentDefinition, limits config.Reporting
 		}
 		return nil
 	}
-	if len(d.Pages) != 0 || len(d.Widgets) == 0 || len(d.Widgets) > limits.MaxWidgets || len(d.Filters) > limits.MaxFilters || len(d.Defaults) > 64 {
+	if d.SchemaVersion == PagedDocumentVersion {
+		if d.Pages != nil || d.Widgets != nil || d.Filters != nil || d.Defaults != nil || len(d.ReportPages) < 1 || len(d.ReportPages) > limits.MaxPages {
+			return ErrInvalid
+		}
+		pages, widgets := map[string]bool{}, map[string]bool{}
+		widgetCount, filterCount, defaultCount := 0, 0, 0
+		for _, p := range d.ReportPages {
+			if p.Widgets == nil || !identity.Identifier(p.ID) || pages[p.ID] || strings.TrimSpace(p.Title) == "" || !text(p.Title, 256) || p.Locale != "" && !locale(p.Locale) {
+				return ErrInvalid
+			}
+			if p.Timezone != "" {
+				if _, err := namedZone(p.Timezone); err != nil {
+					return ErrInvalid
+				}
+			}
+			pages[p.ID] = true
+			widgetCount += len(p.Widgets)
+			filterCount += len(p.Filters)
+			defaultCount += len(p.Defaults)
+			if widgetCount > limits.MaxWidgets || filterCount > limits.MaxFilters || defaultCount > 64 {
+				return ErrInvalid
+			}
+			for _, w := range p.Widgets {
+				if widgets[w.ID] {
+					return ErrInvalid
+				}
+				widgets[w.ID] = true
+			}
+		}
+		for _, canvas := range ReportCanvases(d) {
+			if err := validateReportCanvas(canvas.Definition, limits, true); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if d.ReportPages != nil {
+		return ErrInvalid
+	}
+	return validateReportCanvas(d, limits, false)
+}
+
+func validateReportCanvas(d DocumentDefinition, limits config.ReportingComposition, allowEmpty bool) error {
+	if len(d.Pages) != 0 || !allowEmpty && len(d.Widgets) == 0 || len(d.Widgets) > limits.MaxWidgets || len(d.Filters) > limits.MaxFilters || len(d.Defaults) > 64 {
 		return ErrInvalid
 	}
 	filters, used := map[string]Parameter{}, map[string]bool{}
@@ -248,6 +301,9 @@ func ValidateDocument(kind string, d DocumentDefinition, limits config.Reporting
 	}
 	seen = map[string]bool{}
 	for i, widget := range d.Widgets {
+		if !allowEmpty && widget.Block != nil && widget.Block.Policy == "private_preview" {
+			return ErrInvalid
+		}
 		if !validWidget(widget, limits) || seen[widget.ID] {
 			return ErrInvalid
 		}

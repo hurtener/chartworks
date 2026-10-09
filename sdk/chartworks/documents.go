@@ -67,6 +67,9 @@ type DocumentFilterOptionsRequest = reporting.FilterOptionsRequest
 // DocumentFilterBinding maps a report filter to a block parameter, not security policy.
 type DocumentFilterBinding = reporting.FilterBinding
 
+// ReportPage is an inline canvas owned by one immutable report revision.
+type ReportPage = reporting.ReportPage
+
 // DocumentPage is an ordered exact published report reference.
 type DocumentPage = reporting.DocumentPage
 
@@ -210,7 +213,7 @@ func (c *Client) ListDocuments(ctx context.Context, kind DocumentKind, after str
 // be reused with changed report, revision, filter, search, limit or authority.
 func (c *Client) ReportFilterOptions(ctx context.Context, report string, in DocumentFilterOptionsRequest) (out DocumentFilterOptionsPage, err error) {
 	path, pathErr := documentPath(ReportDocument, report)
-	if pathErr != nil || report == "" || in.Revision < 1 || in.Revision > 256 || !identity.Identifier(in.Filter) || in.Limit < 1 || in.Limit > 200 || len(in.Search) > 256 || len(in.Cursor) > 16<<10 {
+	if pathErr != nil || report == "" || in.Page != "" && !identity.Identifier(in.Page) || in.Revision < 1 || in.Revision > 256 || !identity.Identifier(in.Filter) || in.Limit < 1 || in.Limit > 200 || len(in.Search) > 256 || len(in.Cursor) > 16<<10 {
 		return out, ErrDocumentRequest
 	}
 	err = c.callLimit(ctx, "POST", path+"/filter-options", "", in, &out, 2<<20)

@@ -422,6 +422,10 @@ func httpFault(err error) (int, string) {
 	}
 	status, code := 503, "unavailable"
 	switch {
+	case errors.Is(err, reporting.ErrPreparationContract):
+		status, code = 409, "preparation_contract_required"
+	case errors.Is(err, reporting.ErrPreparationOperationExpired):
+		status, code = 410, "preparation_operation_expired"
 	case errors.Is(err, access.ErrUnauthenticated):
 		status, code = 401, "unauthenticated"
 	case errors.Is(err, access.ErrForbidden), errors.Is(err, nlqexec.ErrInspectionRequired):

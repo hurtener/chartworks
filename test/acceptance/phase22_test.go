@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -50,12 +51,15 @@ type phase22Fixture struct {
 	bearer    string
 }
 
+const phase22MetricSQL = "SELECT id, sum(amount) AS amount FROM analytics.sales GROUP BY id ORDER BY id"
+
 func newPhase22Fixture(t *testing.T) *phase22Fixture {
 	t.Helper()
 	f := newPhase18Fixture(t)
 	f.model.embeddingMode.Store("fixed")
 	f.model.rerankMode.Store("fixed")
-	f.model.mode.Store(phase18RawResponse(t, "SELECT id, amount FROM analytics.sales ORDER BY id"))
+	// The question selects a reviewed SUM. Raw amount rows are not that metric.
+	f.model.mode.Store(phase18RawResponse(t, phase22MetricSQL))
 	query, published := newPhase18Service(t, f)
 	byo, _, _ := phase19Service(t, f, config.DefaultQueryBundles(), nil, f.service, nil)
 	options := config.DefaultCharts().ServiceOptions()
@@ -222,6 +226,20 @@ func TestPhase22(t *testing.T) {
 	dataset := sources.DatasetDescribeRequest{Source: ref.Source, Context: ref.Context, Dataset: ref.Dataset}
 	t.Run("AC01", func(t *testing.T) {
 		beforeModel, beforeSource := f.domain.model.requests.Load(), f.domain.f.lookups.Load()
+		t.Run("ServiceConnectionDiscovery", func(t *testing.T) {
+			connection := f.token(t, f.domain.e.Tenant(), "svc:coordinator", "discovery-session", []string{"capability:connect"}, true)
+			c := f.client(t, connection)
+			listed, err := c.MCP(t.Context(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+			if err != nil || !strings.Contains(string(listed), `"describe_dataset"`) {
+				t.Fatalf("static discovery failed: %v", err)
+			}
+			for _, body := range []string{`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"describe_dataset","arguments":{}}}`, `{"jsonrpc":"2.0","id":3,"method":"resources/read","params":{"uri":"chartworks://topics/commerce"}}`} {
+				out, err := c.MCP(t.Context(), json.RawMessage(body))
+				if err != nil || !strings.Contains(string(out), `"message":"forbidden"`) {
+					t.Fatalf("service connection crossed discovery: %s %v", out, err)
+				}
+			}
+		})
 		bare := f.token(t, f.domain.e.Tenant(), f.domain.e.User(), "phase22-session", []string{"mcp.use"}, true)
 		for _, tool := range f.registry.Manifest() {
 			out := phase22RawTool(t, f.client(t, bare), tool.Name, map[string]any{})
@@ -301,7 +319,7 @@ func TestPhase22(t *testing.T) {
 		if contextResult.Bundle == nil {
 			t.Fatal("no exact BYO context", contextResult)
 		}
-		submission := nlqbyo.SubmitRequest{Reference: contextResult.Bundle.Reference, Operation: "phase22-step", SQL: "SELECT id, amount FROM analytics.sales ORDER BY id", Parameters: []readexec.Parameter{}}
+		submission := nlqbyo.SubmitRequest{Reference: contextResult.Bundle.Reference, Operation: "phase22-step", SQL: phase22MetricSQL, Parameters: []readexec.Parameter{}}
 		step := phase22Call[nlqbyo.SubmitResult](t, client, "submit_sql", submission)
 		if !step.ValuesAvailable || step.Result == nil || len(step.Result.Rows) != 2 {
 			t.Fatal("real BYO step missing values", step)
@@ -324,10 +342,10 @@ func TestPhase22(t *testing.T) {
 	})
 	t.Run("AC03", func(t *testing.T) {
 		inventory := f.registry.Manifest()
-		if len(inventory) != 22 {
+		if len(inventory) != len(f.bindings) {
 			t.Fatal("missing concrete bindings", len(inventory))
 		}
-		expected := []string{"list_topics", "describe_topic", "list_datasets", "describe_dataset", "preflight_question", "plan_question", "run_question", "refine_question", "get_query_context", "submit_sql", "submit_feedback", "review_example", "list_examples", "export_examples", "import_example"}
+		expected := []string{"list_source_page", "list_topics", "describe_topic", "list_datasets", "describe_dataset", "preflight_question", "plan_question", "run_question", "refine_question", "get_query_context", "submit_sql", "submit_feedback", "review_example", "list_examples", "export_examples", "import_example"}
 		seen := map[string]bool{}
 		httpRegistry := phase21Registry(t)
 		definitions := map[string]api.Definition{}
@@ -475,6 +493,10 @@ func TestPhase22(t *testing.T) {
 	})
 	t.Run("AC06", func(t *testing.T) {
 		beforeModel, beforeSource := f.domain.model.requests.Load(), f.domain.f.lookups.Load()
+		sourcePage := phase22Call[sources.SourcePage](t, client, "list_source_page", sources.SourceListRequest{Limit: 32})
+		if len(sourcePage.Items) == 0 {
+			t.Fatal("missing source page")
+		}
 		sourceList := phase22Call[[]sources.Source](t, client, "list_sources", struct{}{})
 		if len(sourceList) == 0 {
 			t.Fatal("missing source metadata")
@@ -502,8 +524,23 @@ func TestPhase22(t *testing.T) {
 			t.Fatal(err)
 		}
 		list, err := local.ListTools(t.Context())
-		if err != nil || len(list.Tools) != 18 {
+		if err != nil {
 			t.Fatal("in-process discovery", err)
+		}
+		var want, got []string
+		for _, tool := range f.registry.Manifest() {
+			action, _ := tool.Meta["chartworks/action"].(string)
+			if slices.Contains(f.scopes, action) {
+				want = append(want, tool.Name)
+			}
+		}
+		for _, tool := range list.Tools {
+			got = append(got, tool.Name)
+		}
+		sort.Strings(want)
+		sort.Strings(got)
+		if !reflect.DeepEqual(want, got) || !slices.Contains(got, "list_source_page") {
+			t.Fatal("in-process discovery differs from permitted registrations", want, got)
 		}
 		resources, err := local.ListResources(t.Context())
 		if err != nil || len(resources.Resources) != 1 {

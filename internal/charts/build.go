@@ -11,6 +11,24 @@ import (
 // Build applies an exact saved mapping without selection, rebinding, SQL or models.
 // Returned rows/definitions are detached; callers cannot mutate shared input.
 func Build(ctx context.Context, d Data, m Mapping, limits Limits) (Output, error) {
+	out, err := buildCanonical(ctx, d, m, limits)
+	if err != nil || m.Presentation == nil {
+		return out, err
+	}
+	// Every builder finishes exact calculations with canonical metadata first.
+	// Only the detached renderer column projection receives display overrides.
+	out.Columns = projectPresentationColumns(m)
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		return Output{}, ErrInvalid
+	}
+	if len(encoded) > limits.MaxBytes*4 {
+		return Output{}, ErrLimit
+	}
+	return out, ctx.Err()
+}
+
+func buildCanonical(ctx context.Context, d Data, m Mapping, limits Limits) (Output, error) {
 	if err := ValidateMapping(ctx, d, m, limits); err != nil {
 		return Output{}, err
 	}

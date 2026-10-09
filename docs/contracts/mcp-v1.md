@@ -16,13 +16,19 @@ MCP to be enabled. There is no stdio authentication mode, second listener, token
 exchange, local API key, cookie identity, or token-in-URL fallback.
 
 Every request requires a **fresh Pengui bearer** verified for the configured MCP
-intended audience and the signed `mcp.use` action. A tool additionally requires its
+intended audience. Interactive requests require the signed `mcp.use` action. A tool additionally requires its
 registered domain action and all resource/session/dependency restrictions enforced
 by the ordinary service. Use distinct `auth.audiences.http` and `.mcp` values to
 prevent cross-surface replay; the pre-existing explicit same-audience shorthand
 continues to mean exactly what the operator configured. The outer phase-21 guard
-uses the mount's MCP audience, not the HTTP audience. There is no special authority
-for initialization, discovery, a transport session ID or an in-process caller.
+uses the mount's MCP audience, not the HTTP audience. The sole discovery-only alternative is the existing Pengui service connection
+bearer: a verified service identity with exactly `capability:connect`. It may
+initialize, ping, and list static tool/resource/template descriptors across enabled
+groups. It cannot call any tool or read any resource, including App HTML. This
+Optional `prompts/list` returns JSON-RPC method-not-found, not an HTTP framing
+failure. This profile grants no domain action or resource reach; user tokens, mixed scope
+profiles and wrong audiences do not qualify. See D-104. A transport session ID
+or in-process caller never confers authority.
 
 `mcp.allowed_hosts` lists exact destination host names/IPs, without ports or
 wildcards. The port in an HTTP Host must be valid, but does not create authority.
@@ -37,7 +43,8 @@ and [Pengui registration guide](pengui-provider-registration.md).
 ## Real tool inventory
 
 Only installed services in enabled groups are registered. `tools/list` filters
-this metadata by the caller's current domain actions. Resource restrictions are
+this metadata by the caller's current domain actions, except that the exact
+service connection profile lists the static inventory for runtime registration. Resource restrictions are
 checked again at invocation, not inferred from tool visibility. A production
 composition with all optional services available has sixty bindings:
 
@@ -109,6 +116,31 @@ tool names/operation IDs and ambiguous resource templates fail construction.
 no manually maintained second business registry. Registration and acceptance tests
 compare all current bindings to the actual HTTP definitions.
 
+The optional manual-authoring surface also registers the four
+[governed option operations](governed-authoring-options-v1.md) using the same
+closed HTTP DTOs, primary actions, errors and audit classifications. Dataset and
+report option Search can read a source and persist custody; status is retained
+metadata only; cancel/reconcile is explicit original-attempt control. The
+assembled inventory is 91 default tools or 96 with optional renditions, within
+the unchanged 96-tool registry ceiling and existing request/schema limits.
+
+The four [manual lifecycle operations](manual-publication-lifecycle-v1.md) add
+retained `reporting_authoring_lifecycle_v1` inspection and three metadata-only
+mutations: `reporting_authoring_block_publish_v1`,
+`reporting_authoring_rebind_published_v1`, and
+`reporting_authoring_report_transition_v1`. They use the shared domain DTOs,
+errors, resource loaders and native audit transactions. Inspection is read-only
+and idempotent; mutations persist metadata and are not idempotent, paid,
+open-world or destructive. All four declare `Replay=never` for generic callers.
+The report-transition editor entry requires `reporting.write`; native publish and
+reject independently require `reporting.publish` plus exact report publish reach.
+
+Publication guidance requires explicit user confirmation after whole-revision,
+all-output disclosure; eligibility for existing authorized readers is neither a
+grant nor an audience count. Chart publication, selected reference rebind, report
+review and report publication remain separate. After an unknown mutation result,
+inspect the original exact revision rather than automatically repeating it.
+
 ## Effects and outcomes
 
 MCP annotations and `chartworks/*` metadata describe actual work, not merely
@@ -139,6 +171,15 @@ the original bearer is not copied into its request extras or stored as a session
 
 ## Metadata resources
 
+Manual-report callbacks advertise `_meta.ui.visibility: ["model", "app"]`
+through the existing binding metadata. This includes authoring operations, topic
+description, chart catalog and reporting delivery reads/actions required by the
+shared App. Resource attachment is separate: a callback need not attach another
+HTML document. Visibility is not authority; verified actions, dependency/context
+reach and the host's closed operation list still apply. The full actual factory
+inventory regression requires these declarations and excludes unrelated query
+execution from App visibility.
+
 Three resource bindings invoke the same pure service adapters as their tools:
 
 | URI or template | Tool |
@@ -155,6 +196,36 @@ Every actual topic/dataset read checks current tenant and dependency/context rea
 Topic reads expose immutable publication DTOs, never private draft payloads.
 These are retained metadata, not live source-health promises, analytical artifacts,
 HTML Apps resources or rendered charts. Reads make no source/model call.
+
+## Consumable manual-authoring documentation
+
+The existing `report_app_guide_v1` binding also associates the explicit public
+[authoring document catalog](report-authoring-guide-v1.md). These are full Markdown
+resources, not tools or repo-relative file-loading instructions. The compact guide
+retains its old fields and adds typed `resources` descriptors with URI, version,
+MIME type, description, SHA-256, byte count and source document reference.
+
+Ten maintained contracts/guides are embedded directly from their allowlisted
+repository files. No hidden agent configuration, arbitrary file loader, tenant
+content, SQL payload, credential, network callback or source/model invocation is
+present. List returns metadata; read returns exactly one document. The workflow
+entry is `chartworks://report_app/docs/workflows/v1`; the pages contract is
+`chartworks://report_app/docs/pages/v3`. Read the other exact URIs from discovery.
+
+Every read revalidates the current envelope and native `reporting.read` action,
+in addition to MCP admission and `mcp.use`. The same immutable reader serves
+registered HTTP POST `/v1/reporting/authoring/v1/documentation` with `{uri}` and the
+typed SDK. Unknown versions, query/fragment/percent aliases and unregistered paths
+are denied. Catalog registration rejects duplicate/resource-template collisions
+and mismatched or mutating action associations. The dedicated documentation
+namespace cannot shadow an independent tool resource.
+
+Limits are sixteen documents, 64 KiB each, 256 KiB in aggregate, plus unchanged
+serialized MCP response bounds. The existing 91 default / 96 optional tools and
+all request, concurrency, source and renderer limits remain unchanged. Resources
+are immutable per build; exact digests make release content changes detectable.
+Incompatible revisions use a new versioned URI. Static documentation grants no
+resource reach and does not certify host/deployment qualification.
 
 ## Transport profile, limits and clients
 

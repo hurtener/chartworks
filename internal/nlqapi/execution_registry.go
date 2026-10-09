@@ -94,6 +94,8 @@ func executionErrors() []api.ErrorResponse {
 		{Status: http.StatusUnprocessableEntity, Code: "generation_context_insufficient", Generation: true},
 		{Status: http.StatusUnprocessableEntity, Code: "insufficient_context"},
 		{Status: http.StatusUnprocessableEntity, Code: "sql_unsafe"},
+		{Status: http.StatusUnprocessableEntity, Code: "analytical_mismatch"},
+		{Status: http.StatusUnprocessableEntity, Code: "analytical_unsupported"},
 		{Status: http.StatusUnprocessableEntity, Code: "unsupported"},
 		{Status: http.StatusUnprocessableEntity, Code: "validation_budget_exhausted"},
 		{Status: http.StatusUnprocessableEntity, Code: "execution_budget_exhausted"},

@@ -71,6 +71,17 @@ func CheckCompositionBlock(e identity.Envelope, g CompositionGroup, snapshot Sna
 	if g.Kind != "block" || snapshot.State.ID != g.Block || snapshot.Revision.Number != g.Revision || snapshot.Revision.Digest != g.Definition || snapshot.Revision.ExecutionDigest != g.Execution || snapshot.Validation == nil || snapshot.Validation.BindingDigest != exec.Hash(g.Binding) || digest(snapshot.Validation.Rules) != digest(g.Rules) {
 		return ErrStale
 	}
+	if g.Policy == "private_preview" {
+		if !g.Private {
+			return ErrInvalid
+		}
+		if err := CheckDocumentBlockReference(e, BlockWidget{Block: g.Block, Revision: g.Revision, Digest: g.Definition, Policy: g.Policy}, snapshot); err != nil {
+			return err
+		}
+		if err := freshValidation(snapshot, snapshot.Validation.Evidence.ID, time.Now()); err != nil {
+			return err
+		}
+	}
 	if g.Variant != nil {
 		if err := CheckCapturedQueryVariant(g.Variant, snapshot); err != nil {
 			return err

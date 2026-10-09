@@ -28,6 +28,9 @@ func (s *Runs) pinnedPlan(ctx context.Context, e identity.Envelope, m RunManifes
 	if err = runEligibility(e, snapshot, m.Policy, time.Now()); err != nil {
 		return exec.Plan{}, err
 	}
+	if err := s.blocks.checkAuthoringRuleAbsence(ctx, e, snapshot.Revision); err != nil {
+		return exec.Plan{}, err
+	}
 	d := m.Revision.Definition
 	definitions, _, err := s.blocks.resolveDefinitions(ctx, e, d, true)
 	if err != nil {
@@ -44,7 +47,7 @@ func (s *Runs) pinnedPlan(ctx context.Context, e identity.Envelope, m RunManifes
 	if exec.Hash(binding) != exec.Hash(m.Binding) {
 		return exec.Plan{}, ErrStale
 	}
-	scope, err := validationScope(binding, definitions)
+	scope, err := definitionValidationScope(binding, d, definitions)
 	if err != nil {
 		return exec.Plan{}, err
 	}
@@ -120,6 +123,9 @@ func (s *Runs) queryFrozen(ctx context.Context, e identity.Envelope, inv jobs.In
 		return s.repo.ReserveFrozenQuery(callCtx, inv, options)
 	})
 	if err != nil {
+		return RunRecord{}, err
+	}
+	if err := s.blocks.checkAuthoringRuleAbsence(queryCtx, e, m.Revision); err != nil {
 		return RunRecord{}, err
 	}
 	report, executeErr := s.blocks.executor.Execute(queryCtx, e, plan, exec.Options{Operation: m.ID, Number: number,

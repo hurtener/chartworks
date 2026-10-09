@@ -12,7 +12,7 @@ Briefs 04, 14: asymmetric verification, signed identity, bounded key refresh, sa
 
 ## Findings I'm departing from
 
-D-044 removes both issuer-driver modes, API-key exchange, signing secrets, local bootstrap and local service-account creation. Pengui alone issues authority. Apps compatibility is established and unrelated to this work. The actual provider minter supplies at most 32 scopes / 256 bytes each / 4096 bytes total, not a guessed larger claim contract.
+D-044 removes both issuer-driver modes, API-key exchange, signing secrets, local bootstrap and local service-account creation. Pengui alone issues authority. Apps compatibility is established and unrelated to this work. The coordinated [D-105](../decisions/2026-10-09-reporting-capacity.md) provider minter and consumer supply at most 128 scopes / 256 bytes each / 16,384 bytes total. Explicit smaller verifier settings remain binding.
 
 ## Scope and implementation tasks
 

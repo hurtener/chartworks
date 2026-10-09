@@ -93,6 +93,9 @@ func validateColumn(c Column) error {
 	if c.Format.DatePattern != "" && c.Type != "temporal" {
 		return ErrInvalid
 	}
+	if c.Format.PreservePrecision && (!numeric(c.Type) || c.Format.FractionDigits != 0 || c.Format.Percent != "") {
+		return ErrInvalid
+	}
 	if !numeric(c.Type) && (c.Role == "measure" || c.Role == "kpi" || c.Aggregation != "" || c.Format.Currency != "" || c.Format.Percent != "" || c.Format.FractionDigits != 0) ||
 		c.Role == "time" && c.Type != "temporal" || c.Grain != "" && c.Type != "temporal" {
 		return ErrInvalid
@@ -223,7 +226,9 @@ func columnIndex(columns []Column, id string) int {
 }
 
 func temporal(s string) (time.Time, bool) {
-	for _, format := range []string{time.RFC3339Nano, "2006-01-02 15:04:05.999999999Z07:00", "2006-01-02 15:04:05.999999999", "2006-01-02", "2006-01", "2006"} {
+	// PostgreSQL's ISO output abbreviates whole-hour offsets (for example +00).
+	// Interpret that explicit offset without rewriting the retained value.
+	for _, format := range []string{time.RFC3339Nano, "2006-01-02 15:04:05.999999999Z07:00", "2006-01-02 15:04:05.999999999Z07", "2006-01-02 15:04:05.999999999", "2006-01-02", "2006-01", "2006"} {
 		if value, err := time.Parse(format, s); err == nil {
 			return value, true
 		}

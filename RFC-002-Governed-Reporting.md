@@ -4,11 +4,16 @@ Status: implementation design, revised 2026-09-04. RFC-001 controls shared archi
 
 ## 1. Product boundary
 
-Explore a question, turn a useful result into a reviewed reusable definition, execute it predictably, retain the evidence/result and consume it through API, MCP Apps, iframe or static rendering. No standalone builder is required. Harbor/Pengui Apps support is established; no host qualification work is introduced.
+Explore a question, turn a useful result into a reviewed reusable definition, execute it predictably, retain the evidence/result and consume it through API, MCP Apps, iframe or static rendering. No standalone builder is required. D-096 adds an optional manual Builder/Consumer application over the same document and result contracts, shared between MCP Apps and a registered embedded iframe. Harbor/Pengui Apps support is established; no host qualification work is introduced.
 
 Pengui owns identity/access decisions and signs authority. Chartworks verifies JWTs, applies signed scopes/restrictions and enforces business/data-safety invariants. No local issuer, role/grant/service-account registry, bootstrap or embed credential service. Read [the authority contract](docs/contracts/pengui-authority.md).
 
 All learned-model operations, including narrative, authoring assistance, embeddings and rerank, use [the embedded Bifrost SDK with remote providers](docs/contracts/model-gateway.md). No local models, weight downloads or alternate direct-compatible client. Frozen/no-narrative execution and artifact viewing remain independent of provider health.
+
+[D-109](docs/decisions/2026-10-09-physical-option-search.md) extends explicit option
+lookup to typed physical fields from authorized registered datasets or reviewed
+topics. Exact typed values and full source/context/schema pins use the existing
+validated read/custody service, never name-based analysis or invented topics.
 
 ## 2. Domain and custody
 
@@ -49,6 +54,13 @@ Dynamic widgets require explicit opt-in and ordinary query safety/scope/budgets.
 ## 5. Parameters, outputs and presentation
 
 Preserve date/datetime/relative period/dimension value/number/integer/boolean/grain/top-N types, required/default/range/enum rules, locale/timezone and value provenance. Bind values rather than SQL fragments; identifier-like choices map to closed approved structures.
+
+[D-108](docs/decisions/2026-10-09-physical-column-filters.md) additionally permits
+physical-column value/set/range filters without reviewed dimensions. Their
+registered schema pin, actual type and positive SQL predicate are revalidated;
+report bindings compare the complete reference. Temporal ranges use explicit
+Gregorian civil semantics and a required IANA zone for instants, rejecting
+ambiguous or nonexistent local times. Existing parameter formats remain intact.
 
 Canonical precedence: block default -> report global default -> widget literal -> declared filter binding -> explicitly permitted invocation override. Same-level conflicts fail. Imports normalize old precedence with equivalent result fixtures rather than assuming every source path used this order. Security restrictions are not overridable business filters.
 
@@ -120,3 +132,84 @@ charged-memory boundary of at most 1 GiB and a separate fixed 3 GiB virtual-addr
 ceiling. Missing controller or namespace enforcement fails closed; the application
 does not provision the host or substitute in-process rendering. Deployment
 qualification remains separate from pure functional tests.
+
+## Canvas-first manual authoring continuation
+
+[D-106](docs/decisions/2026-10-09-schema-driven-authoring.md) adds schema-driven
+field authoring to this continuation. Physical columns and reviewed semantics are
+distinct choices; explicit multi-field selections, typed aggregation, raw rows and
+calendar grouping follow the [typed compiler contract](docs/contracts/typed-field-authoring-v3.md).
+No client business schema or analytical question is assumed.
+[D-107](docs/decisions/2026-10-09-source-dataset-blocks.md) adds an exact registered
+source/dataset origin without a mandatory semantic topic, using the same native
+block lifecycle and current signed data authority. Table discovery and typed
+authoring are implemented; uploaded-data and signed-in audience qualification
+remain tracked in
+the [active flexible authoring plan](docs/plans/flexible-report-authoring.md).
+
+[D-097](docs/decisions/2026-10-03-visual-chart-authoring.md) requires direct grid editing, real chart/field authoring, governed dataset-first creation and independent private pages beyond the initial approved-output checkpoint. Copies, validation, private previews and publication keep distinct native authority and lifecycle gates. No automatic source work on edit or deployed-host claim is introduced.
+
+## App dependency discovery continuation
+
+[D-098](docs/decisions/2026-10-05-report-dependency-discovery.md) supplies a metadata-only BFF projection from native block/report reference indexes. Current publication pins are resolved before Pengui checks central grants. No definition, SQL, values, issuer or source/model work is added; the full Builder integration remains under qualification.
+
+D-099 extends the [native dependency contract](docs/contracts/report-dependencies-v1.md)
+with proposed manual create/save definitions and the existing save baseline.
+Exact report-write discovery and original private-block custody precede metadata
+projection; Pengui owns allocation receipts and every final grant decision.
+No source/model work or report mutation occurs during discovery. Native writes
+retain full dependency, content and CAS checks. Complete cross-service acceptance
+remains outstanding.
+
+D-100 extends the same metadata boundary to whole reviewed publications and
+original preparation custody, including consumed receipts. Pengui resolves the
+returned requirements independently; metadata does not authorize source execution
+or return definitions, names, schemas or values. The embedded topic catalog can
+consume explicit bounded host cursors without dropping dependency-filtered pages.
+
+Manual host validation, preview/execution and fresh retained report-run authority
+use D-101's native [effect dependency projection](docs/contracts/report-dependencies-v1.md).
+Pengui checks independent canonical operation/resource policy; Chartworks retains
+private actor/session and effect fences. This introduces no local authority store
+or model permission and does not establish full MCP/Consumer acceptance.
+
+D-102 extends the native metadata boundary to published execution, block retained
+reads and original-run history. Pengui checks complete original dependencies before
+returning names or summaries; retained artifacts never execute source/model work.
+See [the contract](docs/contracts/report-dependencies-v1.md#published-consumer-and-original-retained-history-d-102).
+No migration or additional MCP tool is introduced.
+
+D-103 extends the manual App integration with native governed-option dependency
+discovery and original lookup recovery; see docs/contracts/report-dependencies-v1.md.
+It reuses existing option services and adds no source effect or migration. Local
+native checks and real cross-service qualification remain distinct; phase release
+status and both-mode acceptance are not changed by this integration increment.
+
+
+## Service connection discovery — D-104
+
+The existing Pengui-signed service connection bearer with exactly
+`capability:connect` may initialize/ping and list static MCP tool, resource and
+template descriptors for enabled services. It cannot read resources (including
+App HTML) or invoke tools. Interactive App resource/tool requests still require
+`mcp.use`, their exact projected domain scopes and complete native resource reach.
+No service name alone authorizes a request; the verifier, configured MCP audience,
+expiry and exact scope profile remain mandatory. No new issuer, credential,
+identity table, domain endpoint or migration is introduced.
+
+
+## Team-ready reporting capacity
+
+[D-105](docs/decisions/2026-10-09-reporting-capacity.md) coordinates bounded
+exact provider authority and a 512 KiB self-contained App ceiling. The small
+read viewer remains bounded at 256 KiB. The [active product pass](docs/plans/team-ready-reporting.md)
+tracks twelve-chart/two-page runtime and browser qualification separately.
+
+## Independent manual review
+
+[D-110](docs/decisions/2026-10-09-independent-report-review.md) permits exact
+read plus publish authority to inspect and publish a reviewed report without
+write. Saving/rebinding still require write and execution remains independent.
+Pengui owns people/Team access management and complete dependency preflight;
+Chartworks accepts only its existing signed native scopes. Both App transports
+open the same Pengui sharing dialog using an exact report/revision selector.

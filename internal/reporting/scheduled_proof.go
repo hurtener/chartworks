@@ -48,10 +48,15 @@ func CheckScheduledComposition(j jobs.Job, m CompositionManifest) error {
 	t := d.Target
 	if t.ResourceKind() != "report" || m.Kind != "report" || m.ID != j.ID || m.Tenant != j.Tenant || m.Actor != j.Executor ||
 		m.Session != j.ID || m.Document != t.ID || m.Revision != d.Revision || m.Digest != d.Digest || m.Private || m.Redacted ||
-		m.TaskHash != j.ManifestHash || m.RequestHash != d.Input.InputHash || len(m.Pages) != 1 || m.Pages[0].ID != "main" ||
-		m.Pages[0].Locale != t.Locale || m.Pages[0].Timezone != t.Timezone ||
+		m.TaskHash != j.ManifestHash || m.RequestHash != d.Input.InputHash || len(m.Pages) == 0 ||
 		m.ArtifactLimits.MaxRows > t.Budget.MaxRows || m.ArtifactLimits.MaxResultBytes > t.Budget.MaxBytes ||
 		time.Duration(m.Limits.Timeout) > time.Duration(t.Budget.TimeoutMillis)*time.Millisecond {
+		return ErrStale
+	}
+	if m.Version == CompositionVersion && (len(m.Pages) != 1 || m.Pages[0].ID != "main" || m.Pages[0].Locale != t.Locale || m.Pages[0].Timezone != t.Timezone) {
+		return ErrStale
+	}
+	if m.Version == PagedCompositionVersion && (len(t.Arguments) != 0 || t.Type == "saved_question") {
 		return ErrStale
 	}
 	if t.Type == "saved_question" && (len(m.Pages[0].Widgets) != 1 || m.Pages[0].Widgets[0].Definition.ID != t.Widget) {
@@ -65,29 +70,31 @@ func CheckScheduledComposition(j jobs.Job, m CompositionManifest) error {
 	for _, g := range m.Groups {
 		groups[g.ID] = g
 	}
-	for _, w := range m.Pages[0].Widgets {
-		if w.Code != "" {
-			return ErrStale
-		}
-		g := groups[w.Group]
-		switch w.Definition.Kind {
-		case "block":
-			pin, exists := pins[w.Definition.ID]
-			if !exists || g.Kind != "block" || pin.Block != g.Block || pin.Revision != g.Revision || pin.Digest != g.Definition ||
-				!g.Resolution.At.Equal(j.DueAt) || !g.Resolved.At.Equal(j.DueAt) || g.Narrative && !t.Narrative {
+	for _, page := range m.Pages {
+		for _, w := range page.Widgets {
+			if w.Code != "" {
 				return ErrStale
 			}
-			delete(pins, w.Definition.ID)
-		case "query":
-			if !t.Dynamic || g.Kind != "query" || g.Query == nil || g.Query.Durability != "replayable" {
+			g := groups[w.Group]
+			switch w.Definition.Kind {
+			case "block":
+				pin, exists := pins[w.Definition.ID]
+				if !exists || g.Kind != "block" || pin.Block != g.Block || pin.Revision != g.Revision || pin.Digest != g.Definition ||
+					!g.Resolution.At.Equal(j.DueAt) || !g.Resolved.At.Equal(j.DueAt) || g.Locale != page.Locale || g.Resolution.Timezone != page.Timezone || g.Narrative && !t.Narrative {
+					return ErrStale
+				}
+				delete(pins, w.Definition.ID)
+			case "query":
+				if !t.Dynamic || g.Kind != "query" || g.Query == nil || g.Query.Durability != "replayable" {
+					return ErrStale
+				}
+			case "text":
+				if t.Type == "saved_question" {
+					return ErrStale
+				}
+			default:
 				return ErrStale
 			}
-		case "text":
-			if t.Type == "saved_question" {
-				return ErrStale
-			}
-		default:
-			return ErrStale
 		}
 	}
 	if len(pins) != 0 {

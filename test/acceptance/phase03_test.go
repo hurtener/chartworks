@@ -176,12 +176,12 @@ func TestPhase03(t *testing.T) {
 		}
 		cases := [][]string{{"ops.read", "ops.read"}, {""}, {"cw.source.query:prefix*"}, {"cw.source.query:a%2Fb"}, {"cw.source.query:a/b"}, {"cw.source.query:"}, {"cw.unknown.read:id"}, {"cw.source.own:id"}, {"ops.read other"}, {strings.Repeat("x", 257)}}
 		tooMany := []string{}
-		for i := 0; i < 33; i++ {
+		for i := 0; i < identity.MaxScopes+1; i++ {
 			tooMany = append(tooMany, fmt.Sprintf("scope-%d", i))
 		}
 		cases = append(cases, tooMany)
 		tooLarge := []string{}
-		for i := 0; i < 32; i++ {
+		for i := 0; i < 82; i++ {
 			tooLarge = append(tooLarge, fmt.Sprintf("%03d", i)+strings.Repeat("x", 200))
 		}
 		cases = append(cases, tooLarge)

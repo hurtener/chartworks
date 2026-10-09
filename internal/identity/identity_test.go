@@ -21,7 +21,7 @@ func TestEnvelopeConstruction(t *testing.T) {
 	if _, err := FromVerified("t", "u", "s", nil, now.Add(-time.Second), nil); err == nil {
 		t.Fatal("expired envelope")
 	}
-	for _, scopes := range [][]string{{"a", "a"}, {strings.Repeat("x", 257)}, {"cw.x.read:x"}, {"bad\nscope"}, make([]string, 33)} {
+	for _, scopes := range [][]string{{"a", "a"}, {strings.Repeat("x", 257)}, {"cw.x.read:x"}, {"bad\nscope"}, make([]string, MaxScopes+1)} {
 		if _, err := FromVerified("t", "u", "s", scopes, future, nil); err == nil {
 			t.Fatal("bad scopes")
 		}

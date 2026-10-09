@@ -147,7 +147,7 @@ func project(snapshot Snapshot, now time.Time) View {
 			trust.Certification = "stale"
 		}
 	}
-	out := View{AmountCompleteness: clone(d.AmountCompleteness), State: publicState(snapshot.State, private), Revision: r.Number, RevisionID: r.ID, Digest: r.Digest, ExecutionDigest: r.ExecutionDigest, Metadata: clone(d.Metadata), Source: d.Source, Context: d.Context, Topics: clone(d.Topics), Rules: clone(d.Rules), Parameters: clone(d.Parameters), ExpectedSchema: clone(d.ExpectedSchema), Outputs: OutputDefinitions(d), Actor: r.Actor, CreatedAt: r.CreatedAt, Private: private, Trust: trust}
+	out := View{SourceDataset: clone(d.SourceDataset), AmountCompleteness: clone(d.AmountCompleteness), State: publicState(snapshot.State, private), Revision: r.Number, RevisionID: r.ID, Digest: r.Digest, ExecutionDigest: r.ExecutionDigest, Metadata: clone(d.Metadata), Source: d.Source, Context: d.Context, Topics: clone(d.Topics), Rules: clone(d.Rules), Parameters: clone(d.Parameters), ExpectedSchema: clone(d.ExpectedSchema), Outputs: OutputDefinitions(d), Actor: r.Actor, CreatedAt: r.CreatedAt, Private: private, Trust: trust}
 	out.SchemaVersion = d.SchemaVersion
 	out.QueryLimits = clone(d.QueryLimits)
 	out.ResultPolicy = ResolveResultPolicy(d, nil, nil)
@@ -197,6 +197,9 @@ func (s *Service) SQL(ctx context.Context, e identity.Envelope, id string, ref R
 }
 
 func (s *Service) newRevision(e identity.Envelope, number int64, d Definition, provenance Provenance) (Revision, error) {
+	if _, err := AuthoringRuleAbsence(Revision{Definition: d, Provenance: provenance}); err != nil {
+		return Revision{}, err
+	}
 	id, err := newID()
 	if err != nil {
 		return Revision{}, err
@@ -215,7 +218,7 @@ func (s *Service) Create(ctx context.Context, e identity.Envelope, in CreateRequ
 	if err := validateDefinition(ctx, in.Definition, s.limits, false); err != nil {
 		return View{}, err
 	}
-	if err := RequireParent(e, in.Definition.Topics[0].Topic, Write, true); err != nil {
+	if err := RequireOrigin(e, in.Definition.ParentTopic(), in.Definition.ParentSource(), Write, true); err != nil {
 		return View{}, err
 	}
 	_, refs, err := s.resolveDefinitions(ctx, e, in.Definition, false)
@@ -229,7 +232,7 @@ func (s *Service) Create(ctx context.Context, e identity.Envelope, in CreateRequ
 	if err != nil {
 		return View{}, err
 	}
-	state, err := s.commit(ctx, e, Mutation{ID: in.ID, Topic: in.Definition.Topics[0].Topic, Kind: "create", Revision: &r, References: refs})
+	state, err := s.commit(ctx, e, Mutation{ID: in.ID, Topic: in.Definition.ParentTopic(), Source: in.Definition.ParentSource(), Kind: "create", Revision: &r, References: refs})
 	if err != nil {
 		return View{}, err
 	}
@@ -265,7 +268,7 @@ func (s *Service) Edit(ctx context.Context, e identity.Envelope, id string, in E
 	if err := validateDefinition(ctx, in.Definition, s.limits, captured); err != nil {
 		return View{}, err
 	}
-	if in.Definition.Topics[0].Topic != base.State.Topic {
+	if in.Definition.ParentTopic() != base.State.Topic || in.Definition.ParentSource() != base.State.Source {
 		return View{}, ErrInvalid
 	}
 	_, refs, err := s.resolveDefinitions(ctx, e, in.Definition, false)
@@ -285,7 +288,7 @@ func (s *Service) Edit(ctx context.Context, e identity.Envelope, id string, in E
 	if err != nil {
 		return View{}, err
 	}
-	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: base.State.Topic, Kind: "edit", ExpectedVersion: in.ExpectedVersion, TargetRevision: base.Revision.Number, TargetDigest: base.Revision.Digest, Revision: &r, References: refs})
+	state, err := s.commit(ctx, e, Mutation{ID: id, Topic: base.State.Topic, Source: base.State.Source, Kind: "edit", ExpectedVersion: in.ExpectedVersion, TargetRevision: base.Revision.Number, TargetDigest: base.Revision.Digest, Revision: &r, References: refs})
 	if err != nil {
 		return View{}, err
 	}
@@ -337,7 +340,7 @@ func (s *Service) CaptureQuery(ctx context.Context, e identity.Envelope, in Capt
 	if err := validateDefinition(ctx, d, s.limits, true); err != nil {
 		return View{}, err
 	}
-	if err := RequireParent(e, d.Topics[0].Topic, Write, true); err != nil {
+	if err := RequireOrigin(e, d.ParentTopic(), d.ParentSource(), Write, true); err != nil {
 		return View{}, err
 	}
 	_, refs, err := s.resolveDefinitions(ctx, e, d, false)
@@ -351,7 +354,7 @@ func (s *Service) CaptureQuery(ctx context.Context, e identity.Envelope, in Capt
 	if err != nil {
 		return View{}, err
 	}
-	state, err := s.commit(ctx, e, Mutation{ID: in.ID, Topic: d.Topics[0].Topic, Kind: "capture", Revision: &r, References: refs})
+	state, err := s.commit(ctx, e, Mutation{ID: in.ID, Topic: d.ParentTopic(), Source: d.ParentSource(), Kind: "capture", Revision: &r, References: refs})
 	if err != nil {
 		return View{}, err
 	}

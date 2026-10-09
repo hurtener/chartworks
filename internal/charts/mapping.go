@@ -2,6 +2,7 @@ package charts
 
 import (
 	"context"
+	"slices"
 )
 
 // Catalog returns a detached, stable inventory. No kind is a table alias.
@@ -76,10 +77,10 @@ func cloneMapping(m Mapping) Mapping {
 	m.Bindings.Columns = append([]string(nil), m.Bindings.Columns...)
 	m.Bindings.Values = append([]string(nil), m.Bindings.Values...)
 	m.Bindings.Hierarchy = append([]string(nil), m.Bindings.Hierarchy...)
-	m.Order = append([]Order(nil), m.Order...)
+	m.Order = slices.Clone(m.Order)
 	if m.KPI != nil {
 		copy := *m.KPI
-		copy.Thresholds = append([]KPIThreshold(nil), m.KPI.Thresholds...)
+		copy.Thresholds = slices.Clone(m.KPI.Thresholds)
 		m.KPI = &copy
 	}
 	if m.Table != nil {
@@ -87,6 +88,7 @@ func cloneMapping(m Mapping) Mapping {
 		copy.Columns = append([]TableColumnIntent(nil), m.Table.Columns...)
 		m.Table = &copy
 	}
+	m.Presentation = clonePresentation(m.Presentation)
 	return m
 }
 
@@ -199,6 +201,9 @@ func validateMapping(ctx context.Context, d Data, m Mapping, l Limits) error {
 		if i < 0 || d.Columns[i] != m.Columns[j] {
 			return ErrMappingChanged
 		}
+	}
+	if err := validatePresentation(m, l); err != nil {
+		return err
 	}
 	ordered := map[string]bool{}
 	for _, o := range m.Order {

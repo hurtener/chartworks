@@ -39,3 +39,12 @@ func (c *Client) DescribeDataset(ctx context.Context, in DatasetDescribeRequest)
 	err = c.call(ctx, "POST", "/v1/datasets/describe", "", in, &out)
 	return
 }
+
+// SourceListRequest selects a source page without probing the warehouse.
+type SourceListRequest = sources.SourceListRequest
+type SourcePage = sources.SourcePage
+
+func (c *Client) ListSourcePage(ctx context.Context, in SourceListRequest) (out SourcePage, err error) {
+	err = c.call(ctx, "POST", "/v1/sources/list", "", in, &out)
+	return
+}

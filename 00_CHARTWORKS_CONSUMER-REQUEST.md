@@ -28,7 +28,7 @@ Retain real cron/interval/manual schedules for pipelines, reviewed saved queries
 
 ## Delivery and operations
 
-Opening retained results makes zero warehouse/model calls. API, MCP viewer, iframe and static rendering consume one versioned result/presentation contract. Go renders tables/KPIs/text; a feature-gated isolated Go worker supplies chart SVG and bounded single-output PNG under D-091. PNG visibly retains exact values, result state, page scope and required amount disclosure. Client-only chart rendering is not SSR. Keep result data lossless and constrain exports, renderer resources and untrusted content. No standalone drag-and-drop authoring application is required.
+Opening retained results makes zero warehouse/model calls. API, MCP viewer, iframe and static rendering consume one versioned result/presentation contract. Go renders tables/KPIs/text; a feature-gated isolated Go worker supplies chart SVG and bounded single-output PNG under D-091. PNG visibly retains exact values, result state, page scope and required amount disclosure. Client-only chart rendering is not SSR. Keep result data lossless and constrain exports, renderer resources and untrusted content. No standalone drag-and-drop authoring application is required. D-096 adds an optional manual Builder/Consumer application: one Chartworks document/rendering implementation, thin MCP Apps and registered embedded adapters, and no chat prerequisite.
 
 Use one core, one PostgreSQL queue and one SDK-backed inference seam. Managed data writes remain separate from query readers, target only registered managed objects and never overwrite customer baseline data. External side effects have attempt/reconciliation/compensation evidence; local transactions do not imply distributed atomicity.
 
@@ -56,3 +56,11 @@ adds v13/schema6 for the closed PostgreSQL text-equality SUM/COUNT case. Retaine
 versions, NULL/empty outcomes, private evidence custody and current replay checks
 remain mandatory; generic predicate propagation and broader release qualification
 are separate work.
+
+## Canvas-first manual authoring continuation
+
+[D-097](docs/decisions/2026-10-03-visual-chart-authoring.md) requires direct grid editing, real chart/field authoring, governed dataset-first creation and independent private pages beyond the initial approved-output checkpoint. Copies, validation, private previews and publication keep distinct native authority and lifecycle gates. No automatic source work on edit or deployed-host claim is introduced.
+
+## Central App dependency discovery
+
+The [D-098 dependency contract](docs/contracts/report-dependencies-v1.md) supplies exact-target native identifiers and revision metadata to the Pengui BFF. It never supplies authority or content. Full manual Builder/Consumer qualification in both delivery modes remains required.

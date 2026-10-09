@@ -11,6 +11,9 @@ import (
 // DocumentVersion versions the canonical read projection, not historical bytes.
 const DocumentVersion = 2
 
+// PagedDocumentVersion adds report-owned inline canvases without changing v2.
+const PagedDocumentVersion = 3
+
 // DocumentMetadata is localized presentation, never identity or access policy.
 type DocumentMetadata struct {
 	Locale      string `json:"locale"`
@@ -46,11 +49,12 @@ type TextWidget struct {
 // BlockWidget may follow publication at admission (revision zero), or pin an
 // exact published revision. It cannot select a private block revision implicitly.
 type BlockWidget struct {
+	Digest    string       `json:"digest,omitempty"`
 	Limits    *QueryLimits `json:"limits,omitempty"`
 	Block     string       `json:"block"`
 	Revision  int64        `json:"revision"`
 	Outputs   []string     `json:"outputs" wire:"optional"`
-	Policy    string       `json:"policy,omitempty" jsonschema:"enum=published,enum=certified_only,enum=explicit_stale"`
+	Policy    string       `json:"policy,omitempty" jsonschema:"enum=published,enum=certified_only,enum=explicit_stale,enum=private_preview"`
 	Narrative bool         `json:"narrative"`
 }
 
@@ -110,6 +114,7 @@ type FilterOptionSource struct {
 
 // FilterOptionsRequest is a closed, bounded distinct-value query intent.
 type FilterOptionsRequest struct {
+	Page     string `json:"page,omitempty"`
 	Revision int64  `json:"revision"`
 	Filter   string `json:"filter"`
 	Search   string `json:"search,omitempty"`
@@ -127,6 +132,7 @@ type FilterOption struct {
 // FilterOptionsPage is tied to one exact immutable report revision and source
 // revision. Next is opaque, authenticated, authority-bound and short-lived.
 type FilterOptionsPage struct {
+	Page           string         `json:"page,omitempty"`
 	Report         string         `json:"report"`
 	Revision       int64          `json:"revision"`
 	Filter         string         `json:"filter"`
@@ -143,6 +149,18 @@ type DocumentPage struct {
 	Title    string `json:"title"`
 	Report   string `json:"report"`
 	Revision int64  `json:"revision"`
+}
+
+// ReportPage is inline content owned by its enclosing immutable report revision.
+// IDs are local coordinates, not resources. Widget IDs remain report-global.
+type ReportPage struct {
+	ID       string         `json:"id"`
+	Title    string         `json:"title"`
+	Locale   string         `json:"locale,omitempty"`
+	Timezone string         `json:"timezone,omitempty"`
+	Widgets  []Widget       `json:"widgets"`
+	Filters  []ReportFilter `json:"filters,omitempty"`
+	Defaults []Argument     `json:"defaults,omitempty"`
 }
 
 // LegacySection is the supported version-one import form. Projection never
@@ -162,6 +180,7 @@ type DocumentDefinition struct {
 	Timezone       string             `json:"timezone"`
 	Audience       []string           `json:"audience,omitempty"`
 	Widgets        []Widget           `json:"widgets,omitempty"`
+	ReportPages    []ReportPage       `json:"report_pages,omitempty"`
 	Filters        []ReportFilter     `json:"filters,omitempty"`
 	Defaults       []Argument         `json:"defaults,omitempty"`
 	PartialFailure string             `json:"partial_failure,omitempty" jsonschema:"enum=fail_closed,enum=allow_partial"`
@@ -226,6 +245,8 @@ type QueryOrigin struct {
 
 // DocumentSnapshot is an internal authorized repository result.
 type DocumentSnapshot struct {
+	// Rejected is authoritative immutable lifecycle history for this exact revision.
+	Rejected           bool
 	UnavailableQueries []string
 	State              DocumentState
 	Revision           DocumentRevision

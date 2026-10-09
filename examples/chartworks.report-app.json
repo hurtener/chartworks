@@ -1,0 +1,8 @@
+{
+  "reporting": {
+    "app": {
+      "embedded_enabled": false,
+      "registered_parent_origins": []
+    }
+  }
+}

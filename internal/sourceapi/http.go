@@ -61,6 +61,11 @@ func Handler(verifier *auth.Verifier, service *sources.Service, validator *reade
 		}
 		var out any
 		switch selected.Path {
+		case "/v1/sources/list":
+			var in sources.SourceListRequest
+			if err = body(w, r, &in); err == nil {
+				out, err = service.ListPage(r.Context(), e, in)
+			}
 		case "/v1/datasets/list":
 			var in sources.DatasetListRequest
 			if err = body(w, r, &in); err == nil {

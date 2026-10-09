@@ -63,7 +63,7 @@ func (s *Delivery) FilterOptions(ctx context.Context, e identity.Envelope, in De
 	if s == nil || s.documents == nil {
 		return FilterOptionsPage{}, ErrUnavailable
 	}
-	return s.documents.FilterOptions(ctx, e, in.Report, FilterOptionsRequest{Revision: in.Revision, Filter: in.Filter, Search: in.Search, Cursor: in.Cursor, Limit: in.Limit, Locale: in.Locale})
+	return s.documents.FilterOptions(ctx, e, in.Report, FilterOptionsRequest{Page: in.Page, Revision: in.Revision, Filter: in.Filter, Search: in.Search, Cursor: in.Cursor, Limit: in.Limit, Locale: in.Locale})
 }
 
 func deliveryText(s string, maxBytes int) bool {
@@ -219,6 +219,7 @@ func (s *Delivery) appendReportDescription(ctx context.Context, e identity.Envel
 	if err := s.describeBlockSelectors(ctx, e, &described, d); err != nil {
 		return err
 	}
+	// Historical reads retain hard format/message bounds despite lowered authoring limits.
 	out.Pages = append(out.Pages, described)
 	for _, f := range d.Filters {
 		out.Filters = append(out.Filters, ViewerFilter{Page: page, Label: f.Label, Parameter: f.Parameter})
@@ -277,8 +278,13 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Deliver
 		out.Resource = localizedResource(t.Kind, t.ID, v.Revision, v.Definition.Metadata, in.Locale)
 		out.Timezone = v.Definition.Timezone
 		if t.Kind == "report" {
-			if err := s.appendReportDescription(ctx, e, &out, "main", v, in.Locale); err != nil {
-				return DeliveryDescription{}, err
+			out.DefinitionDigest = v.Digest
+			for _, canvas := range ReportCanvases(v.Definition) {
+				leaf := v
+				leaf.Definition = canvas.Definition
+				if err := s.appendReportDescription(ctx, e, &out, canvas.ID, leaf, in.Locale); err != nil {
+					return DeliveryDescription{}, err
+				}
 			}
 		} else {
 			for _, p := range v.Definition.Pages {
@@ -289,8 +295,12 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Deliver
 				if child.Private || child.State.Archived {
 					continue
 				}
-				if err := s.appendReportDescription(ctx, e, &out, p.ID, child, in.Locale); err != nil {
-					return DeliveryDescription{}, err
+				for _, canvas := range ReportCanvases(child.Definition) {
+					leaf := child
+					leaf.Definition = canvas.Definition
+					if err := s.appendReportDescription(ctx, e, &out, DashboardCanvasID(p.ID, child.Definition, canvas.ID), leaf, in.Locale); err != nil {
+						return DeliveryDescription{}, err
+					}
 				}
 			}
 		}
@@ -355,9 +365,11 @@ func (s *Delivery) requireRunOptIns(ctx context.Context, e identity.Envelope, t 
 	if err != nil {
 		return err
 	}
-	for _, w := range d.Widgets {
-		if w.Kind == "query" && !IsCapturedQueryVariant(w) && !dynamic || w.Block != nil && w.Block.Narrative && !narrative {
-			return ErrInvalid
+	for _, canvas := range ReportCanvases(d) {
+		for _, w := range canvas.Definition.Widgets {
+			if w.Kind == "query" && !IsCapturedQueryVariant(w) && !dynamic || w.Block != nil && w.Block.Narrative && !narrative {
+				return ErrInvalid
+			}
 		}
 	}
 	for _, p := range d.Pages {
@@ -377,8 +389,27 @@ func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in DeliveryRun
 		return out, err
 	}
 	defer cancel()
-	if !deliveryKind(in.Kind) || in.Resource != "" && !identity.Identifier(in.Resource) || in.After != "" && !identity.Identifier(in.After) || in.Limit < 1 || in.Limit > 100 {
+	if in.Run != "" && !identity.Identifier(in.Run) || !deliveryKind(in.Kind) || in.Resource != "" && !identity.Identifier(in.Resource) || in.After != "" && !identity.Identifier(in.After) || in.Limit < 1 || in.Limit > 100 {
 		return out, ErrInvalid
+	}
+	// The exact selector is used by the BFF after original-run dependency
+	// discovery. It cannot accidentally enumerate sibling runs with parent reach.
+	if in.Run != "" {
+		if in.After != "" || in.Limit != 1 || in.Resource == "" {
+			return out, ErrInvalid
+		}
+		summary, err := s.catalog.ReadArtifactSummary(ctx, e, in.Kind, in.Resource, in.Run)
+		if err != nil {
+			return out, err
+		}
+		if summary.Kind != in.Kind || summary.Target.ID != in.Resource {
+			return out, access.ErrNotFound
+		}
+		out.Items = append(out.Items, summary)
+		if err := s.bound(out); err != nil {
+			return DeliveryRunsResult{}, err
+		}
+		return out, ctx.Err()
 	}
 	if in.Kind != "block" {
 		result, err := s.catalog.ListCompositionArtifacts(ctx, e, in.Kind, in.Resource, in.After, in.Limit)
@@ -397,7 +428,7 @@ func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in DeliveryRun
 	out.Next = page.Next
 	for _, v := range page.Items {
 		if in.Resource == "" || v.Block == in.Resource {
-			out.Items = append(out.Items, blockRunSummary(v))
+			out.Items = append(out.Items, BlockRunSummary(v))
 		}
 	}
 	if err := s.bound(out); err != nil {
@@ -406,7 +437,8 @@ func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in DeliveryRun
 	return out, ctx.Err()
 }
 
-func blockRunSummary(v RunView) DeliveryRunSummary {
+// BlockRunSummary projects an already authorized retained metadata head.
+func BlockRunSummary(v RunView) DeliveryRunSummary {
 	return DeliveryRunSummary{Kind: "block", Run: v.ID, Target: DeliveryTarget{"block", v.Block, v.Revision}, State: v.State, Code: v.Code, Private: v.Private, Created: v.Created, Expires: v.Expires, Scheduled: clone(v.Scheduled)}
 }
 

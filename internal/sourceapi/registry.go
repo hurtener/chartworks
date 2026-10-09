@@ -29,12 +29,13 @@ func operation(method, path, action, effect string) Operation {
 	return Operation{Method: method, Path: path, Action: action, Effect: effect}
 }
 
-// SourceRegistry is the sole inventory for the nine source and dataset routes.
+// SourceRegistry is the sole inventory for the source and dataset routes.
 // The router, legacy manifest projection, and OpenAPI use these same definitions.
 // Resource loader/audit labels identify existing domain/store behavior; they do
 // not move authorization or transaction boundaries into this metadata package.
 func SourceRegistry(warehouse, validation bool) (*api.Registry, error) {
 	definitions := []registration{
+		{operation("POST", "/v1/sources/list", "sources.read", "retained_metadata_read"), "listSourcePage", "List a bounded page of authorized retained sources", "sources.Service.ListPage", "read_only_no_domain_audit", reflect.TypeFor[sources.SourceListRequest](), reflect.TypeFor[sources.SourcePage]()},
 		{operation("POST", "/v1/datasets/list", "sources.read", "retained_metadata_read"), "listDatasets", "List authorized registered datasets in one exact context", "sources.Service.ListDatasets", "read_only_no_domain_audit", reflect.TypeFor[sources.DatasetListRequest](), reflect.TypeFor[[]sources.Dataset]()},
 		{operation("POST", "/v1/datasets/describe", "sources.read", "retained_metadata_read"), "describeDataset", "Describe one authorized registered dataset without a warehouse call", "sources.Service.DescribeDataset", "read_only_no_domain_audit", reflect.TypeFor[sources.DatasetDescribeRequest](), reflect.TypeFor[sources.Dataset]()},
 		{operation("GET", "/v1/sources", "sources.read", "metadata_read"), "listSources", "List authorized retained source registrations", "sources.Service.List", "read_only_no_domain_audit", nil, reflect.TypeFor[[]sources.Source]()},

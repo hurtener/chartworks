@@ -193,6 +193,29 @@ expired object, 124 deadline and 130 cancellation. Authorized result bytes go to
 stdout; safe diagnostics go to stderr. Short writes fail. MCP tool faults retain
 their bounded owner outcome/receipt; raw protocol diagnostics are not echoed.
 
+## Manual lifecycle typed clients
+
+`InspectManualLifecycle`, `PublishManualChart`, `RebindPublishedManualCharts` and
+`TransitionManualReport` use the same closed domain DTOs as the four
+[manual lifecycle HTTP/MCP operations](manual-publication-lifecycle-v1.md). Their
+typed responses preserve exact head/revision state, all disclosed outputs and
+explicit false capability/evidence hints. Publication confirms the entire chart
+revision for existing authorized readers, without a new grant or audience count.
+Chart publication, selected widget rebind, report review and report publication
+remain separately authorized actions. Rejection requires a note and native
+publication authority in addition to the editor-entry ceiling.
+
+Each typed call fetches current supplied bearer authority, performs one bounded
+4 MiB-response request and never automatically retries or follows a mutation with
+another mutation. Unknown publication/rebind/transition outcomes require explicit
+inspection at the original exact revision; a failed report rebind cannot undo
+block publication. Lifecycle operations perform no source or model work.
+
+`OperationMatrix` accepts the same existing 96-tool metadata ceiling as the MCP
+registry, including the actual 91 default/96 optional inventory, and rejects
+duplicate names/operations and names outside the registered lowercase grammar.
+Per-schema, aggregate, request and execution limits are unchanged.
+
 ## Bounds and evidence
 
 The metadata document is at most 4 MiB and 256 operations. Per-operation input

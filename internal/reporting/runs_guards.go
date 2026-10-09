@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/chartdata"
+	"github.com/hurtener/chartworks/internal/charts"
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -22,6 +23,9 @@ func CheckFrozenEligibility(e identity.Envelope, m RunManifest, snapshot Snapsho
 		return ErrExpired
 	}
 	if err := frozenTemplateSelections(m.Revision.Definition, snapshot.Revision.Definition); err != nil {
+		return err
+	}
+	if err := RetainAuthoringRuleAbsence(snapshot.Revision, m.Revision); err != nil {
 		return err
 	}
 	if snapshot.State.ID != m.Block || snapshot.Revision.Number != m.Revision.Number || snapshot.Revision.Digest != m.Revision.Digest ||
@@ -142,6 +146,20 @@ func CheckFrozenOutput(m RunManifest, o RetainedOutput, starting bool) error {
 		if saved.Mapping == nil || o.Chart == nil || o.Narrative != nil || o.ReservedCalls != 0 || o.ReservedTokens != 0 ||
 			digest(o.Chart.Mapping) != digest(*saved.Mapping) {
 			return ErrInvalid
+		}
+		if saved.Mapping.Presentation != nil {
+			limits := charts.Defaults()
+			// The frozen mapping was admitted under its configured schema cap.
+			// Verify metadata up to the existing absolute native column bound,
+			// without lowering a valid historical admission to today's default.
+			limits.MaxColumns = 256
+			limits.MaxSeries = 128
+			limits.MaxBytes = 8 << 20
+			limits.MaxOptionsBytes, limits.MaxOptionsDepth = 16384, 8
+			columns, err := charts.ProjectPresentationColumns(context.Background(), *saved.Mapping, limits)
+			if err != nil || digest(columns) != digest(o.Chart.Columns) {
+				return ErrInvalid
+			}
 		}
 		return nil
 	}

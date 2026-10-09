@@ -14,6 +14,9 @@ import (
 // CompositionVersion versions accepted manifests independently of definitions.
 const CompositionVersion = "report-composition-v1"
 
+// PagedCompositionVersion pins inline page coordinates.
+const PagedCompositionVersion = "report-composition-v2"
+
 // WidgetOverride can name only parameters explicitly permitted by the widget.
 type WidgetOverride struct {
 	Widget    string     `json:"widget"`
@@ -50,15 +53,17 @@ type CompositionWidget struct {
 
 // CompositionPage pins an exact report revision and its independently checked reach.
 type CompositionPage struct {
-	ID       string              `json:"id"`
-	Report   string              `json:"report"`
-	Revision int64               `json:"revision"`
-	Digest   string              `json:"digest"`
-	Title    string              `json:"title"`
-	Private  bool                `json:"private"`
-	Locale   string              `json:"locale"`
-	Timezone string              `json:"timezone"`
-	Widgets  []CompositionWidget `json:"widgets"`
+	ReportPage    string              `json:"report_page,omitempty"`
+	ContainerPage string              `json:"container_page,omitempty"`
+	ID            string              `json:"id"`
+	Report        string              `json:"report"`
+	Revision      int64               `json:"revision"`
+	Digest        string              `json:"digest"`
+	Title         string              `json:"title"`
+	Private       bool                `json:"private"`
+	Locale        string              `json:"locale"`
+	Timezone      string              `json:"timezone"`
+	Widgets       []CompositionWidget `json:"widgets"`
 }
 
 // CompositionGroup seals one query/value/context identity and its output union.

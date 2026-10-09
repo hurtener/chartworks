@@ -4,6 +4,23 @@ Status: in_progress. Owner: internal/reporting. Hard dependencies: 18, 28.
 
 ## Authority and design
 
+D-109 extends exact physical option discovery through the same validated read
+and custody core. Migration 090 retains legacy bytes and exclusive origin fences.
+`TestReportAppPhysicalOptionsNative` and `TestReportAppPhysicalOptionScalarTypes`
+qualify actual typed source ordering/search; private/published report choices are
+covered by `TestReportAppColumnFiltersNative` under Phase29/AC06. Original lookup
+cancellation, receipt, retention and dependency tests remain required. Shared
+controls use explicit Search and staged Done/Cancel. See the
+[option contract](../contracts/governed-authoring-options-v1.md).
+
+D-108 extends the shared binder with physical column value/set/range parameters
+and exact registered schema identity. `TestColumnFilter*` and
+`TestAuthoringColumnFiltersCompilerAndIdentity` cover typed values, SQL placement,
+calendar refusal and binding compatibility. `TestReportAppColumnFiltersNative`
+(mapped into Phase29/AC06) covers the actual source-only publication, report
+selection, amendment and compacted-custody lifecycle. Signed-in host work remains in
+[the active flexible pass](flexible-report-authoring.md).
+
 RFC-002 §§2–6, D-045/D-047 and [COMMON.md](COMMON.md) apply. Reports compose the existing execution lanes. Dashboards reference exact report revisions; neither creates another SQL/visualization engine.
 
 ## Brief findings incorporated
@@ -27,7 +44,7 @@ A report run resolves all floating pointers once before execution. Deduplicate o
 
 ## Non-goals
 
-No drag-and-drop builder, arbitrary code widgets, source-session impersonation or second dashboard execution model.
+No advanced drag-and-drop builder, arbitrary code widgets, source-session impersonation or second dashboard execution model. D-096 adds bounded optional manual report composition over the existing lifecycle and CAS model.
 
 ## Config and persistence
 
@@ -78,3 +95,34 @@ Use [D-073](../decisions/2026-09-16-reporting-output-policies.md) and the
 source execution, provider-fixture and browser checks. Keep the existing named
 phase criteria and phase status; this assignment closes only its three owned gap
 entries, not the whole phase, other reporting work, or full migration/release.
+
+## Visual authoring continuation
+
+[D-097](../decisions/2026-10-03-visual-chart-authoring.md) requires direct-grid, chart/field and genuine private-page authoring beyond D-096. Preserve existing criteria and historical evidence; qualify new domain, HTTP/MCP/SDK and browser paths separately. Scope approval does not change phase status or make unsupported controls available.
+
+The manual App upgrade continuation adds
+`TestReportAppPopulatedMigration087088` to AC01/AC06 evidence: populate the real
+086 schema, preserve legacy custody and chart JSON, refuse old preparation
+admission, keep unresolved liability, and roll back the entire pending migration
+on an invalid presentation. The
+[activation runbook](../runbooks/manual-report-app-activation.md) requires writer
+quiescence and separates local synthetic upgrade proof from production rollout
+and the still-open restricted MCP integration. This does not change phase status.
+
+## Manual application product-quality continuation
+
+[The bounded quality plan](manual-report-product-quality.md) owns compact host
+composition, retained-result opening, published return/edit/republish, metadata-only
+chart status checks, retained formatting previews and responsive reading. Saved
+column/row/span coordinates remain authoritative. Builder rows stay exactly 80px;
+reading rows use that minimum and expand for content, keeping disclosures and table
+rows visible without nested card scrolling. This is a screen-reading adjustment,
+not a rewrite of saved definitions or portable export geometry.
+
+
+## Team-ready reporting capacity
+
+[D-105](../decisions/2026-10-09-reporting-capacity.md) coordinates bounded
+exact provider authority and a 512 KiB self-contained App ceiling. The small
+read viewer remains bounded at 256 KiB. The [active product pass](team-ready-reporting.md)
+tracks twelve-chart/two-page runtime and browser qualification separately.

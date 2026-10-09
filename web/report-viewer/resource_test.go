@@ -40,3 +40,26 @@ func TestCompiledViewerResource(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedPresentationExcludesViewerHost(t *testing.T) {
+	javascript, css := Assets()
+	if javascript != presentationScript || css != styles {
+		t.Fatal("presentation asset is not the canonical module")
+	}
+	for _, forbidden := range []string{"class Bridge", "class Viewer", "ui/initialize", "tools/call", "getElementById('report-viewer')"} {
+		if strings.Contains(javascript, forbidden) {
+			t.Fatal("viewer host leaked into shared presentation", forbidden)
+		}
+		if !strings.Contains(script, forbidden) {
+			t.Fatal("viewer host lost required implementation", forbidden)
+		}
+	}
+	for _, required := range []string{"function renderRetainedOutput", "function validateRetainedView", "function renderChart", "function exact"} {
+		if strings.Count(javascript, required) != 1 || strings.Count(script, required) != 1 {
+			t.Fatal("presentation duplicated or missing", required)
+		}
+	}
+	if strings.Contains(script, "import ") || strings.Contains(script, "export {") {
+		t.Fatal("compiled viewer has external module references")
+	}
+}

@@ -91,8 +91,6 @@ func (s *Documents) begin(ctx context.Context, e identity.Envelope, kind, id str
 
 func (s *Documents) checkReferences(ctx context.Context, e identity.Envelope, kind string, d DocumentDefinition) ([]QueryOrigin, error) {
 	origins := []QueryOrigin{}
-	parameters := map[string]bool{}
-	optionBlocks := map[string]map[int64]bool{}
 	for _, page := range d.Pages {
 		view, err := s.repo.ReadDocument(ctx, e, "report", page.Report, DocumentReference{Revision: page.Revision}, Read, false)
 		if err != nil {
@@ -102,6 +100,23 @@ func (s *Documents) checkReferences(ctx context.Context, e identity.Envelope, ki
 			return nil, ErrStale
 		}
 	}
+	if kind == "dashboard" {
+		return origins, nil
+	}
+	for _, canvas := range ReportCanvases(d) {
+		found, err := s.checkCanvasReferences(ctx, e, canvas.Definition)
+		if err != nil {
+			return nil, err
+		}
+		origins = append(origins, found...)
+	}
+	return origins, nil
+}
+
+func (s *Documents) checkCanvasReferences(ctx context.Context, e identity.Envelope, d DocumentDefinition) ([]QueryOrigin, error) {
+	origins := []QueryOrigin{}
+	parameters := map[string]bool{}
+	optionBlocks := map[string]map[int64]bool{}
 	for _, w := range d.Widgets {
 		if IsCapturedQueryVariant(w) {
 			if s.blocks == nil {
@@ -132,8 +147,8 @@ func (s *Documents) checkReferences(ctx context.Context, e identity.Envelope, ki
 			if err != nil {
 				return nil, err
 			}
-			if snapshot.PublishedAt == nil || snapshot.State.Archived {
-				return nil, ErrStale
+			if err := CheckDocumentBlockReference(e, *w.Block, snapshot); err != nil {
+				return nil, err
 			}
 			if optionBlocks[w.Block.Block] == nil {
 				optionBlocks[w.Block.Block] = map[int64]bool{}
@@ -284,8 +299,8 @@ func (s *Documents) Transition(ctx context.Context, e identity.Envelope, kind, i
 		return DocumentState{}, err
 	}
 	defer cancel()
-	if operation == "publish" {
-		snapshot, err := s.repo.ReadDocument(ctx, e, kind, id, DocumentReference{Revision: revision}, Publish, false)
+	if operation == "publish" || operation == "review" {
+		snapshot, err := s.repo.ReadDocument(ctx, e, kind, id, DocumentReference{Revision: revision}, documentMutationAccess(operation), false)
 		if err != nil {
 			return DocumentState{}, err
 		}
@@ -293,8 +308,13 @@ func (s *Documents) Transition(ctx context.Context, e identity.Envelope, kind, i
 		if err != nil {
 			return DocumentState{}, err
 		}
-		if _, err := s.checkReferences(ctx, e, kind, definition); err != nil {
-			return DocumentState{}, err
+		if HasPrivateBlockReferences(definition) {
+			return DocumentState{}, ErrStale
+		}
+		if operation == "publish" {
+			if _, err := s.checkReferences(ctx, e, kind, definition); err != nil {
+				return DocumentState{}, err
+			}
 		}
 	}
 	return s.write(ctx, e, DocumentMutation{Kind: kind, ID: id, Operation: operation, ExpectedVersion: expected, TargetRevision: revision, Note: note})

@@ -1,5 +1,16 @@
 # Chartworks — actionable implementation plan
 
+The active [flexible report authoring pass](flexible-report-authoring.md) extends
+schema-driven table/topic selection, typed field/date authoring and Pengui-owned
+audience management. It is under implementation and qualification.
+
+The [team-ready reporting pass](team-ready-reporting.md) locally qualified its
+twelve-chart/two-page target. Neither pass closes migration or whole-product release.
+
+The [manual report product-quality continuation](manual-report-product-quality.md)
+qualifies the existing phases 29/31 application and its real Builder/Consumer journey.
+It does not close the whole-product release gate.
+
 ## SQL recovery status — 2026-09-30
 
 The [AP-00–AP-08 completion tracker](../reviews/sql-recovery-completion.md) records the current
@@ -167,3 +178,33 @@ is tracked separately from historical reconstruction. Its v13/schema6 family
 accounts for an exact request predicate only when every selected scalar SUM/COUNT
 occurrence already requires it. Qualification remains scoped to the named tests
 and source snapshots; this does not close broader recovery or release gates.
+
+## Optional manual report application continuation
+
+[D-096](../decisions/2026-10-03-manual-report-app.md) extends phases 29 and 31 with
+one shared optional Builder/Consumer app, authorized draft discovery, versioned
+authoring tools and typed agent bootstrap guidance. Phase status remains in
+progress; the existing 224-criterion registry is not a claim that this new
+continuation has shipped. Its integration and verification are recorded in
+[the report application contract](../contracts/report-app-v1.md).
+
+## Visual authoring continuation
+
+[D-097](../decisions/2026-10-03-visual-chart-authoring.md) requires direct-grid, chart/field and genuine private-page authoring beyond D-096. Preserve existing criteria and historical evidence; qualify new domain, HTTP/MCP/SDK and browser paths separately. Scope approval does not change phase status or make unsupported controls available.
+
+The manual App integration now includes [D-098 exact-target dependency discovery](../contracts/report-dependencies-v1.md). Source implementation and local tests do not change phase release status or establish the complete cross-service journey.
+
+D-099 adds provider-native proposed-write requirements and save-baseline union;
+see the [dependency contract](../contracts/report-dependencies-v1.md). The first
+Pengui create/save projections use it under central grants and allocation receipts.
+Full Builder/Consumer and restricted MCP journeys remain required.
+
+D-100 extends native dependency discovery to reviewed publications and original
+preparation custody. The first consumer is Pengui's bounded manual data projector;
+local qualification and full cross-service acceptance remain distinct.
+
+D-103 extends the manual App integration with native governed-option dependency
+discovery and original lookup recovery; see docs/contracts/report-dependencies-v1.md.
+It reuses existing option services and adds no source effect or migration. Local
+native checks and real cross-service qualification remain distinct; phase release
+status and both-mode acceptance are not changed by this integration increment.

@@ -26,7 +26,7 @@ Check role-specific provider/capability/config, full embedding-space identity, c
 
 Domain phases add actual HTTP schemas and SDK operations, signed-scope/resource checks, errors, audit/usage and side-effect classification with their first consumer. MCP operations are added where assigned; early registration/parity suites expand with every implemented feature. An unbuilt endpoint is absent, not a success-returning stub. Explicit cancellation of durable work is different from disconnecting a client.
 
-Use closed write schemas and bounded unions, one route action convention and generated OpenAPI/SDK checks. The browser surface is a read viewer, not a mandatory builder. Its resources contain no bearer/provider/source credentials or authoritative duplicate report state. Iframe auth remains in the BFF.
+Use closed write schemas and bounded unions, one route action convention and generated OpenAPI/SDK checks. The read viewer remains supported. D-096 additionally permits one optional manual Builder/Consumer application shared by thin MCP Apps and embedded host adapters; it is not a mandatory application. Its resources contain no bearer/provider/source credentials or authoritative duplicate report state. Iframe auth remains in the BFF.
 
 ## Acceptance naming and evidence
 
@@ -59,3 +59,7 @@ Go race testing requires a race-capable build environment with CGo enabled even 
 ## Completion and deviations
 
 Attach actual evidence to each implemented feature/gate. Cumulative consumer tests extend earlier services without reverse package dependencies. Keep the registry/counts, phase headers, master, scope contracts, examples and mirrored rules coherent. Preserve old decisions and append explicit superseding ones with unique IDs. A required source feature cannot be removed by silently editing its disposition; approved equivalent behavior needs an explicit migration rule and proof.
+
+## Visual authoring continuation
+
+[D-097](../decisions/2026-10-03-visual-chart-authoring.md) requires direct-grid, chart/field and genuine private-page authoring beyond D-096. Preserve existing criteria and historical evidence; qualify new domain, HTTP/MCP/SDK and browser paths separately. Scope approval does not change phase status or make unsupported controls available.

@@ -131,7 +131,7 @@ func safe(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return context.DeadlineExceeded
 	}
-	for _, e := range []error{reporting.ErrInvalid, reporting.ErrStale, reporting.ErrUnavailable, reporting.ErrBusy, reporting.ErrExpired, reporting.ErrIncomplete, reporting.ErrBudget, engineering.ErrProposalReview, engineering.ErrProposalDrift, engineering.ErrProposalConflict, engineering.ErrCompensationBlocked, nlqbyo.ErrBudget, engineering.ErrInvalid, engineering.ErrLimit, engineering.ErrFormat, engineering.ErrChecksum, engineering.ErrOwnership, engineering.ErrUnavailable, engineering.ErrState, readexec.ErrType, readexec.ErrCancelled, readexec.ErrTimeout, readexec.ErrUncertain, readexec.ErrReplay, readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound, jobs.ErrInvalid, jobs.ErrBusy, jobs.ErrEmpty, jobs.ErrAuthority, jobs.ErrReportingBudget, jobs.ErrReportingAttention, jobs.ErrTransient, store.ErrScope, store.ErrInvalid, store.ErrConflict, store.ErrMigration, store.ErrNotFound, store.ErrUnavailable, store.ErrExpired} {
+	for _, e := range []error{reporting.ErrPreparationContract, reporting.ErrPreparationOperationExpired, reporting.ErrInvalid, reporting.ErrStale, reporting.ErrUnavailable, reporting.ErrBusy, reporting.ErrExpired, reporting.ErrIncomplete, reporting.ErrBudget, engineering.ErrProposalReview, engineering.ErrProposalDrift, engineering.ErrProposalConflict, engineering.ErrCompensationBlocked, nlqbyo.ErrBudget, engineering.ErrInvalid, engineering.ErrLimit, engineering.ErrFormat, engineering.ErrChecksum, engineering.ErrOwnership, engineering.ErrUnavailable, engineering.ErrState, readexec.ErrType, readexec.ErrCancelled, readexec.ErrTimeout, readexec.ErrUncertain, readexec.ErrReplay, readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound, jobs.ErrInvalid, jobs.ErrBusy, jobs.ErrEmpty, jobs.ErrAuthority, jobs.ErrReportingBudget, jobs.ErrReportingAttention, jobs.ErrTransient, store.ErrScope, store.ErrInvalid, store.ErrConflict, store.ErrMigration, store.ErrNotFound, store.ErrUnavailable, store.ErrExpired} {
 		if errors.Is(err, e) {
 			return e
 		}
@@ -149,6 +149,12 @@ func safe(err error) error {
 	var pg *pgconn.PgError
 	if errors.As(err, &pg) {
 		switch pg.Code {
+		case "CW001":
+			return reporting.ErrPreparationContract
+		case "CW002":
+			return reporting.ErrPreparationOperationExpired
+		case "CW003":
+			return reporting.ErrBusy
 		case "23505", "40001", "40P01":
 			return store.ErrConflict
 		case "23503", "23502", "23514", "22003", "55000":

@@ -131,7 +131,7 @@ func (c *Client) DescribeReporting(ctx context.Context, in ReportingDescribeRequ
 // ReportingFilterOptions performs one bounded validated source read and never
 // invokes a model. A continuation is valid only for the unchanged request and authority.
 func (c *Client) ReportingFilterOptions(ctx context.Context, in ReportingFilterOptionsRequest) (out ReportingFilterOptionsPage, err error) {
-	if !identity.Identifier(in.Report) || in.Revision < 1 || in.Revision > 256 || !identity.Identifier(in.Filter) || in.Limit < 1 || in.Limit > 200 || len(in.Search) > 256 || len(in.Cursor) > 16<<10 {
+	if !identity.Identifier(in.Report) || in.Page != "" && !identity.Identifier(in.Page) || in.Revision < 1 || in.Revision > 256 || !identity.Identifier(in.Filter) || in.Limit < 1 || in.Limit > 200 || len(in.Search) > 256 || len(in.Cursor) > 16<<10 {
 		return out, ErrReportingRequest
 	}
 	err = c.callLimit(ctx, "POST", "/v1/reporting/filter-options", "", in, &out, 2<<20)

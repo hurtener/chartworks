@@ -18,6 +18,9 @@ func definitionReferences(d Definition, definitions []topics.Published) []Resour
 	}
 	add("source", "read", d.Source)
 	add("execution_context", "use", d.Context)
+	if d.SourceDataset != nil {
+		add("dataset", "query", d.SourceDataset.Dataset)
+	}
 	for _, pin := range d.Topics {
 		add("topic", "read", pin.Topic)
 	}
@@ -50,6 +53,9 @@ func definitionReferences(d Definition, definitions []topics.Published) []Resour
 // warehouse or model. Authoring may inspect old pins; validation requires active
 // exact pins so a publication change cannot silently refresh reviewed meaning.
 func (s *Service) resolveDefinitions(ctx context.Context, e identity.Envelope, d Definition, current bool) ([]topics.Published, []ResourceReference, error) {
+	if d.SourceDataset != nil {
+		return s.resolveSourceDataset(ctx, e, d)
+	}
 	if len(d.Topics) == 0 || len(d.Topics) > 8 {
 		return nil, nil, ErrInvalid
 	}
@@ -147,6 +153,22 @@ func (s *Service) resolveDefinitions(ctx context.Context, e identity.Envelope, d
 				}
 			}
 		}
+	}
+	for _, parameter := range d.Parameters {
+		if !boundedFilterParameter(parameter) {
+			continue
+		}
+		if s.sources == nil {
+			return nil, nil, ErrUnavailable
+		}
+		binding, err := s.sources.ContextBinding(ctx, e, d.Source, d.Context)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := validateBoundedFilterSemantics(ctx, d, binding, out); err != nil {
+			return nil, nil, err
+		}
+		break
 	}
 	return out, definitionReferences(d, out), nil
 }

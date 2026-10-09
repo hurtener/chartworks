@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/httpmount"
+	"github.com/hurtener/chartworks/internal/identity"
 )
 
 const maxDocumentBytes = 1 << 20
@@ -177,6 +178,7 @@ func (c Config) Values() Values {
 	v := c.values
 	v.MCP = c.values.MCP.Clone()
 	v.Server.CORSAllowlist = append([]string{}, c.values.Server.CORSAllowlist...)
+	v.Reporting.App.RegisteredParentOrigins = append([]string{}, c.values.Reporting.App.RegisteredParentOrigins...)
 	v.Sources = c.values.Sources.Clone()
 	v.Uploads = c.values.Uploads.Clone()
 	v.Profiling = c.values.Profiling.Clone()
@@ -209,7 +211,7 @@ func Defaults() Values {
 		Exec:         DefaultReadValidation(),
 		QueryBundles: DefaultQueryBundles(),
 		Server:       Server{Listen: "127.0.0.1:8080", BasePath: "/", CORSAllowlist: []string{}, ReadHeaderTimeout: Duration(5 * time.Second), ReadTimeout: Duration(15 * time.Second), WriteTimeout: Duration(75 * time.Second), IdleTimeout: Duration(time.Minute), ShutdownGrace: Duration(10 * time.Second), MaxBodyBytes: 10 << 20, MaxHeaderBytes: 32 << 10},
-		Auth:         Auth{MaxTokenBytes: 32768, MaxClaimBytes: 24576, MaxScopes: 32, MaxScopeBytes: 4096, Algorithms: []string{"RS256", "ES256"}, JWKSMaxStale: Duration(5 * time.Minute), RefreshInterval: Duration(time.Minute), RequestTimeout: Duration(3 * time.Second), ClockSkew: Duration(30 * time.Second), MaxTokenLifetime: Duration(15 * time.Minute)},
+		Auth:         Auth{MaxTokenBytes: 32768, MaxClaimBytes: 24576, MaxScopes: identity.MaxScopes, MaxScopeBytes: identity.MaxTotalScopeBytes, Algorithms: []string{"RS256", "ES256"}, JWKSMaxStale: Duration(5 * time.Minute), RefreshInterval: Duration(time.Minute), RequestTimeout: Duration(3 * time.Second), ClockSkew: Duration(30 * time.Second), MaxTokenLifetime: Duration(15 * time.Minute)},
 		Store:        Store{DSN: "env:CHARTWORKS_STORE_URL", MaxConns: 10, ConnectTimeout: Duration(5 * time.Second), TransactionTimeout: Duration(5 * time.Second), MigrationPolicy: "apply"},
 		Jobs:         DefaultJobs(),
 		Telemetry:    Telemetry{LogFormat: "json", Metrics: true},

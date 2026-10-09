@@ -10,6 +10,7 @@ import (
 // DeliveryFilterOptionsRequest is the HTTP/MCP viewer consumer for one exact
 // report filter source. It contains no SQL or physical relation coordinates.
 type DeliveryFilterOptionsRequest struct {
+	Page     string `json:"page,omitempty"`
 	Report   string `json:"report"`
 	Revision int64  `json:"revision"`
 	Filter   string `json:"filter"`
@@ -86,18 +87,19 @@ type ViewerFilter struct {
 
 // DeliveryDescription exposes presentation and typed business inputs only.
 type DeliveryDescription struct {
-	Selection     *OutputSelection         `json:"selection,omitempty"`
-	SelectionCode string                   `json:"selection_code,omitempty"`
-	QueryLimits   *QueryLimits             `json:"query_limits,omitempty"`
-	ResultPolicy  []EffectiveFieldPolicy   `json:"result_policy,omitempty"`
-	Version       string                   `json:"version"`
-	Resource      DeliveryResource         `json:"resource"`
-	Outputs       []ViewerOutputChoice     `json:"outputs"`
-	Filters       []ViewerFilter           `json:"filters"`
-	Pages         []CompositionPageSummary `json:"pages"`
-	Trust         *Trust                   `json:"trust,omitempty"`
-	Dynamic       bool                     `json:"dynamic"`
-	Timezone      string                   `json:"timezone"`
+	DefinitionDigest string                   `json:"definition_digest,omitempty"`
+	Selection        *OutputSelection         `json:"selection,omitempty"`
+	SelectionCode    string                   `json:"selection_code,omitempty"`
+	QueryLimits      *QueryLimits             `json:"query_limits,omitempty"`
+	ResultPolicy     []EffectiveFieldPolicy   `json:"result_policy,omitempty"`
+	Version          string                   `json:"version"`
+	Resource         DeliveryResource         `json:"resource"`
+	Outputs          []ViewerOutputChoice     `json:"outputs"`
+	Filters          []ViewerFilter           `json:"filters"`
+	Pages            []CompositionPageSummary `json:"pages"`
+	Trust            *Trust                   `json:"trust,omitempty"`
+	Dynamic          bool                     `json:"dynamic"`
+	Timezone         string                   `json:"timezone"`
 }
 
 // DeliveryRunRequest is deliberately side-effecting. It cannot contain SQL,
@@ -130,6 +132,7 @@ type DeliveryRunResult struct {
 
 // DeliveryRunsRequest never triggers an occurrence or grants recipient access.
 type DeliveryRunsRequest struct {
+	Run      string `json:"run,omitempty"`
 	Kind     string `json:"kind" jsonschema:"enum=block,enum=report,enum=dashboard"`
 	Resource string `json:"resource"`
 	After    string `json:"after"`
@@ -157,9 +160,10 @@ type DeliveryRunsResult struct {
 	Next    string               `json:"next"`
 }
 
-// CompositionCatalog lists only currently authorized retained metadata.
+// CompositionCatalog reads only currently authorized retained metadata.
 // It deliberately has no query/model/worker method.
 type CompositionCatalog interface {
+	ReadArtifactSummary(context.Context, identity.Envelope, string, string, string) (DeliveryRunSummary, error)
 	ListCompositionArtifacts(context.Context, identity.Envelope, string, string, string, int) (DeliveryRunsResult, error)
 }
 

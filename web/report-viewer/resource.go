@@ -13,7 +13,12 @@ import (
 const URI = "ui://chartworks/report-viewer/v1"
 
 //go:embed app.js
-var script string
+var hostScript string
+
+//go:embed presentation.js
+var presentationScript string
+
+var script = compiledViewer()
 
 //go:embed styles.css
 var styles string
@@ -30,4 +35,21 @@ func HTML() string {
 		"</style></head><body><main id=\"report-viewer\" aria-label=\"Reporting viewer\"><p role=\"status\">Opening retained report…</p></main><script type=\"module\">", script,
 		"</script></body></html>",
 	}, "")
+}
+
+// Assets exposes the single retained-output presentation implementation for
+// other compiled Chartworks resources. It contains no caller or tenant data.
+func Assets() (javascript, css string) { return presentationScript, styles }
+
+// Keep the data-free viewer self-contained while sharing one presentation module
+// with the report canvas. Only this resource includes viewer host/controller code.
+func compiledViewer() string {
+	const exports = "VERSION, KINDS, boundedJSON, exact, renderChart, amountDisclosureLines, validateRetainedView, renderRetainedOutput, reportStateLabel, reportDate, viewerInternals"
+	out := "const {" + exports + "}=(()=>{\n" + strings.ReplaceAll(presentationScript, "export ", "") + "\nreturn {" + exports + "};\n})();\n"
+	for _, line := range strings.Split(hostScript, "\n") {
+		if !strings.HasPrefix(line, "import ") && !strings.HasPrefix(line, "export {") {
+			out += strings.ReplaceAll(line, "export ", "") + "\n"
+		}
+	}
+	return out
 }

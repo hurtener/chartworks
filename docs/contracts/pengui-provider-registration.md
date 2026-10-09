@@ -4,9 +4,9 @@ Implementation contract, 2026-09-05. This document describes the already availab
 
 ## Verified issuer contract
 
-The inspected platform `internal/minter/local/local.go` implementation (blob `1bf2110b251ff2351220e5fd9818e3a4fceed53c`) exposes `MintCapabilityUserToken(ctx, principal, destination, scopes)`. Its `signScopes` path emits `iss`, `sub`, `aud`, `iat`, `nbf`, `exp`, `tenant`, `user`, `session`, `scopes` and attribution-only `runtime_id`. The provider scopes are opaque to the issuer; the minter validates and sorts them. No Chartworks-specific minting endpoint or platform signer change is required to carry this grammar.
+The original inspected platform `internal/minter/local/local.go` implementation (blob `1bf2110b251ff2351220e5fd9818e3a4fceed53c`) exposes `MintCapabilityUserToken(ctx, principal, destination, scopes)`. Its `signScopes` path emits `iss`, `sub`, `aud`, `iat`, `nbf`, `exp`, `tenant`, `user`, `session`, `scopes` and attribution-only `runtime_id`. The provider scopes are opaque to the issuer; the minter validates and sorts them. No Chartworks-specific minting endpoint or platform signer change is required to carry this grammar.
 
-The exact current provider-scope ceiling is 32 unique strings, 256 bytes each, 4096 total string bytes; printable ASCII with no whitespace. An empty JSON array is valid authentication but grants no operation. Chartworks uses these same hard ceilings; deployment settings can narrow them, never widen them. Scopes arrive only in `scopes: []string`, not a singular `scope`, string-delimited fallback, header, body, or query parameter.
+The coordinated [D-105](../decisions/2026-10-09-reporting-capacity.md) provider-scope ceiling is 128 unique strings, 256 bytes each, 16,384 total string bytes; printable ASCII with no whitespace. An empty JSON array is valid authentication but grants no operation. Chartworks uses these same hard ceilings; deployment settings can narrow them, never widen them. Scopes arrive only in `scopes: []string`, not a singular `scope`, string-delimited fallback, header, body, or query parameter.
 
 The normal audience is a scalar. Pengui can intentionally issue up to two unique exact audiences from its destination configuration. Chartworks verifies the intended audience for the selected HTTP/MCP surface. Configuring distinct audiences prevents cross-surface replay; using the explicit single-audience shorthand intentionally permits the same intended resource on both. Audience aliases must be registered by the operator, never derived from caller input.
 
@@ -61,6 +61,13 @@ topic, approved block or report.
 Phase 13 newly consumes four opaque action strings through the existing Pengui minter: `engineering.pipeline.write`, `engineering.pipeline.publish`, `engineering.pipeline.run` and `engineering.pipeline.read`. Operators must add them deliberately to the appropriate capability policy; their registration here is not a deployed grant. Proposal, draft, publication and run compose the existing `sources.query` action with exact external `source` and `execution_context` reaches. Draft, publication and run require declared `dataset` reaches, while proposal requires every governed dataset relation supplied to the model; no pipeline resource kind is introduced. Private derived stages use the accepted pipeline operation and checked manifest instead of separately minted output-source scopes. Publication remains distinct from draft write, and every external input is reauthorized before validation/execution. Retained run inspection/cancellation uses `jobs.read`/`jobs.cancel` plus the original pipeline and external dependency reach.
 
 ## Verification and boundaries
+
+The manual App BFF additionally consumes `reporting.discover` with exact target
+read and private-preview/custody under
+[D-098 dependency discovery](report-dependencies-v1.md). This metadata action
+cannot read definitions/results or execute work. Pengui checks each returned
+native requirement centrally before minting actual operation scopes. There is no
+automatic deployment grant. D-105 separately coordinates the larger bounded issuer/consumer ceiling; dependency discovery alone never enlarges it.
 
 `TestPhase03/AC04` uses a synthetic signed fixture matching the inspected issuer serialization; `TestProviderRegistrationManifest` pins the published manifest/example to the actual registry and decoder. `TestPhase04` exercises the real PostgreSQL consumer through HTTP and the public SDK; `TestCompiledAuthorityLifecycle` builds and starts the actual binary with an ephemeral trusted TLS issuer, runs permitted operations, denies unsigned/foreign calls, and joins SIGTERM shutdown.
 
@@ -173,3 +180,15 @@ normal source/topic/reporting/job actions and exact resource/context reaches. A
 migration action is never a wildcard domain grant. The bearer supplied for each
 request must be current; historical bearers, users, roles, certificates and
 calibration metadata in a bundle cannot authorize the request or future reads.
+
+
+## Service connection discovery — D-104
+
+The existing Pengui-signed service connection bearer with exactly
+`capability:connect` may initialize/ping and list static MCP tool, resource and
+template descriptors for enabled services. It cannot read resources (including
+App HTML) or invoke tools. Interactive App resource/tool requests still require
+`mcp.use`, their exact projected domain scopes and complete native resource reach.
+No service name alone authorizes a request; the verifier, configured MCP audience,
+expiry and exact scope profile remain mandatory. No new issuer, credential,
+identity table, domain endpoint or migration is introduced.

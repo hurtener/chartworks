@@ -15,6 +15,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq/generationdecision"
 	"github.com/hurtener/chartworks/internal/semantics"
+	"github.com/hurtener/chartworks/internal/staticdocs"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -56,10 +57,12 @@ func effectFor(effect string) (effects, bool) {
 		return effects{readOnly: true, idempotent: true}, true
 	case "migration_import_commit", "migration_cutover_commit", "migration_erase_commit":
 		return effects{persists: true, idempotent: true}, true
-	case "current_topic_reuse_or_private_draft_write":
+	case "current_topic_reuse_or_private_draft_write", "report_document_draft_cas_commit", "private_composition_reservation", "block_draft_cas_commit", "private_block_copy_commit", "private_block_preparation_consume", "block_publication_cas_commit", "report_document_transition_cas_commit":
 		return effects{persists: true}, true
-	case "bounded_validated_distinct_source_read", "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "nlq_example_import", "nlq_example_requalification_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration":
+	case "bounded_source_read_option_values", "bounded_source_read_private_preparation", "explicit_bounded_source_read_private_evidence", "bounded_frozen_source_read_retained_composition", "bounded_validated_distinct_source_read", "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "nlq_example_import", "nlq_example_requalification_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration":
 		return effects{openWorld: true, persists: true, paid: true}, true
+	case "existing_source_attempt_control":
+		return effects{openWorld: true, persists: true}, true
 	case "model_and_proposal_commit":
 		return effects{openWorld: true, persists: true, paid: true}, true
 	case "atomic_proposal_and_draft_commit":
@@ -80,7 +83,9 @@ func effectFor(effect string) (effects, bool) {
 
 // Binding is opaque: only Bind can connect a registered contract to a typed core.
 type Binding struct {
+	documentation                      *staticdocs.Catalog
 	app                                *AppResource
+	appCallback                        bool
 	name, group, description, resource string
 	definition                         api.Definition
 	input, output                      *gateway.Schema
@@ -196,12 +201,16 @@ func WithResource(b Binding, uri string) (Binding, error) {
 	return b, nil
 }
 
+// MaxRegisteredTools bounds metadata inventory, not execution or response budgets.
+// The complete configured inventory includes 91 tools and 5 optional renditions.
+const MaxRegisteredTools = 96
+
 // Registry is an immutable inventory of concrete service bindings.
 type Registry struct{ bindings []Binding }
 
 // NewRegistry fails on omissions/duplicates rather than advertising a stub.
 func NewRegistry(bindings []Binding) (*Registry, error) {
-	if len(bindings) < 1 || len(bindings) > 64 {
+	if len(bindings) < 1 || len(bindings) > MaxRegisteredTools {
 		return nil, ErrRegistration
 	}
 	names, ids, resources := map[string]bool{}, map[string]bool{}, map[string]bool{}
@@ -222,6 +231,9 @@ func NewRegistry(bindings []Binding) (*Registry, error) {
 			}
 			resources[b.resource] = true
 		}
+	}
+	if err := validateDocumentation(out); err != nil {
+		return nil, err
 	}
 	if err := validateApps(out); err != nil {
 		return nil, err
@@ -274,6 +286,9 @@ func (b Binding) tool() *mcp.Tool {
 	out := &mcp.Tool{Name: b.name, Description: b.description, InputSchema: b.input.Document(), OutputSchema: b.output.Document(), Annotations: &mcp.ToolAnnotations{ReadOnlyHint: b.effects.readOnly, IdempotentHint: b.effects.idempotent, DestructiveHint: &destructive, OpenWorldHint: &open}, Meta: mcp.Meta{"chartworks/operation": b.definition.ID, "chartworks/action": b.definition.Action, "chartworks/effect": b.definition.Effect, "chartworks/audit": b.definition.Audit, "chartworks/group": b.group, "chartworks/persists": b.effects.persists, "chartworks/maySpend": b.effects.paid, "chartworks/resourceLoader": b.definition.ResourceLoader, "chartworks/inputSchema": json.RawMessage(b.input.Document()), "chartworks/outputSchema": json.RawMessage(b.output.Document()), "chartworks/requestSchema": requestSchema, "chartworks/resultSchema": json.RawMessage(b.definition.Response.Document()), "chartworks/errorContract": errors}}
 	if b.definition.Interaction != "" {
 		out.Meta["chartworks/interaction"] = b.definition.Interaction
+	}
+	if b.appCallback {
+		out.Meta["ui"] = map[string]any{"visibility": []string{"model", "app"}}
 	}
 	if b.app != nil {
 		out.Meta["ui"] = map[string]any{"resourceUri": b.app.uri, "visibility": []string{"model", "app"}}
